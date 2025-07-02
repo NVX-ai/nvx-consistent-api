@@ -10,4 +10,4 @@ global using AuthOptions = DeFuncto.Du4<
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("ConsistentApi.Tests")]
-[assembly: InternalsVisibleTo("TestUtils")]
+[assembly: InternalsVisibleTo("Nvx.ConsistentAPI.TestUtils")]

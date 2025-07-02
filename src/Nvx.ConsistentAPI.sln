@@ -11,7 +11,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestApi", "TestApi\TestApi.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestEventModel", "TestEventModel\TestEventModel.csproj", "{2FC05DA3-935F-48B0-8B84-FFA0616AAE93}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestUtils", "TestUtils\TestUtils.csproj", "{BC56AA04-5A06-4CA2-A050-C036F8E28FAE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.TestUtils", "Nvx.ConsistentAPI.TestUtils\Nvx.ConsistentAPI.TestUtils.csproj", "{BC56AA04-5A06-4CA2-A050-C036F8E28FAE}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsistentAPI.Analyzers", "ConsistentAPI.Analyzers\ConsistentAPI.Analyzers.csproj", "{D1B125B4-C4FA-40F5-941D-841CC3F5A149}"
 EndProject
