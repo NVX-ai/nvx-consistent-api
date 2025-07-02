@@ -1,0 +1,10 @@
+global using DeFuncto;
+global using DeFuncto.Extensions;
+global using Xunit;
+global using ConsistentAPI;
+global using static ConsistentAPI.Types;
+global using static DeFuncto.Prelude;
+global using DeFuncto.Assertions;
+global using ConsistentAPI.TestUtils;
+global using TestModel = TestEventModel.TestEventModel;
+global using TestEventModel;

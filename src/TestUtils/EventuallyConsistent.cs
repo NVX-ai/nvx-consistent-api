@@ -1,0 +1,31 @@
+﻿using System.Diagnostics;
+
+namespace ConsistentAPI.TestUtils;
+
+public static class EventuallyConsistent
+{
+  public static async Task WaitFor(int ms, Func<Task> action)
+  {
+    var stopwatch = Stopwatch.StartNew();
+    while (true)
+    {
+      try
+      {
+        await action();
+        return;
+      }
+      catch
+      {
+        if (stopwatch.ElapsedMilliseconds > ms)
+        {
+          throw;
+        }
+
+        await Task.Delay(333);
+      }
+    }
+  }
+
+  public static async Task WaitFor(Func<Task> action) => await WaitFor(60_000, action);
+  public static async Task WaitForAggregation(Func<Task> action) => await WaitFor(150_000, action);
+}

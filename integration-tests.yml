@@ -1,0 +1,81 @@
+# ASP.NET
+# Build and test ASP.NET projects.
+# Add steps that publish symbols, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/apps/aspnet/build-aspnet-4
+
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  solution: '**/*.sln'
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+
+steps:
+  - task: NuGetAuthenticate@1
+    displayName: 'Package repository auth'
+
+  - task: UseDotNet@2
+    displayName: 'Install .NET Core SDK'
+    inputs:
+      packageType: 'sdk'
+      version: '9.x'
+      installationPath: $(Agent.ToolsDirectory)/dotnet
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Restore packages'
+    inputs:
+      command: 'restore'
+      projects: '$(solution)'
+      feedsToUse: 'select'
+
+  - task: Docker@2
+    displayName: 'Register in container registry'
+    inputs:
+      containerRegistry: 'docker_registry_nvxportal-NVX Framework'
+      command: 'login'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Integration tests'
+    inputs:
+      command: 'test'
+      projects: 'src/ConsistentAPI.Tests/ConsistentAPI.Tests.csproj'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Build Consistent API package'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+    inputs:
+      command: 'publish'
+      arguments: '-c Release'
+      publishWebProjects: false
+      projects: 'src/ConsistentAPI/ConsistentAPI.csproj'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Push ConsistentAPI to Neele-Vat'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+    inputs:
+      command: 'push'
+      packagesToPush: '$(Build.SourcesDirectory)/**/Release/**/*.nupkg;!$(Build.ArtifactStagingDirectory)/**/*.symbols.nupkg'
+      nuGetFeedType: 'internal'
+      publishVstsFeed: '2dfe06da-d4ef-469f-900e-53b8c0ffea13/60b591de-5eba-48ff-beec-8f2bb1e54cac'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Build Consistent API test utils package'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+    inputs:
+      command: 'publish'
+      arguments: '-c Release'
+      publishWebProjects: false
+      projects: 'src/TestUtils/TestUtils.csproj'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Push ConsistentAPI TestUtils'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+    inputs:
+      command: 'push'
+      packagesToPush: '$(Build.SourcesDirectory)/**/Release/**/ConsistentAPI.TestUtils.*.nupkg'
+      nuGetFeedType: 'internal'
+      publishVstsFeed: '2dfe06da-d4ef-469f-900e-53b8c0ffea13/60b591de-5eba-48ff-beec-8f2bb1e54cac'

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>13</LangVersion>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ConsistentAPI\ConsistentAPI.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference
+                Include="..\ConsistentAPI.Analyzers\ConsistentAPI.Analyzers.csproj"
+                OutputItemType="Analyzer"
+                ReferenceOutputAssembly="false"/>
+    </ItemGroup>
+
+</Project>
