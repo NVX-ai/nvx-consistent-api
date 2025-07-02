@@ -5,7 +5,7 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI", "Nvx.ConsistentAPI\Nvx.ConsistentAPI.csproj", "{E4EAB402-5A4C-466C-BC75-22AF8F765229}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsistentAPI.Tests", "ConsistentAPI.Tests\ConsistentAPI.Tests.csproj", "{7D0B66D2-94DE-4FCA-955B-A60E26103909}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.Tests", "Nvx.ConsistentAPI.Tests\Nvx.ConsistentAPI.Tests.csproj", "{7D0B66D2-94DE-4FCA-955B-A60E26103909}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestApi", "TestApi\TestApi.csproj", "{038C2CBB-C9B4-49A2-A924-F633655CDE0F}"
 EndProject
