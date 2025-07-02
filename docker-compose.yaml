@@ -1,0 +1,98 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_SA_PASSWORD: yourStrong(!)Password
+      MSSQL_PID: Express
+    restart: unless-stopped
+
+  eventstore:
+    image: "eventstore/eventstore:23.10.0-jammy"
+    restart: unless-stopped
+    environment:
+      - EVENTSTORE_CLUSTER_SIZE=1
+      - EVENTSTORE_RUN_PROJECTIONS=None
+      - EVENTSTORE_EXT_TCP_PORT=1113
+      - EVENTSTORE_HTTP_PORT=2113
+      - EVENTSTORE_INSECURE=true
+      - EVENTSTORE_ENABLE_EXTERNAL_TCP=true
+      - EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=true
+    ports:
+      - "2113:2113"
+      - "1113:1113"
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.34.0
+    restart: unless-stopped
+    ports:
+      - 10000:10000
+      - 10001:10001
+      - 10002:10002
+  postgres:
+    image: postgres:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    restart: unless-stopped
+    environment:
+      DB_VENDOR: POSTGRES
+      DB_ADDR: postgres
+      DB_DATABASE: keycloak
+      DB_USER: keycloak
+      DB_SCHEMA: public
+      DB_PASSWORD: password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    command:
+      - start-dev
+    ports:
+      - 8080:8080
+    depends_on:
+      - postgres
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    hostname: jaeger
+    restart: unless-stopped
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"  # UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+      - "14250:14250"  # Model
+      - "14268:14268"  # Jaeger HTTP
+      - "9411:9411"    # Zipkin
+
+  prometheus:
+    image: prom/prometheus:latest
+    hostname: prometheus
+    restart: unless-stopped
+
+    volumes:
+      - ./dashboards/prometheus/prometheus.yml:/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    command:
+      - --web.enable-otlp-receiver
+      - --web.enable-remote-write-receiver
+
+  grafana:
+    image: grafana/grafana:latest
+    hostname: grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=potato
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - jaeger
