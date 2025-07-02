@@ -1,10 +1,10 @@
 using System.Data.Common;
-using ConsistentAPI;
-using ConsistentAPI.Framework.StaticEndpoints;
 using Dapper;
 using EventStore.Client;
 using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
+using Nvx.ConsistentAPI;
+using Nvx.ConsistentAPI.Framework.StaticEndpoints;
 
 namespace TestEventModel;
 

@@ -20,7 +20,7 @@ public class EntityFoldGenerator : IIncrementalGenerator
         var events = symbol.RegularFoldEvents().Concat(symbol.ExternalFoldEvents());
         var eventNamespaces = events
           .Select(e => e.ContainingNamespace.ToDisplayString())
-          .Append("ConsistentAPI")
+          .Append("Nvx.ConsistentAPI")
           .Distinct()
           .ToArray();
 

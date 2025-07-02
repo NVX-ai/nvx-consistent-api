@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
 
-namespace ConsistentAPI.TestUtils;
+namespace Nvx.ConsistentAPI.TestUtils;
 
 public static class EventuallyConsistent
 {

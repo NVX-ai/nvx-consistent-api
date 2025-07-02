@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using ConsistentAPI;
 using FS.Keycloak.RestApiClient.Api;
 using FS.Keycloak.RestApiClient.Authentication.ClientFactory;
 using FS.Keycloak.RestApiClient.Authentication.Flow;
@@ -7,6 +6,7 @@ using FS.Keycloak.RestApiClient.ClientFactory;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Nvx.ConsistentAPI;
 using static DeFuncto.Prelude;
 using TestModel = TestEventModel.TestEventModel;
 

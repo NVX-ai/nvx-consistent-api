@@ -33,7 +33,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\ConsistentAPI\ConsistentAPI.csproj"/>
+        <ProjectReference Include="..\Nvx.ConsistentAPI\Nvx.ConsistentAPI.csproj"/>
         <ProjectReference Include="..\TestEventModel\TestEventModel.csproj"/>
         <ProjectReference Include="..\TestUtils\TestUtils.csproj"/>
     </ItemGroup>

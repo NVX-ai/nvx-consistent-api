@@ -1,4 +1,4 @@
-﻿using ConsistentAPI;
+﻿using Nvx.ConsistentAPI;
 
 namespace TestEventModel;
 

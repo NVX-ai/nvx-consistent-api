@@ -8,7 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\ConsistentAPI\ConsistentAPI.csproj"/>
+        <ProjectReference Include="..\Nvx.ConsistentAPI\Nvx.ConsistentAPI.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

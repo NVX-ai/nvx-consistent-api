@@ -1,6 +1,6 @@
 ﻿using System.Data.Common;
-using ConsistentAPI;
 using Dapper;
+using Nvx.ConsistentAPI;
 
 namespace TestEventModel;
 

@@ -1,4 +1,4 @@
-using ConsistentAPI.TenantUsers;
+using Nvx.ConsistentAPI.TenantUsers;
 
 namespace ConsistentAPI.Tests.Security;
 

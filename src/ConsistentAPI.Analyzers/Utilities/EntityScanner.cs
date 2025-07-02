@@ -22,7 +22,7 @@ public static class EntityScanner
   public static bool ImplementsEntity(INamedTypeSymbol typeSymbol) =>
   (
     from i in typeSymbol.Interfaces
-    where i.OriginalDefinition.ContainingNamespace.ToDisplayString() == "ConsistentAPI"
+    where i.OriginalDefinition.ContainingNamespace.ToDisplayString() == "Nvx.ConsistentAPI"
     where i.OriginalDefinition.Name == "EventModelEntity"
     where i.OriginalDefinition.Arity == 1
     select i
@@ -40,6 +40,6 @@ public static class EntityScanner
     from interfaceSymbol in entityType.AllInterfaces
     where interfaceSymbol.Name == interfaceName
     where interfaceSymbol.Arity == 2
-    where interfaceSymbol.ContainingNamespace.ToDisplayString() == "ConsistentAPI"
+    where interfaceSymbol.ContainingNamespace.ToDisplayString() == "Nvx.ConsistentAPI"
     select interfaceSymbol.TypeArguments[0];
 }

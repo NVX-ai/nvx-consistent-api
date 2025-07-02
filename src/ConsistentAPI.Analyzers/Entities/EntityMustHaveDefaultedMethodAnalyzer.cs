@@ -51,7 +51,7 @@ public class EntityMustHaveDefaultedMethodAnalyzer : DiagnosticAnalyzer
   private static bool ImplementsEventModelEntity(INamedTypeSymbol typeSymbol) =>
     typeSymbol
       .AllInterfaces
-      .Any(i => i.OriginalDefinition.ContainingNamespace.ToDisplayString() == "ConsistentAPI"
+      .Any(i => i.OriginalDefinition.ContainingNamespace.ToDisplayString() == "Nvx.ConsistentAPI"
                 && i.OriginalDefinition is { Name: "EventModelEntity", Arity: 1 });
 
   private static bool HasMatchingMethod(
@@ -65,7 +65,7 @@ public class EntityMustHaveDefaultedMethodAnalyzer : DiagnosticAnalyzer
 
   private static bool HasCorrectParameters(IMethodSymbol methodSymbol) =>
     methodSymbol.Parameters.Length == 1
-    && methodSymbol.Parameters[0].Type.BaseType?.ContainingNamespace.ToDisplayString() == "ConsistentAPI"
+    && methodSymbol.Parameters[0].Type.BaseType?.ContainingNamespace.ToDisplayString() == "Nvx.ConsistentAPI"
     && methodSymbol.Parameters[0].Type.BaseType?.Name == "StrongId";
 
   private static bool IsValidReturnType(IMethodSymbol methodSymbol, ITypeSymbol entityType) =>

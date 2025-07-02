@@ -6,8 +6,6 @@ using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Security.Claims;
 using System.Text;
-using ConsistentAPI.Framework;
-using ConsistentAPI.InternalTooling;
 using Dapper;
 using EventStore.Client;
 using Flurl;
@@ -16,11 +14,13 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using Nvx.ConsistentAPI.Framework;
+using Nvx.ConsistentAPI.InternalTooling;
 using Testcontainers.Azurite;
 using Testcontainers.EventStoreDb;
 using Testcontainers.MsSql;
 
-namespace ConsistentAPI.Tests;
+namespace Nvx.ConsistentAPI.TestUtils;
 
 public delegate string TestUserByName(string name);
 
