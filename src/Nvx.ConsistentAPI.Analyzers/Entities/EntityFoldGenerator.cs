@@ -2,7 +2,7 @@
 using System.Text;
 using Microsoft.CodeAnalysis;
 
-namespace ConsistentAPI.Analyzers;
+namespace Nvx.ConsistentAPI.Analyzers;
 
 [Generator]
 public class EntityFoldGenerator : IIncrementalGenerator

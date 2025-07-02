@@ -45,9 +45,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference
-                Include="..\ConsistentAPI.Analyzers\ConsistentAPI.Analyzers.csproj"
-                OutputItemType="Analyzer"
-                ReferenceOutputAssembly="false"/>
+        <ProjectReference Include="..\Nvx.ConsistentAPI.Analyzers\Nvx.ConsistentAPI.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
 </Project>

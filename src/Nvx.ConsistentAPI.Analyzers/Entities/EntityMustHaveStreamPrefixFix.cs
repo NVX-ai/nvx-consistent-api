@@ -11,7 +11,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
 
-namespace ConsistentAPI.Analyzers;
+namespace Nvx.ConsistentAPI.Analyzers;
 
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(EntityMustHaveStreamPrefixFix))]
 [Shared]
