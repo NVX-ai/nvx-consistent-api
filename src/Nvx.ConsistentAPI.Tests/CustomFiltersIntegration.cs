@@ -30,28 +30,24 @@ public class CustomFiltersIntegration
         tenantId: tenantId)
       .Map(r => Guid.Parse(r.EntityId));
 
-    await EventuallyConsistent.WaitForAggregation(async () =>
-    {
-      var pizzas = await setup.ReadModels<AvailablePizzaReadModel>(
-        tenantId: tenantId,
-        queryParameters: new Dictionary<string, string[]>
-          { { "eq-Id", [stockedPizzaId.ToString(), outOfStockPizzaId.ToString()] } });
-      Assert.Single(pizzas.Items);
-      Assert.Equal(stockedPizzaId.ToString(), pizzas.Items.First().Id);
-      await setup.ReadModel<AvailablePizzaReadModel>(stockedPizzaId.ToString(), tenantId: tenantId);
-      await setup.ReadModelNotFound<AvailablePizzaReadModel>(outOfStockPizzaId.ToString(), tenantId);
-    });
+    await setup.WaitForConsistency();
+    var singlePizzaPage = await setup.ReadModels<AvailablePizzaReadModel>(
+      tenantId: tenantId,
+      queryParameters: new Dictionary<string, string[]>
+        { { "eq-Id", [stockedPizzaId.ToString(), outOfStockPizzaId.ToString()] } });
+    Assert.Single(singlePizzaPage.Items);
+    Assert.Equal(stockedPizzaId.ToString(), singlePizzaPage.Items.First().Id);
+    await setup.ReadModel<AvailablePizzaReadModel>(stockedPizzaId.ToString(), tenantId: tenantId);
+    await setup.ReadModelNotFound<AvailablePizzaReadModel>(outOfStockPizzaId.ToString(), tenantId);
 
     await setup.Command(new SupplyIngredient(outOfStockIngredientId, 10));
 
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var pizzas = await setup.ReadModels<AvailablePizzaReadModel>(
-        tenantId: tenantId,
-        queryParameters: new Dictionary<string, string[]>
-          { { "eq-Id", [stockedPizzaId.ToString(), outOfStockPizzaId.ToString()] } });
-      Assert.Equal(2, pizzas.Items.Count());
-    });
+    await setup.WaitForConsistency();
+    var withIngredients = await setup.ReadModels<AvailablePizzaReadModel>(
+      tenantId: tenantId,
+      queryParameters: new Dictionary<string, string[]>
+        { { "eq-Id", [stockedPizzaId.ToString(), outOfStockPizzaId.ToString()] } });
+    Assert.Equal(2, withIngredients.Items.Count());
 
     // Test for custom filter on override tenant filter
     var tenantId2 = Guid.NewGuid();
@@ -74,11 +70,9 @@ public class CustomFiltersIntegration
         asAdmin: true)
       .Map(r => Guid.Parse(r.EntityId));
 
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var pizzas = await setup.ReadModels<ExternalPizzaReadModel>(tenantId: tenantId);
-      Assert.Contains(stockedPizzaVisibleTenant2, pizzas.Items.Select(p => p.PizzaId));
-      Assert.DoesNotContain(stockedPizzaNotVisibleTenant2, pizzas.Items.Select(p => p.PizzaId));
-    });
+    await setup.WaitForConsistency();
+    var withCustomFilter = await setup.ReadModels<ExternalPizzaReadModel>(tenantId: tenantId);
+    Assert.Contains(stockedPizzaVisibleTenant2, withCustomFilter.Items.Select(p => p.PizzaId));
+    Assert.DoesNotContain(stockedPizzaNotVisibleTenant2, withCustomFilter.Items.Select(p => p.PizzaId));
   }
 }
