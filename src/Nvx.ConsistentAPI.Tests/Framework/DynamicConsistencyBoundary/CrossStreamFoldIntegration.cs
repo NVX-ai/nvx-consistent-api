@@ -32,21 +32,19 @@ public class CrossStreamFoldIntegration
     Assert.Contains(moreTags.DependedOnTags, t => t == tag);
 
     await setup.InsertEvents(new EntityThatDependsOnRemovedDependency(entityThatDependsId, entityDependedOnId));
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var readModel = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
-      Assert.Empty(readModel.DependsOnIds);
-      Assert.Empty(readModel.DependedOnTags);
-    });
+
+    await setup.WaitForConsistency();
+    var afterDependencyRemoved = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
+    Assert.Empty(afterDependencyRemoved.DependsOnIds);
+    Assert.Empty(afterDependencyRemoved.DependedOnTags);
 
     await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
 
-    await EventuallyConsistent.WaitForAggregation(async () =>
-    {
-      var readModel = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
-      Assert.Empty(readModel.DependsOnIds);
-      Assert.Empty(readModel.DependedOnTags);
-    });
+    await setup.WaitForConsistency();
+    var updatedTagsAfterDependencyRemoved =
+      await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
+    Assert.Empty(updatedTagsAfterDependencyRemoved.DependsOnIds);
+    Assert.Empty(updatedTagsAfterDependencyRemoved.DependedOnTags);
   }
 
   [Fact(DisplayName = "should hydrate the read model even on an empty stream")]
