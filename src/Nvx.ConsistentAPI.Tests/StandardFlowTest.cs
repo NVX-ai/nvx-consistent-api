@@ -183,30 +183,24 @@ public class StandardFlowTest
       Assert.Equal(13, filteredAndSizeConstrained.Items.Count());
     });
 
-    await EventuallyConsistent.WaitForAggregation(async () =>
-    {
-      var adminUser = await setup.ReadModel<UserWithPermissionReadModel>(
-        new UserWithPermissionId(setup.Auth.AdminSub, "admin").StreamId(),
-        asAdmin: true);
-      Assert.Equal("admin", adminUser.Name);
-      var canDoUser = await setup.ReadModel<UserWithPermissionReadModel>(
-        new UserWithPermissionId(setup.Auth.CandoSub, "product-creator").StreamId(),
-        asAdmin: true);
-      Assert.Equal("cando", canDoUser.Name);
-      Assert.Equal("cando@testdomain.com", canDoUser.Email);
-    });
+    await setup.WaitForConsistency();
+    var adminUser = await setup.ReadModel<UserWithPermissionReadModel>(
+      new UserWithPermissionId(setup.Auth.AdminSub, "admin").StreamId(),
+      asAdmin: true);
+    Assert.Equal("admin", adminUser.Name);
+    var canDoUser = await setup.ReadModel<UserWithPermissionReadModel>(
+      new UserWithPermissionId(setup.Auth.CandoSub, "product-creator").StreamId(),
+      asAdmin: true);
+    Assert.Equal("cando", canDoUser.Name);
+    Assert.Equal("cando@testdomain.com", canDoUser.Email);
 
-    var otherProductId = Guid.NewGuid();
-
-    await EventuallyConsistent.WaitForAggregation(async () =>
-    {
-      var aggregated = await setup
-        .ReadModels<AggregatingStockReadModel>(
-          queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString().ToLower()] } });
-      Assert.Equal(50, aggregated.Items.Count());
-      Assert.Equal(99, aggregated.Total);
-      otherProductId = Guid.Parse(aggregated.Items.First().Id);
-    });
+    await setup.WaitForConsistency();
+    var aggregated1 = await setup
+      .ReadModels<AggregatingStockReadModel>(
+        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString().ToLower()] } });
+    Assert.Equal(50, aggregated1.Items.Count());
+    Assert.Equal(99, aggregated1.Total);
+    var otherProductId = Guid.Parse(aggregated1.Items.First().Id);
 
     await setup.Command(new HideAggregatingProduct(otherProductId));
 
