@@ -48,7 +48,7 @@ internal static class InstanceTracking
 
       if ((settings ?? new TestSettings()).WaitForCatchUpAtStartup)
       {
-        await fromHashed.WaitForCatchUp();
+        await fromHashed.WaitForConsistency();
       }
 
       return fromHashed;
@@ -66,7 +66,7 @@ internal static class InstanceTracking
       (settings ?? new TestSettings()).WaitForCatchUpTimeout);
     if ((settings ?? new TestSettings()).WaitForCatchUpAtStartup)
     {
-      await newSetup.WaitForCatchUp();
+      await newSetup.WaitForConsistency();
     }
 
     return newSetup;
@@ -138,7 +138,7 @@ public record TestSetup(
       StreamState.Any,
       Emitter.ToEventData(evt, null));
 
-  public async Task WaitForCatchUp()
+  public async Task WaitForConsistency()
   {
     var timer = Stopwatch.StartNew();
     while (timer.ElapsedMilliseconds < WaitForCatchUpTimeout)
@@ -164,7 +164,7 @@ public record TestSetup(
       }
     }
 
-    Assert.Fail("Timed out waiting for read models catch up");
+    Assert.Fail("Timed out waiting for the system to reach a consistent state");
   }
 
   public async Task<CommandAcceptedResult> Upload() =>

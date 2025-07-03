@@ -10,7 +10,7 @@ public class RolesIntegration
     await using var setup = await Initializer.Do();
     var (roleId, _, tenantId, userName, userSub) = await CreateRole(setup);
     await setup.Command(new AssignTenantRole(userSub, roleId), true, tenantId);
-    await setup.WaitForCatchUp();
+    await setup.WaitForConsistency();
     await setup.Command(new ActUponPermissionsAndRolesEntity(Guid.NewGuid()), tenantId: tenantId, asUser: userName);
   }
 
@@ -23,10 +23,10 @@ public class RolesIntegration
       new AssignTenantPermission(userSub, ActUponPermissionsAndRolesEntity.Permission),
       true,
       tenantId);
-    await setup.WaitForCatchUp();
+    await setup.WaitForConsistency();
     await setup.Command(new ActUponPermissionsAndRolesEntity(Guid.NewGuid()), tenantId: tenantId, asUser: userName);
     await setup.Command(new RevokeTenantRole(userSub, roleId), tenantId: tenantId, asAdmin: true);
-    await setup.WaitForCatchUp();
+    await setup.WaitForConsistency();
     await setup.Command(new ActUponPermissionsAndRolesEntity(Guid.NewGuid()), tenantId: tenantId, asUser: userName);
   }
 

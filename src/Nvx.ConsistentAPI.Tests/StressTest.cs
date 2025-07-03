@@ -17,7 +17,7 @@ public class StressTest
         return unit;
       })
       .Parallel();
-    await setup.WaitForCatchUp();
+    await setup.WaitForConsistency();
     await EventuallyConsistent.WaitFor(async () =>
     {
       var readModel = await setup.ReadModel<ExtremeCountReadModel>(countId.ToString());
@@ -47,7 +47,7 @@ public class StressTest
         return unit;
       })
       .Parallel();
-    await setup.WaitForCatchUp();
+    await setup.WaitForConsistency();
     await EventuallyConsistent.WaitFor(async () =>
     {
       foreach (var id in ids)
