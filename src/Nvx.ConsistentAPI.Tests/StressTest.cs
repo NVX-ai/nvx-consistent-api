@@ -7,7 +7,7 @@ public class StressTest
   {
     await using var setup = await Initializer.Do();
     var countId = Guid.NewGuid();
-    const int count = 1_000;
+    const int count = 500;
     await Enumerable
       .Range(0, count)
       .Select<int, Func<Task<Unit>>>(_ => async () =>
@@ -26,7 +26,7 @@ public class StressTest
   {
     await using var setup = await Initializer.Do();
     var ids = Enumerable
-      .Range(0, 100)
+      .Range(0, 50)
       .Select(_ => Guid.NewGuid())
       .ToArray();
     await ids

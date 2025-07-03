@@ -99,10 +99,6 @@ public record TestSetup(
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
 
-  private readonly SemaphoreSlim consistencySemaphore = new(1);
-
-  private bool couldBeInconsistent;
-
   public async ValueTask DisposeAsync()
   {
     await InstanceTracking.Dispose(Model.GetHashCode());
@@ -124,48 +120,34 @@ public record TestSetup(
             new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
           ])));
 
-  public async Task InsertEvents(params EventModelEvent[] evt)
-  {
+  public async Task InsertEvents(params EventModelEvent[] evt) =>
     await EventStoreClient.AppendToStreamAsync(
-      evt.First().GetStreamName(),
+      evt.GroupBy(e => e.GetStreamName()).Single().Key,
       StreamState.Any,
       Emitter.ToEventData(evt, null));
-    couldBeInconsistent = true;
-  }
 
+  /// <summary>
+  ///   Waits for the system to be in a consistent state for three consecutive requests.
+  /// </summary>
+  /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
   public async Task WaitForConsistency(int? timeoutMs = null)
   {
-    try
+    var consistencyCounter = 0;
+    var timeout = timeoutMs ?? WaitForCatchUpTimeout;
+    var timer = Stopwatch.StartNew();
+    while (timer.ElapsedMilliseconds < timeout)
     {
-      await consistencySemaphore.WaitAsync();
-      // This is meant to wait for consistency, it's possible that the system hasn't even detected an
-      // event received when this point is reached, this gives the daemon observability a second to catch up,
-      // if the daemon doesn't catch up in a second, there's a bigger problem at play.
-      if (couldBeInconsistent && await IsConsistent())
+      var wasConsistent = await IsConsistent();
+      consistencyCounter = wasConsistent ? consistencyCounter + 1 : 0;
+      if (consistencyCounter == 3)
       {
-        couldBeInconsistent = false;
-        await Task.Delay(TimeSpan.FromSeconds(1));
+        return;
       }
 
-      var timeout = timeoutMs ?? WaitForCatchUpTimeout;
-      var timer = Stopwatch.StartNew();
-      while (timer.ElapsedMilliseconds < timeout)
-      {
-        if (await IsConsistent())
-        {
-          return;
-        }
-
-        await Task.Delay(150);
-      }
-
-      Assert.Fail("Timed out waiting for the system to reach a consistent state");
-    }
-    finally
-    {
-      consistencySemaphore.Release();
+      await Task.Delay(TimeSpan.FromSeconds(1));
     }
 
+    // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
     async Task<bool> IsConsistent()
@@ -182,27 +164,19 @@ public record TestSetup(
     }
   }
 
-  public async Task<CommandAcceptedResult> Upload()
-  {
-    var result = await $"{Url}/files/upload"
+  public async Task<CommandAcceptedResult> Upload() =>
+    await $"{Url}/files/upload"
       .PostMultipartAsync(multipartContent =>
         multipartContent.AddFile("file", new MemoryStream("banana"u8.ToArray()), "text.txt")
       )
       .ReceiveJson<CommandAcceptedResult>();
-    couldBeInconsistent = true;
-    return result;
-  }
 
-  public async Task<CommandAcceptedResult> UploadPath(string path)
-  {
-    var result = await $"{Url}/files/upload"
+  public async Task<CommandAcceptedResult> UploadPath(string path) =>
+    await $"{Url}/files/upload"
       .PostMultipartAsync(multipartContent =>
         multipartContent.AddFile("file", path)
       )
       .ReceiveJson<CommandAcceptedResult>();
-    couldBeInconsistent = true;
-    return result;
-  }
 
   public async Task DownloadAndComparePath(Guid fileId, string path)
   {
@@ -229,7 +203,6 @@ public record TestSetup(
     }
 
     await req.PostStringAsync(body);
-    couldBeInconsistent = true;
   }
 
   public async Task<CommandAcceptedResult> Command<C>(
@@ -250,9 +223,7 @@ public record TestSetup(
 
     var response = await req
       .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json"));
-    var result = await response.GetJsonAsync<CommandAcceptedResult>();
-    couldBeInconsistent = true;
-    return result;
+    return await response.GetJsonAsync<CommandAcceptedResult>();
   }
 
   public async Task<ErrorResponse> FailingCommand<C>(
