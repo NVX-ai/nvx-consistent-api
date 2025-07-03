@@ -307,8 +307,7 @@ public class StandardFlowTest
     {
       await setup.Command(new RegisterFavoriteFood("pizza"), true);
       await setup.Command(new RegisterFavoriteFood("banana"));
-      await EventuallyConsistent.WaitFor(async () =>
-      {
+      await setup.WaitForConsistency();
         var adminFavoriteFoods = await setup.ReadModels<UserFavoriteFoodReadModel>(true);
         Assert.Equal(1, adminFavoriteFoods.Total);
         Assert.Contains(adminFavoriteFoods.Items, model => model.Name == "pizza");
@@ -319,7 +318,6 @@ public class StandardFlowTest
         await setup.ReadModelNotFound<UserFavoriteFoodReadModel>(setup.Auth.AdminSub);
         await setup.ReadModel<UserFavoriteFoodReadModel>(setup.Auth.CandoSub, asAdmin: false);
         await setup.ReadModelNotFound<UserFavoriteFoodReadModel>(setup.Auth.CandoSub, asAdmin: true);
-      });
     }
 
     async Task Idempotency()
