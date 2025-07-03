@@ -128,60 +128,54 @@ public class StandardFlowTest
       new AddProductPicture(productId, new AttachedFile(uploadResult.EntityId.Apply(Guid.Parse), null)));
 
     // Verify the background runners.
-    await EventuallyConsistent.WaitForAggregation(async () =>
-    {
-      var readModel = await setup.ReadModel<UserRegistryOfNamedProductsReadModel>(setup.Auth.CandoSub);
-      Assert.True(100 <= readModel.Count, $"Expecting at least 100 products, got {readModel.Count}");
-    });
+    await setup.WaitForConsistency();
+    var readModel = await setup.ReadModel<UserRegistryOfNamedProductsReadModel>(setup.Auth.CandoSub);
+    Assert.True(100 <= readModel.Count, $"Expecting at least 100 products, got {readModel.Count}");
 
     await setup.FailingCommand(new CreateProduct(productId, productName, null), 409);
 
     // Eventual consistency (duh).
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var firstPage = await setup
-        .ReadModels<ProductStock>(
-          queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString()] } });
-      Assert.NotEmpty(firstPage.Items);
-      Assert.Equal(99, firstPage.Total);
-      var productStock = await setup.ReadModel<ProductStock>(productId.ToString());
-      Assert.Equal(productId.ToString(), productStock.Id);
-      Assert.Equal(productId, productStock.ProductId);
-      Assert.Equal(productName, productStock.Name);
-      Assert.Equal(0, productStock.Amount);
-      Assert.Equal(uploadResult.EntityId.Apply(Guid.Parse), productStock.PictureId);
-      Assert.Equal(42, productStock.LongNumber);
-      Assert.Equal(3.1416f, productStock.AllFloat);
-      Assert.Equal(0.1, productStock.YourBlessings);
-      Assert.True(productStock.IngForColumbine);
-      Assert.Equal('a', productStock.Mander);
-      DateTime.SpecifyKind(new DateTime(2017, 1, 1), DateTimeKind.Utc).IsCloseTo(productStock.Beginning);
-      DateTime.SpecifyKind(new DateTime(2017, 1, 1), DateTimeKind.Utc).IsCloseTo(productStock.MaybeBeginning);
-      Assert.Equal(new DateTimeOffset(2017, 1, 1, 1, 1, 1, TimeSpan.Zero), productStock.Offset);
-      Assert.Equal(new DateTimeOffset(2017, 1, 1, 1, 1, 1, TimeSpan.Zero), productStock.MaybeOffset);
-      Assert.Equal(new TimeOnly(1, 1, 1), productStock.TimeOnly);
-      Assert.Equal(new TimeOnly(1, 1, 1), productStock.MaybeTimeOnly);
-    });
+    await setup.WaitForConsistency();
+    var firstPage = await setup
+      .ReadModels<ProductStock>(
+        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString()] } });
+    Assert.NotEmpty(firstPage.Items);
+    Assert.Equal(99, firstPage.Total);
+    var productStock = await setup.ReadModel<ProductStock>(productId.ToString());
+    Assert.Equal(productId.ToString(), productStock.Id);
+    Assert.Equal(productId, productStock.ProductId);
+    Assert.Equal(productName, productStock.Name);
+    Assert.Equal(0, productStock.Amount);
+    Assert.Equal(uploadResult.EntityId.Apply(Guid.Parse), productStock.PictureId);
+    Assert.Equal(42, productStock.LongNumber);
+    Assert.Equal(3.1416f, productStock.AllFloat);
+    Assert.Equal(0.1, productStock.YourBlessings);
+    Assert.True(productStock.IngForColumbine);
+    Assert.Equal('a', productStock.Mander);
+    DateTime.SpecifyKind(new DateTime(2017, 1, 1), DateTimeKind.Utc).IsCloseTo(productStock.Beginning);
+    DateTime.SpecifyKind(new DateTime(2017, 1, 1), DateTimeKind.Utc).IsCloseTo(productStock.MaybeBeginning);
+    Assert.Equal(new DateTimeOffset(2017, 1, 1, 1, 1, 1, TimeSpan.Zero), productStock.Offset);
+    Assert.Equal(new DateTimeOffset(2017, 1, 1, 1, 1, 1, TimeSpan.Zero), productStock.MaybeOffset);
+    Assert.Equal(new TimeOnly(1, 1, 1), productStock.TimeOnly);
+    Assert.Equal(new TimeOnly(1, 1, 1), productStock.MaybeTimeOnly);
 
     // Filtering
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var firstPage = await setup.ReadModels<ProductStock>(
-        queryParameters: new Dictionary<string, string[]>
-          { { "pageSize", ["35"] }, { "ts-Name", [productId.ToString().ToUpper()] } });
-      Assert.Equal(35, firstPage.Items.Count());
-      Assert.NotEmpty(firstPage.Items);
-      Assert.Equal(99, firstPage.Total);
-      var ids = firstPage.Items.Take(25).Select(i => i.Id).ToArray();
-      var filteredPage =
-        await setup.ReadModels<ProductStock>(queryParameters: new Dictionary<string, string[]> { { "eq-Id", ids } });
-      Assert.Equal(25, filteredPage.Total);
-      var filteredAndSizeConstrained = await setup
-        .ReadModels<ProductStock>(
-          queryParameters: new Dictionary<string, string[]> { { "eq-Id", ids }, { "pageSize", ["13"] } });
-      Assert.Equal(25, filteredAndSizeConstrained.Total);
-      Assert.Equal(13, filteredAndSizeConstrained.Items.Count());
-    });
+    await setup.WaitForConsistency();
+    var firstPageFiltered = await setup.ReadModels<ProductStock>(
+      queryParameters: new Dictionary<string, string[]>
+        { { "pageSize", ["35"] }, { "ts-Name", [productId.ToString().ToUpper()] } });
+    Assert.Equal(35, firstPageFiltered.Items.Count());
+    Assert.NotEmpty(firstPageFiltered.Items);
+    Assert.Equal(99, firstPageFiltered.Total);
+    var ids = firstPageFiltered.Items.Take(25).Select(i => i.Id).ToArray();
+    var filteredPage =
+      await setup.ReadModels<ProductStock>(queryParameters: new Dictionary<string, string[]> { { "eq-Id", ids } });
+    Assert.Equal(25, filteredPage.Total);
+    var filteredAndSizeConstrained = await setup
+      .ReadModels<ProductStock>(
+        queryParameters: new Dictionary<string, string[]> { { "eq-Id", ids }, { "pageSize", ["13"] } });
+    Assert.Equal(25, filteredAndSizeConstrained.Total);
+    Assert.Equal(13, filteredAndSizeConstrained.Items.Count());
 
     await setup.WaitForConsistency();
     var adminUser = await setup.ReadModel<UserWithPermissionReadModel>(

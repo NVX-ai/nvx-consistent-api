@@ -53,13 +53,11 @@ public class RolesIntegration
     await setup.Command(new AssignTenantRole(userSub, roleId), true, tenantId);
     await setup.Command(new AddPermissionToRole(roleId, newPermission), true, tenantId);
     await setup.Command(new AddPermissionToRole(roleId, anotherPermission), true, tenantId);
-    await EventuallyConsistent.WaitForAggregation(async () =>
-    {
-      var user = await setup.ReadModel<UserSecurityReadModel>(userSub, asAdmin: true);
-      Assert.Contains(user.TenantPermissions[tenantId], p => p == ActUponPermissionsAndRolesEntity.Permission);
-      Assert.Contains(user.TenantPermissions[tenantId], p => p == newPermission);
-      Assert.Contains(user.TenantPermissions[tenantId], p => p == anotherPermission);
-    });
+    await setup.WaitForConsistency();
+    var user = await setup.ReadModel<UserSecurityReadModel>(userSub, asAdmin: true);
+    Assert.Contains(user.TenantPermissions[tenantId], p => p == ActUponPermissionsAndRolesEntity.Permission);
+    Assert.Contains(user.TenantPermissions[tenantId], p => p == newPermission);
+    Assert.Contains(user.TenantPermissions[tenantId], p => p == anotherPermission);
   }
 
   private static async Task<(Guid roleId, string roleName, Guid tenantId, string userName, string userSub)>

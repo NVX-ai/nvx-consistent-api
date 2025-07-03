@@ -15,15 +15,13 @@ public class MultiStream
 
     await setup.Command(new SendProductToStores(productId, storeIds));
 
-    await EventuallyConsistent.WaitForAggregation(async () =>
+    await setup.WaitForConsistency();
+    foreach (var storeId in storeIds)
     {
-      foreach (var storeId in storeIds)
-      {
-        var model = await setup.ReadModel<ProductStoreFrontReadModel>(
-          new StoreFrontProductId(storeId, productId).ToString());
-        Assert.Equal(productId, model.ProductId);
-        Assert.Equal(storeId, model.StoreId);
-      }
-    });
+      var model = await setup.ReadModel<ProductStoreFrontReadModel>(
+        new StoreFrontProductId(storeId, productId).ToString());
+      Assert.Equal(productId, model.ProductId);
+      Assert.Equal(storeId, model.StoreId);
+    }
   }
 }

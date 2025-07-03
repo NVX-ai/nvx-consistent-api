@@ -48,7 +48,7 @@ internal static class InstanceTracking
 
       if ((settings ?? new TestSettings()).WaitForCatchUpAtStartup)
       {
-        await fromHashed.WaitForConsistency();
+        await fromHashed.WaitForConsistency(shouldDoInconsistencyCheck: false);
       }
 
       return fromHashed;
@@ -66,7 +66,7 @@ internal static class InstanceTracking
       (settings ?? new TestSettings()).WaitForCatchUpTimeout);
     if ((settings ?? new TestSettings()).WaitForCatchUpAtStartup)
     {
-      await newSetup.WaitForConsistency();
+      await newSetup.WaitForConsistency(shouldDoInconsistencyCheck: false);
     }
 
     return newSetup;
@@ -138,8 +138,16 @@ public record TestSetup(
       StreamState.Any,
       Emitter.ToEventData(evt, null));
 
-  public async Task WaitForConsistency(int? timeoutMs = null)
+  public async Task WaitForConsistency(int? timeoutMs = null, bool shouldDoInconsistencyCheck = true)
   {
+    // This is meant to wait for consistency, it's possible that the system hasn't even detected an
+    // event received when this point is reached, this gives the daemon observability a second to catch up,
+    // if the daemon doesn't catch up in a second, there's a bigger problem at play.
+    if (shouldDoInconsistencyCheck && await IsConsistent())
+    {
+      await Task.Delay(TimeSpan.FromSeconds(1));
+    }
+
     var timeout = timeoutMs ?? WaitForCatchUpTimeout;
     var timer = Stopwatch.StartNew();
     while (timer.ElapsedMilliseconds < timeout)
@@ -155,7 +163,7 @@ public record TestSetup(
 
     async Task<bool> IsConsistent()
     {
-      await Task.Delay(500);
+      await Task.Delay(250);
       var status = await $"{Url}{CatchUp.Route}"
         .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
         .GetJsonAsync<HydrationStatus>();
