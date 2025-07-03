@@ -140,31 +140,32 @@ public record TestSetup(
 
   public async Task WaitForConsistency(int? timeoutMs = null)
   {
+    var timeout = timeoutMs ?? WaitForCatchUpTimeout;
     var timer = Stopwatch.StartNew();
-    while (timer.ElapsedMilliseconds < (timeoutMs ?? WaitForCatchUpTimeout))
+    while (timer.ElapsedMilliseconds < timeout)
     {
-      try
+      if (await IsConsistent())
       {
-        var status = await $"{Url}{CatchUp.Route}"
-          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-          .GetJsonAsync<HydrationStatus>();
-
-        var daemonInsights = await $"{Url}{DaemonsInsight.Route}"
-          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-          .GetJsonAsync<DaemonsInsights>();
-
-        if (status.IsCaughtUp && daemonInsights.IsFullyIdle)
-        {
-          return;
-        }
-      }
-      catch (Exception)
-      {
-        await Task.Delay(100);
+        return;
       }
     }
 
     Assert.Fail("Timed out waiting for the system to reach a consistent state");
+    return;
+
+    async Task<bool> IsConsistent()
+    {
+      await Task.Delay(500);
+      var status = await $"{Url}{CatchUp.Route}"
+        .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
+        .GetJsonAsync<HydrationStatus>();
+
+      var daemonInsights = await $"{Url}{DaemonsInsight.Route}"
+        .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
+        .GetJsonAsync<DaemonsInsights>();
+
+      return status.IsCaughtUp && daemonInsights.IsFullyIdle;
+    }
   }
 
   public async Task<CommandAcceptedResult> Upload() =>
