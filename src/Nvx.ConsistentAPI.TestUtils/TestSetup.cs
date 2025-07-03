@@ -144,7 +144,7 @@ public record TestSetup(
     couldBeInconsistent = true;
   }
 
-  internal async Task WaitForConsistency(int? timeoutMs = null)
+  public async Task WaitForConsistency(int? timeoutMs = null)
   {
     try
     {
@@ -298,10 +298,13 @@ public record TestSetup(
         .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json")))
       .StatusCode);
 
-  public async Task<UserSecurity> CurrentUser(bool asAdmin = false, string asUser = "cando") =>
-    await $"{Url}/current-user"
+  public async Task<UserSecurity> CurrentUser(bool asAdmin = false, string asUser = "cando")
+  {
+    await WaitForConsistency();
+    return await $"{Url}/current-user"
       .WithOAuthBearerToken(CreateTestJwt(asAdmin ? "admin" : asUser))
       .GetJsonAsync<UserSecurity>();
+  }
 
   public async Task<PageResult<Rm>> ReadModels<Rm>(
     bool asAdmin = false,

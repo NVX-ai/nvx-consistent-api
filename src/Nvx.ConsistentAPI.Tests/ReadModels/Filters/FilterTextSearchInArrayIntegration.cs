@@ -10,14 +10,13 @@ public class FilterTextSearchInArrayIntegration
     var roleName = Guid.NewGuid().ToString().Replace("-", "");
     _ = await setup.CurrentUser(asUser: userName);
     await setup.Command(new AssignApplicationPermission(setup.Auth.ByName(userName), roleName), true);
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var users = await setup.ReadModels<UserSecurityReadModel>(
-        true,
-        queryParameters: new Dictionary<string, string[]>
-          { { "tsa-ApplicationPermissions", [roleName.Substring(0, 10)] } });
-      Assert.Single(users.Items);
-    });
+
+    var users = await setup.ReadModels<UserSecurityReadModel>(
+      true,
+      queryParameters: new Dictionary<string, string[]>
+        { { "tsa-ApplicationPermissions", [roleName.Substring(0, 10)] } });
+    Assert.Single(users.Items);
+
     var usersWithNoFilters = await setup.ReadModels<UserSecurityReadModel>(true);
     Assert.True(usersWithNoFilters.Items.Count() > 1);
   }

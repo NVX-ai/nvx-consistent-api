@@ -10,8 +10,7 @@ public class FilterIsNotInArrayIntegration
     var roleName = Guid.NewGuid().ToString().Replace("-", "");
     _ = await setup.CurrentUser(asUser: userName);
     await setup.Command(new AssignApplicationPermission(setup.Auth.ByName(userName), roleName), true);
-    await EventuallyConsistent.WaitFor(async () =>
-    {
+
       var usersBySub = await setup.ReadModels<UserSecurityReadModel>(
         true,
         queryParameters: new Dictionary<string, string[]> { { "eq-Sub", [setup.Auth.ByName(userName)] } });
@@ -22,6 +21,5 @@ public class FilterIsNotInArrayIntegration
         queryParameters: new Dictionary<string, string[]>
           { { "nia-ApplicationPermissions", [roleName] }, { "eq-Sub", [setup.Auth.ByName(userName)] } });
       Assert.Empty(users.Items);
-    });
   }
 }

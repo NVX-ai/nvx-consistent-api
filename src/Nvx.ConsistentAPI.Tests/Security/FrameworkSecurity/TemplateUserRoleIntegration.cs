@@ -15,14 +15,11 @@ public class TemplateUserRoleIntegration
 
     var permission = Guid.NewGuid().ToString();
     await setup.Command(new AddTemplateUserRolePermission(templateId, permission), true);
-
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var template = await setup.ReadModel<TemplateUserRoleReadModel>(templateId.ToString(), asAdmin: true);
-      Assert.Equal(templateName, template.Name);
-      Assert.Equal(templateDescription, template.Description);
-      Assert.Contains(template.Permissions, p => p == permission);
-    });
+    var withOnePermission = await setup.ReadModel<TemplateUserRoleReadModel>(templateId.ToString(), asAdmin: true);
+    Assert.Equal(templateName, withOnePermission.Name);
+    Assert.Equal(templateDescription, withOnePermission.Description);
+    Assert.Contains(withOnePermission.Permissions, p => p == permission);
+    Assert.Single(withOnePermission.Permissions);
 
     var permission2 = Guid.NewGuid().ToString();
     await setup.Command(new AddTemplateUserRolePermission(templateId, permission2), true);

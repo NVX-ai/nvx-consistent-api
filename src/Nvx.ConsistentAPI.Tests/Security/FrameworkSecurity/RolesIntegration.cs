@@ -33,11 +33,8 @@ public class RolesIntegration
     await using var setup = await Initializer.Do();
     var (roleId, _, tenantId, _, userSub) = await CreateRole(setup);
     await setup.Command(new AssignTenantRole(userSub, roleId), true, tenantId);
-    await EventuallyConsistent.WaitFor(async () =>
-    {
       var user = await setup.ReadModel<UserSecurityReadModel>(userSub, asAdmin: true);
       Assert.Contains(user.TenantPermissions[tenantId], p => p == ActUponPermissionsAndRolesEntity.Permission);
-    });
   }
 
   [Fact(DisplayName = "after assigning a tenant role and then adding a permission to the role shows in the read model")]
