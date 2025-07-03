@@ -8,19 +8,17 @@ public class ForAggregatingReadModelsIntegration
     await using var setup = await Initializer.Do();
     var productId = Guid.NewGuid();
     await setup.Command(new CreateProduct(productId, "product", null), true);
-    await EventuallyConsistent.WaitForAggregation(async () =>
-    {
-      var readModel = await setup.ReadModel<AggregatingStockReadModel>(productId.ToString());
-      Assert.NotNull(readModel);
+    await setup.WaitForConsistency();
+    var readModel = await setup.ReadModel<AggregatingStockReadModel>(productId.ToString());
+    Assert.NotNull(readModel);
 
-      var readModels = await setup.ReadModels<AggregatingStockReadModel>(
-        queryParameters: new Dictionary<string, string[]>
-        {
-          { "eq-ProductId", [productId.ToString()] },
-          { "nia-MyStrings", ["a"] }
-        });
+    var readModels = await setup.ReadModels<AggregatingStockReadModel>(
+      queryParameters: new Dictionary<string, string[]>
+      {
+        { "eq-ProductId", [productId.ToString()] },
+        { "nia-MyStrings", ["a"] }
+      });
 
-      Assert.Empty(readModels.Items);
-    });
+    Assert.Empty(readModels.Items);
   }
 }
