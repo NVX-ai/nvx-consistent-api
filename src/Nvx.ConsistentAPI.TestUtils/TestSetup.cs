@@ -99,6 +99,8 @@ public record TestSetup(
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
 
+  private readonly SemaphoreSlim consistencySemaphore = new(1);
+
   private bool couldBeInconsistent;
 
   public async ValueTask DisposeAsync()
@@ -133,31 +135,41 @@ public record TestSetup(
 
   public async Task WaitForConsistency(int? timeoutMs = null)
   {
-    // This is meant to wait for consistency, it's possible that the system hasn't even detected an
-    // event received when this point is reached, this gives the daemon observability a second to catch up,
-    // if the daemon doesn't catch up in a second, there's a bigger problem at play.
-    if (couldBeInconsistent && await IsConsistent())
+    try
     {
-      couldBeInconsistent = false;
-      await Task.Delay(TimeSpan.FromSeconds(1));
-    }
-
-    var timeout = timeoutMs ?? WaitForCatchUpTimeout;
-    var timer = Stopwatch.StartNew();
-    while (timer.ElapsedMilliseconds < timeout)
-    {
-      if (await IsConsistent())
+      await consistencySemaphore.WaitAsync();
+      // This is meant to wait for consistency, it's possible that the system hasn't even detected an
+      // event received when this point is reached, this gives the daemon observability a second to catch up,
+      // if the daemon doesn't catch up in a second, there's a bigger problem at play.
+      if (couldBeInconsistent && await IsConsistent())
       {
-        return;
+        couldBeInconsistent = false;
+        await Task.Delay(TimeSpan.FromSeconds(1));
       }
+
+      var timeout = timeoutMs ?? WaitForCatchUpTimeout;
+      var timer = Stopwatch.StartNew();
+      while (timer.ElapsedMilliseconds < timeout)
+      {
+        if (await IsConsistent())
+        {
+          return;
+        }
+
+        await Task.Delay(150);
+      }
+
+      Assert.Fail("Timed out waiting for the system to reach a consistent state");
+    }
+    finally
+    {
+      consistencySemaphore.Release();
     }
 
-    Assert.Fail("Timed out waiting for the system to reach a consistent state");
     return;
 
     async Task<bool> IsConsistent()
     {
-      await Task.Delay(250);
       var status = await $"{Url}{CatchUp.Route}"
         .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
         .GetJsonAsync<HydrationStatus>();
