@@ -144,7 +144,7 @@ public record TestSetup(
         return;
       }
 
-      await Task.Delay(TimeSpan.FromSeconds(1));
+      await Task.Delay(wasConsistent ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(250));
     }
 
     // This will let go, but tests are expected to fail if consistency was not reached.
@@ -578,7 +578,7 @@ public class TestSettings
   public string? LogsFolder { get; init; }
   public bool UsePersistentTestContainers { get; init; }
   public int WaitForCatchUpTimeout { get; init; } = 150_000;
-  public int HydrationParallelism { get; init; } = 3;
+  public int HydrationParallelism { get; init; } = 5;
 
   public string EsDbImage
   {

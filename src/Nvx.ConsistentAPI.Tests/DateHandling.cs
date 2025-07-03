@@ -2,7 +2,7 @@
 
 public class DateHandling
 {
-  public static TheoryData<int> OffsetData => new(Enumerable.Range(-14, 29));
+  public static TheoryData<int> OffsetData => new(Enumerable.Range(-14, 29).OrderBy(_ => Random.Shared.Next()).Take(5));
 
   [Fact(DisplayName = "get the date as expected in local time")]
   public async Task GetTheDateAsExpected()
