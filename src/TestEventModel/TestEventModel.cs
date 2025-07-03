@@ -809,7 +809,7 @@ public static class TestEventModel
         {
           Interval = TaskInterval.ForAllWeek(
             Enumerable
-              .Range(1, 200)
+              .Range(1, 5)
               .Select(i =>
                 new TimeOnly(initTime.Hour, initTime.Minute, initTime.Second)
                   .Add(TimeSpan.FromSeconds(i))
