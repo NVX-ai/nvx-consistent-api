@@ -21,7 +21,7 @@ jobs:
         dotnet-version: 9.0.x
     - name: Restore dependencies
       run: dotnet restore ./src/Nvx.ConsistentAPI.sln
-    - name: Build
+    - name: Build Framework
       run: dotnet build -c Release --no-restore ./src/Nvx.ConsistentAPI/Nvx.ConsistentAPI.csproj
     - name: Test
       working-directory: ./src/Nvx.ConsistentAPI.Tests
@@ -31,7 +31,9 @@ jobs:
     - name: Publish Framework
       if: github.ref == 'refs/heads/main'
       run: dotnet nuget push **/Release/**/Nvx.ConsistentAPI.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
-    - name: Package Test Util
+    - name: Build Test Utils
+      run: dotnet build -c Release --no-restore ./src/Nvx.ConsistentAPI.TestUtils/Nvx.ConsistentAPI.TestUtils.csproj
+    - name: Package Test Utils
       run: dotnet pack -c Release -o . ./src/Nvx.ConsistentAPI.TestUtils/Nvx.ConsistentAPI.TestUtils.csproj
     - name: Publish Test Utils
       if: github.ref == 'refs/heads/main'
