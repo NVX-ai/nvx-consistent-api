@@ -265,8 +265,8 @@ public class StandardFlowTest
       await setup.Command(new RegisterOrganizationBuilding(building1Name), true, tenant1Id);
       await setup.Command(new RegisterOrganizationBuilding(building2Name), true, tenant1Id);
       await setup.Command(new RegisterOrganizationBuilding(building3Name), true, tenant2Id);
-      await EventuallyConsistent.WaitFor(async () =>
-      {
+
+      await setup.WaitForConsistency();
         var buildings1 = await setup.ReadModels<OrganizationBuildingReadModel>(tenantId: tenant1Id);
         Assert.Equal(2, buildings1.Total);
         Assert.Contains(buildings1.Items, model => model.Name == building1Name);
@@ -279,30 +279,28 @@ public class StandardFlowTest
         Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
         Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant3Id && td.TenantName == "");
         Assert.Equal("banana", currentUser.TenantPermissions[tenant3Id].First());
-      });
 
       var newTenant1Name = Guid.NewGuid().ToString();
       var newTenant3Name = Guid.NewGuid().ToString();
-      var canDoUser = await setup.CurrentUser();
-      Assert.Contains(canDoUser.Tenants, td => td.TenantId == tenant1Id && td.TenantName == tenant1Name);
-      Assert.Contains(canDoUser.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
+      var candoBeforeRename = await setup.CurrentUser();
+      Assert.Contains(candoBeforeRename.Tenants, td => td.TenantId == tenant1Id && td.TenantName == tenant1Name);
+      Assert.Contains(candoBeforeRename.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
       await setup.Command(new RenameTenant(tenant1Id, newTenant1Name), true);
       await setup.Command(new RenameTenant(tenant3Id, newTenant3Name), true);
-      await EventuallyConsistent.WaitForAggregation(async () =>
-      {
-        var canDoUserAfter = await setup.CurrentUser();
-        Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
-        Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
-        Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant3Id && td.TenantName == newTenant3Name);
-      });
+
+      await setup.WaitForConsistency();
+      var canDoAfterRename = await setup.CurrentUser();
+      Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
+      Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
+      Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant3Id && td.TenantName == newTenant3Name);
+
       await setup.Command(new RemoveFromTenant(setup.Auth.CandoSub), true, tenant3Id);
-      await EventuallyConsistent.WaitForAggregation(async () =>
-      {
+
+      await setup.WaitForConsistency();
         var canDoUserAfter = await setup.CurrentUser();
         Assert.DoesNotContain(canDoUserAfter.Tenants, td => td.TenantId == tenant3Id);
         Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
         Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
-      });
     }
 
     async Task UserBoundReadModels()
