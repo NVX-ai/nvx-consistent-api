@@ -7,25 +7,21 @@ public class FilterIsArrayEmptyIntegration
   {
     await using var setup = await Initializer.Do();
     var userName = Guid.NewGuid().ToString().Replace("-", "");
-    _ = await setup.CurrentUser(asUser: userName);
-    var usersBySub = await setup.ReadModels<UserSecurityReadModel>(
-      true,
-      queryParameters: new Dictionary<string, string[]> { { "eq-Sub", [setup.Auth.ByName(userName)] } });
-    Assert.Single(usersBySub.Items);
 
-    var users = await setup.ReadModels<UserSecurityReadModel>(
-      true,
-      queryParameters: new Dictionary<string, string[]>
-        { { "iae-ApplicationPermissions", ["true"] }, { "eq-Sub", [setup.Auth.ByName(userName)] } });
-    Assert.Single(users.Items);
+    var permissionName = Guid.NewGuid().ToString().Replace("-", "");
 
-    var roleName = Guid.NewGuid().ToString().Replace("-", "");
-    await setup.Command(new AssignApplicationPermission(setup.Auth.ByName(userName), roleName), true);
-
+    await setup.Command(new AssignApplicationPermission(setup.Auth.ByName(userName), permissionName), true);
     var usersWithPermission = await setup.ReadModels<UserSecurityReadModel>(
       true,
       queryParameters: new Dictionary<string, string[]>
         { { "iae-ApplicationPermissions", ["true"] }, { "eq-Sub", [setup.Auth.ByName(userName)] } });
     Assert.Empty(usersWithPermission.Items);
+
+    await setup.Command(new RevokeApplicationPermission(setup.Auth.ByName(userName), permissionName), true);
+    var usersWithoutPermissions = await setup.ReadModels<UserSecurityReadModel>(
+      true,
+      queryParameters: new Dictionary<string, string[]>
+        { { "iae-ApplicationPermissions", ["true"] }, { "eq-Sub", [setup.Auth.ByName(userName)] } });
+    Assert.Single(usersWithoutPermissions.Items);
   }
 }

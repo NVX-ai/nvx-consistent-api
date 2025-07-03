@@ -39,37 +39,26 @@ internal static class InstanceTracking
     {
       Holders[hash] = h with { Count = h.Count + 1 };
       Semaphore.Release();
-      var fromHashed = new TestSetup(
+
+      return new TestSetup(
         h.Url,
         h.Auth,
         h.EventStoreClient,
         h.Model,
         (settings ?? new TestSettings()).WaitForCatchUpTimeout);
-
-      if ((settings ?? new TestSettings()).WaitForCatchUpAtStartup)
-      {
-        await fromHashed.WaitForConsistency();
-      }
-
-      return fromHashed;
     }
 
     var holder = await TestSetup.InitializeInternal(model, settings ?? new TestSettings());
     holder.Logger.LogInformation("Initialized test setup for {Hash}", hash);
     Holders[hash] = holder;
     Semaphore.Release();
-    var newSetup = new TestSetup(
+
+    return new TestSetup(
       holder.Url,
       holder.Auth,
       holder.EventStoreClient,
       holder.Model,
       (settings ?? new TestSettings()).WaitForCatchUpTimeout);
-    if ((settings ?? new TestSettings()).WaitForCatchUpAtStartup)
-    {
-      await newSetup.WaitForConsistency();
-    }
-
-    return newSetup;
   }
 
   internal static Task Dispose(int _) => Task.CompletedTask;
@@ -78,7 +67,6 @@ internal static class InstanceTracking
 internal record TestSetupHolder(
   string Url,
   TestAuth Auth,
-  IEnumerable<Func<Task>> Disposers,
   EventStoreClient EventStoreClient,
   EventModel Model,
   int Count,
@@ -110,7 +98,6 @@ public record TestSetup(
   private static readonly JwtSecurityTokenHandler TokenHandler = new();
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
-  private static readonly SemaphoreSlim ConsistencySemaphore = new(1);
 
   private bool couldBeInconsistent;
 
@@ -146,35 +133,26 @@ public record TestSetup(
 
   public async Task WaitForConsistency(int? timeoutMs = null)
   {
-    try
+    // This is meant to wait for consistency, it's possible that the system hasn't even detected an
+    // event received when this point is reached, this gives the daemon observability a second to catch up,
+    // if the daemon doesn't catch up in a second, there's a bigger problem at play.
+    if (couldBeInconsistent && await IsConsistent())
     {
-      await ConsistencySemaphore.WaitAsync();
-      // This is meant to wait for consistency, it's possible that the system hasn't even detected an
-      // event received when this point is reached, this gives the daemon observability a second to catch up,
-      // if the daemon doesn't catch up in a second, there's a bigger problem at play.
-      if (couldBeInconsistent && await IsConsistent())
-      {
-        couldBeInconsistent = false;
-        await Task.Delay(TimeSpan.FromSeconds(1));
-      }
-
-      var timeout = timeoutMs ?? WaitForCatchUpTimeout;
-      var timer = Stopwatch.StartNew();
-      while (timer.ElapsedMilliseconds < timeout)
-      {
-        if (await IsConsistent())
-        {
-          return;
-        }
-      }
-
-      Assert.Fail("Timed out waiting for the system to reach a consistent state");
-    }
-    finally
-    {
-      ConsistencySemaphore.Release();
+      couldBeInconsistent = false;
+      await Task.Delay(TimeSpan.FromSeconds(1));
     }
 
+    var timeout = timeoutMs ?? WaitForCatchUpTimeout;
+    var timer = Stopwatch.StartNew();
+    while (timer.ElapsedMilliseconds < timeout)
+    {
+      if (await IsConsistent())
+      {
+        return;
+      }
+    }
+
+    Assert.Fail("Timed out waiting for the system to reach a consistent state");
     return;
 
     async Task<bool> IsConsistent()
@@ -568,7 +546,6 @@ public record TestSetup(
     return new TestSetupHolder(
       baseUrl,
       new TestAuth(GetTestUser("admin").Sub, GetTestUser("cando").Sub, n => GetTestUser(n).Sub),
-      [() => app.StopAsync()],
       eventStoreClient,
       model,
       1,
@@ -617,7 +594,6 @@ public class TestSettings
   private readonly string? msSqlDbImage;
   public string? LogsFolder { get; init; }
   public bool UsePersistentTestContainers { get; init; }
-  public bool WaitForCatchUpAtStartup { get; init; } = true;
   public int WaitForCatchUpTimeout { get; init; } = 150_000;
   public int HydrationParallelism { get; init; } = 3;
 

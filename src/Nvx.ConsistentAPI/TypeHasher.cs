@@ -22,7 +22,7 @@ public static class TypeHasher
     var typeNameBytes = Encoding.UTF8.GetBytes($"{propertyName}-{type.FullName ?? type.Name}");
     var hashBytes = SHA256.HashData(typeNameBytes);
 
-    foreach (var property in type.GetProperties())
+    foreach (var property in type.GetProperties().OrderBy(p => p.Name))
     {
       var propertyType = property.PropertyType;
       var isNullable =
