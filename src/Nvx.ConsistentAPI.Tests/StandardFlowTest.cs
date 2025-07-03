@@ -267,18 +267,18 @@ public class StandardFlowTest
       await setup.Command(new RegisterOrganizationBuilding(building3Name), true, tenant2Id);
 
       await setup.WaitForConsistency();
-        var buildings1 = await setup.ReadModels<OrganizationBuildingReadModel>(tenantId: tenant1Id);
-        Assert.Equal(2, buildings1.Total);
-        Assert.Contains(buildings1.Items, model => model.Name == building1Name);
-        Assert.Contains(buildings1.Items, model => model.Name == building2Name);
-        var buildings2 = await setup.ReadModels<OrganizationBuildingReadModel>(tenantId: tenant2Id);
-        Assert.Single(buildings2.Items);
-        Assert.Equal(building3Name, buildings2.Items.ElementAt(0).Name);
-        var currentUser = await setup.CurrentUser();
-        Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant1Id && td.TenantName == tenant1Name);
-        Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
-        Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant3Id && td.TenantName == "");
-        Assert.Equal("banana", currentUser.TenantPermissions[tenant3Id].First());
+      var buildings1 = await setup.ReadModels<OrganizationBuildingReadModel>(tenantId: tenant1Id);
+      Assert.Equal(2, buildings1.Total);
+      Assert.Contains(buildings1.Items, model => model.Name == building1Name);
+      Assert.Contains(buildings1.Items, model => model.Name == building2Name);
+      var buildings2 = await setup.ReadModels<OrganizationBuildingReadModel>(tenantId: tenant2Id);
+      Assert.Single(buildings2.Items);
+      Assert.Equal(building3Name, buildings2.Items.ElementAt(0).Name);
+      var currentUser = await setup.CurrentUser();
+      Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant1Id && td.TenantName == tenant1Name);
+      Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
+      Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant3Id && td.TenantName == "");
+      Assert.Equal("banana", currentUser.TenantPermissions[tenant3Id].First());
 
       var newTenant1Name = Guid.NewGuid().ToString();
       var newTenant3Name = Guid.NewGuid().ToString();
@@ -297,10 +297,10 @@ public class StandardFlowTest
       await setup.Command(new RemoveFromTenant(setup.Auth.CandoSub), true, tenant3Id);
 
       await setup.WaitForConsistency();
-        var canDoUserAfter = await setup.CurrentUser();
-        Assert.DoesNotContain(canDoUserAfter.Tenants, td => td.TenantId == tenant3Id);
-        Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
-        Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
+      var canDoUserAfter = await setup.CurrentUser();
+      Assert.DoesNotContain(canDoUserAfter.Tenants, td => td.TenantId == tenant3Id);
+      Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
+      Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
     }
 
     async Task UserBoundReadModels()
