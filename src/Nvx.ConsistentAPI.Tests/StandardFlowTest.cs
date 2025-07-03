@@ -68,13 +68,10 @@ public class StandardFlowTest
       })
       .Parallel();
 
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var stonk = await setup.ReadModel<ProductStock>(productId.ToString());
-      Assert.Equal(productId.ToString(), stonk.Id);
-      Assert.Equal(100, stonk.Amount);
-      Assert.Equal("Unknown product", stonk.Name);
-    });
+    var unknownProductStock = await setup.ReadModel<ProductStock>(productId.ToString());
+    Assert.Equal(productId.ToString(), unknownProductStock.Id);
+    Assert.Equal(100, unknownProductStock.Amount);
+    Assert.Equal("Unknown product", unknownProductStock.Name);
 
     // This creates a lot of products, so the processors can start working and be checked at the end. The processor
     // fails occasionally, and it takes at least 25 seconds to recover, so this starts now and is verified at the end.
@@ -107,13 +104,10 @@ public class StandardFlowTest
 
     Assert.Equal(50, results.Count(Id));
 
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var stonk = await setup.ReadModel<ProductStock>(productId.ToString());
-      Assert.Equal(productId.ToString(), stonk.Id);
-      Assert.Equal(0, stonk.Amount);
-      Assert.Equal("Unknown product", stonk.Name);
-    });
+    var productWithNoStock = await setup.ReadModel<ProductStock>(productId.ToString());
+    Assert.Equal(productId.ToString(), productWithNoStock.Id);
+    Assert.Equal(0, productWithNoStock.Amount);
+    Assert.Equal("Unknown product", productWithNoStock.Name);
 
     // Validations
     await setup.FailingCommand(new RetrieveStock(productId, 1), 409);

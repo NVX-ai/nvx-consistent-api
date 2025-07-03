@@ -18,7 +18,7 @@ public class FilterIsArrayEmptyIntegration
       queryParameters: new Dictionary<string, string[]>
         { { "iae-ApplicationPermissions", ["true"] }, { "eq-Sub", [setup.Auth.ByName(userName)] } });
     Assert.Single(users.Items);
-    
+
     var roleName = Guid.NewGuid().ToString().Replace("-", "");
     await setup.Command(new AssignApplicationPermission(setup.Auth.ByName(userName), roleName), true);
 

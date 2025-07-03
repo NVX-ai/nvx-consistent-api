@@ -19,16 +19,14 @@ public class FileArraysShould
           new AttachedFile(file2Id, ["three", "four"]),
           new AttachedFile(file3Id, ["five", "six"])
         ]));
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var readModel = await setup.ReadModel<EntityWithFilesReadModel>(entityId);
-      Assert.Equal(2, readModel.Files.Count(f => f.FileName == "text.txt"));
-      Assert.Single(readModel.Files, f => f.FileName == "customtextfile.txt");
-      Assert.True(readModel.Files.All(f => f.Tags.Length == 2));
-      Assert.Contains(readModel.Files, f => f.Tags.Contains("one") && f.Tags.Contains("two"));
-      Assert.Contains(readModel.Files, f => f.Tags.Contains("three") && f.Tags.Contains("four"));
-      Assert.Contains(readModel.Files, f => f.Tags.Contains("five") && f.Tags.Contains("six"));
-      await setup.DownloadAndComparePath(file3Id, "customtextfile.txt");
-    });
+
+    var readModel = await setup.ReadModel<EntityWithFilesReadModel>(entityId);
+    Assert.Equal(2, readModel.Files.Count(f => f.FileName == "text.txt"));
+    Assert.Single(readModel.Files, f => f.FileName == "customtextfile.txt");
+    Assert.True(readModel.Files.All(f => f.Tags.Length == 2));
+    Assert.Contains(readModel.Files, f => f.Tags.Contains("one") && f.Tags.Contains("two"));
+    Assert.Contains(readModel.Files, f => f.Tags.Contains("three") && f.Tags.Contains("four"));
+    Assert.Contains(readModel.Files, f => f.Tags.Contains("five") && f.Tags.Contains("six"));
+    await setup.DownloadAndComparePath(file3Id, "customtextfile.txt");
   }
 }

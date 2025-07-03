@@ -10,10 +10,7 @@ public class DefaultedReadModelIntegrationTests
     var defaultedReadModel = await setup.ReadModel<DefaultedReadModelReadModel>(id.ToString());
     Assert.Equal("This was defaulted", defaultedReadModel.SomeText);
     await setup.Command(new DoSomethingToDefaultedReadModel(id));
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var model = await setup.ReadModel<DefaultedReadModelReadModel>(id.ToString());
-      Assert.Equal("This is not default", model.SomeText);
-    });
+    var model = await setup.ReadModel<DefaultedReadModelReadModel>(id.ToString());
+    Assert.Equal("This is not default", model.SomeText);
   }
 }
