@@ -8,7 +8,6 @@ public class ForAggregatingReadModelsIntegration
     await using var setup = await Initializer.Do();
     var productId = Guid.NewGuid();
     await setup.Command(new CreateProduct(productId, "product", null), true);
-    await setup.WaitForConsistency();
     var readModel = await setup.ReadModel<AggregatingStockReadModel>(productId.ToString());
     Assert.NotNull(readModel);
 

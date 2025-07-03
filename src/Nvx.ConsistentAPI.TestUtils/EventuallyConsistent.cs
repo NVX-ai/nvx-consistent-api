@@ -27,5 +27,4 @@ public static class EventuallyConsistent
   }
 
   public static async Task WaitFor(Func<Task> action) => await WaitFor(60_000, action);
-  public static async Task WaitForAggregation(Func<Task> action) => await WaitFor(150_000, action);
 }

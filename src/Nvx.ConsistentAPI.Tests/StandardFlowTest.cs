@@ -128,14 +128,12 @@ public class StandardFlowTest
       new AddProductPicture(productId, new AttachedFile(uploadResult.EntityId.Apply(Guid.Parse), null)));
 
     // Verify the background runners.
-    await setup.WaitForConsistency();
     var readModel = await setup.ReadModel<UserRegistryOfNamedProductsReadModel>(setup.Auth.CandoSub);
     Assert.True(100 <= readModel.Count, $"Expecting at least 100 products, got {readModel.Count}");
 
     await setup.FailingCommand(new CreateProduct(productId, productName, null), 409);
 
     // Eventual consistency (duh).
-    await setup.WaitForConsistency();
     var firstPage = await setup
       .ReadModels<ProductStock>(
         queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString()] } });
@@ -160,7 +158,6 @@ public class StandardFlowTest
     Assert.Equal(new TimeOnly(1, 1, 1), productStock.MaybeTimeOnly);
 
     // Filtering
-    await setup.WaitForConsistency();
     var firstPageFiltered = await setup.ReadModels<ProductStock>(
       queryParameters: new Dictionary<string, string[]>
         { { "pageSize", ["35"] }, { "ts-Name", [productId.ToString().ToUpper()] } });
@@ -177,7 +174,6 @@ public class StandardFlowTest
     Assert.Equal(25, filteredAndSizeConstrained.Total);
     Assert.Equal(13, filteredAndSizeConstrained.Items.Count());
 
-    await setup.WaitForConsistency();
     var adminUser = await setup.ReadModel<UserWithPermissionReadModel>(
       new UserWithPermissionId(setup.Auth.AdminSub, "admin").StreamId(),
       asAdmin: true);
@@ -188,7 +184,6 @@ public class StandardFlowTest
     Assert.Equal("cando", canDoUser.Name);
     Assert.Equal("cando@testdomain.com", canDoUser.Email);
 
-    await setup.WaitForConsistency();
     var aggregated1 = await setup
       .ReadModels<AggregatingStockReadModel>(
         queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString().ToLower()] } });
@@ -198,7 +193,6 @@ public class StandardFlowTest
     var otherProductId = Guid.Parse(aggregated1.Items.First().Id);
     await setup.Command(new HideAggregatingProduct(otherProductId));
 
-    await setup.WaitForConsistency();
     var afterHiding = await setup
       .ReadModels<AggregatingStockReadModel>(
         queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString().ToLower()] } });
@@ -207,7 +201,6 @@ public class StandardFlowTest
 
     await setup.Command(new ShowAggregatingProduct(otherProductId));
 
-    await setup.WaitForConsistency();
     var afterShowingAgain = await setup
       .ReadModels<AggregatingStockReadModel>(
         queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString()] } });
@@ -219,7 +212,6 @@ public class StandardFlowTest
     await setup.Ingest<ProductNameIngestor>(
       JsonConvert.SerializeObject(new ProductNameToBeIngested("Blah", ingestedProductId)));
 
-    await setup.WaitForConsistency();
     var ingestedProduct = await setup.ReadModel<ProductStock>(ingestedProductId.ToString());
     Assert.Equal("Blah", ingestedProduct.Name);
 
@@ -229,7 +221,6 @@ public class StandardFlowTest
     {
       var message = Guid.NewGuid().ToString();
       await setup.Command(new SendNotificationToUser(message, setup.Auth.ByName("john")), true);
-      await setup.WaitForConsistency();
       var notifications = await setup.ReadModels<UserNotificationReadModel>(asUser: "john");
       Assert.Single(notifications.Items);
       var notification = notifications.Items.First();
@@ -258,7 +249,6 @@ public class StandardFlowTest
       await setup.Command(new RegisterOrganizationBuilding(building2Name), true, tenant1Id);
       await setup.Command(new RegisterOrganizationBuilding(building3Name), true, tenant2Id);
 
-      await setup.WaitForConsistency();
       var buildings1 = await setup.ReadModels<OrganizationBuildingReadModel>(tenantId: tenant1Id);
       Assert.Equal(2, buildings1.Total);
       Assert.Contains(buildings1.Items, model => model.Name == building1Name);
@@ -280,7 +270,6 @@ public class StandardFlowTest
       await setup.Command(new RenameTenant(tenant1Id, newTenant1Name), true);
       await setup.Command(new RenameTenant(tenant3Id, newTenant3Name), true);
 
-      await setup.WaitForConsistency();
       var canDoAfterRename = await setup.CurrentUser();
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
@@ -288,7 +277,6 @@ public class StandardFlowTest
 
       await setup.Command(new RemoveFromTenant(setup.Auth.CandoSub), true, tenant3Id);
 
-      await setup.WaitForConsistency();
       var canDoUserAfter = await setup.CurrentUser();
       Assert.DoesNotContain(canDoUserAfter.Tenants, td => td.TenantId == tenant3Id);
       Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
@@ -299,7 +287,6 @@ public class StandardFlowTest
     {
       await setup.Command(new RegisterFavoriteFood("pizza"), true);
       await setup.Command(new RegisterFavoriteFood("banana"));
-      await setup.WaitForConsistency();
       var adminFavoriteFoods = await setup.ReadModels<UserFavoriteFoodReadModel>(true);
       Assert.Equal(1, adminFavoriteFoods.Total);
       Assert.Contains(adminFavoriteFoods.Items, model => model.Name == "pizza");

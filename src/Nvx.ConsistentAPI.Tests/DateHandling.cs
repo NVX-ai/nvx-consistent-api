@@ -12,7 +12,6 @@ public class DateHandling
     var now = DateTime.Now;
     var saveEntityWithDates = new SaveEntityWithDates(entityId, now);
     await setup.Command(saveEntityWithDates);
-    await setup.WaitForConsistency();
     var readModel = await setup.ReadModel<EntityWithDatesReadModel>(entityId.ToString());
     readModel.TheDate.IsCloseTo(now);
   }
@@ -25,7 +24,6 @@ public class DateHandling
     var now = DateTime.Now.ToUniversalTime();
     var saveEntityWithDates = new SaveEntityWithDates(entityId, now);
     await setup.Command(saveEntityWithDates);
-    await setup.WaitForConsistency();
     var readModel = await setup.ReadModel<EntityWithDatesReadModel>(entityId.ToString());
     readModel.TheDate.IsCloseTo(now);
   }
@@ -39,7 +37,6 @@ public class DateHandling
     var today = DateTime.UtcNow;
     var theDate = new DateTimeOffset(today.Year, today.Month, today.Day, 0, 0, 0, TimeSpan.FromHours(offset));
     await setup.Command(new SaveEntityWithDates(entityId, theDate));
-    await setup.WaitForConsistency();
     Assert.Single(
       await setup
         .ReadModels<EntityWithDatesReadModel>(

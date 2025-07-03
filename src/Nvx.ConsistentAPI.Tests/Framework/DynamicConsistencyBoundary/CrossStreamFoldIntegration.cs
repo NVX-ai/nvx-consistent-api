@@ -11,13 +11,11 @@ public class CrossStreamFoldIntegration
     var tag = Guid.NewGuid().ToString();
     await setup.InsertEvents(new EntityThatDependsOnReceivedDependency(entityThatDependsId, entityDependedOnId));
 
-    await setup.WaitForConsistency();
     var beforeTags = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
     Assert.Empty(beforeTags.DependedOnTags);
 
     await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, tag));
 
-    await setup.WaitForConsistency();
     var withTags = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
     Assert.Single(withTags.DependedOnTags);
     Assert.Contains(withTags.DependedOnTags, t => t == tag);
@@ -26,21 +24,18 @@ public class CrossStreamFoldIntegration
     await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
     await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
 
-    await setup.WaitForConsistency();
     var moreTags = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
     Assert.Equal(4, moreTags.DependedOnTags.Length);
     Assert.Contains(moreTags.DependedOnTags, t => t == tag);
 
     await setup.InsertEvents(new EntityThatDependsOnRemovedDependency(entityThatDependsId, entityDependedOnId));
 
-    await setup.WaitForConsistency();
     var afterDependencyRemoved = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
     Assert.Empty(afterDependencyRemoved.DependsOnIds);
     Assert.Empty(afterDependencyRemoved.DependedOnTags);
 
     await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
 
-    await setup.WaitForConsistency();
     var updatedTagsAfterDependencyRemoved =
       await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
     Assert.Empty(updatedTagsAfterDependencyRemoved.DependsOnIds);
@@ -55,7 +50,6 @@ public class CrossStreamFoldIntegration
     var entityDependedOnId = Guid.NewGuid();
     await setup.InsertEvents(new EntityDependedOnHeardAboutEntityThatDepends(entityDependedOnId, entityThatDependsId));
 
-    await setup.WaitForConsistency();
     var readModel = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
     Assert.Empty(readModel.DependedOnTags);
     Assert.Contains(readModel.DependsOnIds, t => t == entityDependedOnId);

@@ -17,7 +17,6 @@ public class StressTest
         return unit;
       })
       .Parallel();
-    await setup.WaitForConsistency();
     var readModel = await setup.ReadModel<ExtremeCountReadModel>(countId.ToString());
     Assert.Equal(count, readModel.Count);
   }
@@ -44,7 +43,6 @@ public class StressTest
         return unit;
       })
       .Parallel();
-    await setup.WaitForConsistency();
     foreach (var id in ids)
     {
       var readModel = await setup.ReadModel<ExtremeCountReadModel>(id.ToString());

@@ -48,7 +48,7 @@ internal static class InstanceTracking
 
       if ((settings ?? new TestSettings()).WaitForCatchUpAtStartup)
       {
-        await fromHashed.WaitForConsistency(shouldDoInconsistencyCheck: false);
+        await fromHashed.WaitForConsistency();
       }
 
       return fromHashed;
@@ -66,7 +66,7 @@ internal static class InstanceTracking
       (settings ?? new TestSettings()).WaitForCatchUpTimeout);
     if ((settings ?? new TestSettings()).WaitForCatchUpAtStartup)
     {
-      await newSetup.WaitForConsistency(shouldDoInconsistencyCheck: false);
+      await newSetup.WaitForConsistency();
     }
 
     return newSetup;
@@ -110,6 +110,9 @@ public record TestSetup(
   private static readonly JwtSecurityTokenHandler TokenHandler = new();
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
+  private static readonly SemaphoreSlim ConsistencySemaphore = new(1);
+
+  private bool couldBeInconsistent;
 
   public async ValueTask DisposeAsync()
   {
@@ -132,33 +135,46 @@ public record TestSetup(
             new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
           ])));
 
-  public async Task InsertEvents(params EventModelEvent[] evt) =>
+  public async Task InsertEvents(params EventModelEvent[] evt)
+  {
     await EventStoreClient.AppendToStreamAsync(
       evt.First().GetStreamName(),
       StreamState.Any,
       Emitter.ToEventData(evt, null));
+    couldBeInconsistent = true;
+  }
 
-  public async Task WaitForConsistency(int? timeoutMs = null, bool shouldDoInconsistencyCheck = true)
+  internal async Task WaitForConsistency(int? timeoutMs = null)
   {
-    // This is meant to wait for consistency, it's possible that the system hasn't even detected an
-    // event received when this point is reached, this gives the daemon observability a second to catch up,
-    // if the daemon doesn't catch up in a second, there's a bigger problem at play.
-    if (shouldDoInconsistencyCheck && await IsConsistent())
+    try
     {
-      await Task.Delay(TimeSpan.FromSeconds(1));
-    }
-
-    var timeout = timeoutMs ?? WaitForCatchUpTimeout;
-    var timer = Stopwatch.StartNew();
-    while (timer.ElapsedMilliseconds < timeout)
-    {
-      if (await IsConsistent())
+      await ConsistencySemaphore.WaitAsync();
+      // This is meant to wait for consistency, it's possible that the system hasn't even detected an
+      // event received when this point is reached, this gives the daemon observability a second to catch up,
+      // if the daemon doesn't catch up in a second, there's a bigger problem at play.
+      if (couldBeInconsistent && await IsConsistent())
       {
-        return;
+        couldBeInconsistent = false;
+        await Task.Delay(TimeSpan.FromSeconds(1));
       }
+
+      var timeout = timeoutMs ?? WaitForCatchUpTimeout;
+      var timer = Stopwatch.StartNew();
+      while (timer.ElapsedMilliseconds < timeout)
+      {
+        if (await IsConsistent())
+        {
+          return;
+        }
+      }
+
+      Assert.Fail("Timed out waiting for the system to reach a consistent state");
+    }
+    finally
+    {
+      ConsistencySemaphore.Release();
     }
 
-    Assert.Fail("Timed out waiting for the system to reach a consistent state");
     return;
 
     async Task<bool> IsConsistent()
@@ -176,19 +192,27 @@ public record TestSetup(
     }
   }
 
-  public async Task<CommandAcceptedResult> Upload() =>
-    await $"{Url}/files/upload"
+  public async Task<CommandAcceptedResult> Upload()
+  {
+    var result = await $"{Url}/files/upload"
       .PostMultipartAsync(multipartContent =>
         multipartContent.AddFile("file", new MemoryStream("banana"u8.ToArray()), "text.txt")
       )
       .ReceiveJson<CommandAcceptedResult>();
+    couldBeInconsistent = true;
+    return result;
+  }
 
-  public async Task<CommandAcceptedResult> UploadPath(string path) =>
-    await $"{Url}/files/upload"
+  public async Task<CommandAcceptedResult> UploadPath(string path)
+  {
+    var result = await $"{Url}/files/upload"
       .PostMultipartAsync(multipartContent =>
         multipartContent.AddFile("file", path)
       )
       .ReceiveJson<CommandAcceptedResult>();
+    couldBeInconsistent = true;
+    return result;
+  }
 
   public async Task DownloadAndComparePath(Guid fileId, string path)
   {
@@ -215,6 +239,7 @@ public record TestSetup(
     }
 
     await req.PostStringAsync(body);
+    couldBeInconsistent = true;
   }
 
   public async Task<CommandAcceptedResult> Command<C>(
@@ -235,7 +260,9 @@ public record TestSetup(
 
     var response = await req
       .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json"));
-    return await response.GetJsonAsync<CommandAcceptedResult>();
+    var result = await response.GetJsonAsync<CommandAcceptedResult>();
+    couldBeInconsistent = true;
+    return result;
   }
 
   public async Task<ErrorResponse> FailingCommand<C>(
@@ -282,6 +309,7 @@ public record TestSetup(
     Dictionary<string, string[]>? queryParameters = null,
     string asUser = "cando")
   {
+    await WaitForConsistency();
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var result = await (queryParameters ?? new Dictionary<string, string[]>())
       .Aggregate(
@@ -299,6 +327,7 @@ public record TestSetup(
     Guid? tenantId = null,
     string? asUser = null)
   {
+    await WaitForConsistency();
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var result = await (queryParameters ?? new Dictionary<string, string[]>())
       .Aggregate(
@@ -316,6 +345,7 @@ public record TestSetup(
 
   public async Task ReadModelNotFound<Rm>(string id, Guid? tenantId = null, bool asAdmin = false, string? asUser = null)
   {
+    await WaitForConsistency();
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var response = await $"{Url}{tenancySegment}/read-models/{Naming.ToSpinalCase<Rm>()}/{id}"
       .WithOAuthBearerToken(CreateTestJwt(asAdmin ? "admin" : asUser ?? "cando"))
@@ -326,6 +356,7 @@ public record TestSetup(
 
   public async Task ForbiddenReadModel<Rm>(Guid? tenantId = null)
   {
+    await WaitForConsistency();
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var response = await $"{Url}{tenancySegment}/read-models/{Naming.ToSpinalCase<Rm>()}"
       .WithOAuthBearerToken(CreateTestJwt("nocando"))

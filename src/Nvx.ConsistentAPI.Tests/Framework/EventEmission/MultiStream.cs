@@ -15,7 +15,6 @@ public class MultiStream
 
     await setup.Command(new SendProductToStores(productId, storeIds));
 
-    await setup.WaitForConsistency();
     foreach (var storeId in storeIds)
     {
       var model = await setup.ReadModel<ProductStoreFrontReadModel>(

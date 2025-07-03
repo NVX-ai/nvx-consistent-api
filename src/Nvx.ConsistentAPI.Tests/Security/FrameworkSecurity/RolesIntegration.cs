@@ -10,7 +10,6 @@ public class RolesIntegration
     await using var setup = await Initializer.Do();
     var (roleId, _, tenantId, userName, userSub) = await CreateRole(setup);
     await setup.Command(new AssignTenantRole(userSub, roleId), true, tenantId);
-    await setup.WaitForConsistency();
     await setup.Command(new ActUponPermissionsAndRolesEntity(Guid.NewGuid()), tenantId: tenantId, asUser: userName);
   }
 
@@ -23,10 +22,8 @@ public class RolesIntegration
       new AssignTenantPermission(userSub, ActUponPermissionsAndRolesEntity.Permission),
       true,
       tenantId);
-    await setup.WaitForConsistency();
     await setup.Command(new ActUponPermissionsAndRolesEntity(Guid.NewGuid()), tenantId: tenantId, asUser: userName);
     await setup.Command(new RevokeTenantRole(userSub, roleId), tenantId: tenantId, asAdmin: true);
-    await setup.WaitForConsistency();
     await setup.Command(new ActUponPermissionsAndRolesEntity(Guid.NewGuid()), tenantId: tenantId, asUser: userName);
   }
 
@@ -53,7 +50,6 @@ public class RolesIntegration
     await setup.Command(new AssignTenantRole(userSub, roleId), true, tenantId);
     await setup.Command(new AddPermissionToRole(roleId, newPermission), true, tenantId);
     await setup.Command(new AddPermissionToRole(roleId, anotherPermission), true, tenantId);
-    await setup.WaitForConsistency();
     var user = await setup.ReadModel<UserSecurityReadModel>(userSub, asAdmin: true);
     Assert.Contains(user.TenantPermissions[tenantId], p => p == ActUponPermissionsAndRolesEntity.Permission);
     Assert.Contains(user.TenantPermissions[tenantId], p => p == newPermission);

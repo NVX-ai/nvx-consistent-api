@@ -30,7 +30,6 @@ public class CustomFiltersIntegration
         tenantId: tenantId)
       .Map(r => Guid.Parse(r.EntityId));
 
-    await setup.WaitForConsistency();
     var singlePizzaPage = await setup.ReadModels<AvailablePizzaReadModel>(
       tenantId: tenantId,
       queryParameters: new Dictionary<string, string[]>
@@ -42,7 +41,6 @@ public class CustomFiltersIntegration
 
     await setup.Command(new SupplyIngredient(outOfStockIngredientId, 10));
 
-    await setup.WaitForConsistency();
     var withIngredients = await setup.ReadModels<AvailablePizzaReadModel>(
       tenantId: tenantId,
       queryParameters: new Dictionary<string, string[]>
@@ -70,7 +68,6 @@ public class CustomFiltersIntegration
         asAdmin: true)
       .Map(r => Guid.Parse(r.EntityId));
 
-    await setup.WaitForConsistency();
     var withCustomFilter = await setup.ReadModels<ExternalPizzaReadModel>(tenantId: tenantId);
     Assert.Contains(stockedPizzaVisibleTenant2, withCustomFilter.Items.Select(p => p.PizzaId));
     Assert.DoesNotContain(stockedPizzaNotVisibleTenant2, withCustomFilter.Items.Select(p => p.PizzaId));
