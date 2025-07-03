@@ -17,7 +17,7 @@ public interface IsSoftDeleted;
 
 public interface DatabaseHandler
 {
-  internal const string VersionSuffix = "v7";
+  internal const string VersionSuffix = "0";
   string UpsertSql { get; }
   string AllColumns { get; }
   string AllColumnsTablePrefixed { get; }
