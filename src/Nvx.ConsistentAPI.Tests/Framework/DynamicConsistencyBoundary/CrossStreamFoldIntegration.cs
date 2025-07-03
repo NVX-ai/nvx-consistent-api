@@ -10,29 +10,26 @@ public class CrossStreamFoldIntegration
     var entityDependedOnId = Guid.NewGuid();
     var tag = Guid.NewGuid().ToString();
     await setup.InsertEvents(new EntityThatDependsOnReceivedDependency(entityThatDependsId, entityDependedOnId));
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var readModel = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
-      Assert.Empty(readModel.DependedOnTags);
-    });
+
+    await setup.WaitForConsistency();
+    var beforeTags = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
+    Assert.Empty(beforeTags.DependedOnTags);
+
     await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, tag));
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var readModel = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
-      Assert.Single(readModel.DependedOnTags);
-      Assert.Contains(readModel.DependedOnTags, t => t == tag);
-    });
+
+    await setup.WaitForConsistency();
+    var withTags = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
+    Assert.Single(withTags.DependedOnTags);
+    Assert.Contains(withTags.DependedOnTags, t => t == tag);
 
     await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
     await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
     await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
 
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var readModel = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
-      Assert.Equal(4, readModel.DependedOnTags.Length);
-      Assert.Contains(readModel.DependedOnTags, t => t == tag);
-    });
+    await setup.WaitForConsistency();
+    var moreTags = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
+    Assert.Equal(4, moreTags.DependedOnTags.Length);
+    Assert.Contains(moreTags.DependedOnTags, t => t == tag);
 
     await setup.InsertEvents(new EntityThatDependsOnRemovedDependency(entityThatDependsId, entityDependedOnId));
     await EventuallyConsistent.WaitFor(async () =>
