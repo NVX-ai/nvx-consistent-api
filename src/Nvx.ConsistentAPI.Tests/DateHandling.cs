@@ -13,8 +13,8 @@ public class DateHandling
     var saveEntityWithDates = new SaveEntityWithDates(entityId, now);
     await setup.Command(saveEntityWithDates);
     await setup.WaitForConsistency();
-      var readModel = await setup.ReadModel<EntityWithDatesReadModel>(entityId.ToString());
-      readModel.TheDate.IsCloseTo(now);
+    var readModel = await setup.ReadModel<EntityWithDatesReadModel>(entityId.ToString());
+    readModel.TheDate.IsCloseTo(now);
   }
 
   [Fact(DisplayName = "get the date as expected in UTC")]

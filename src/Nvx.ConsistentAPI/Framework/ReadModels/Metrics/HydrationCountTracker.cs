@@ -2,9 +2,9 @@
 
 public class HydrationCountTracker : IDisposable
 {
-  private bool isDisposed;
   private static readonly object DisposeLock = new();
   private readonly int hydrationCount;
+  private bool isDisposed;
 
   public HydrationCountTracker(int count = 1)
   {

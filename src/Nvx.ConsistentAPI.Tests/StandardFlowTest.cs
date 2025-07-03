@@ -235,15 +235,13 @@ public class StandardFlowTest
     {
       var message = Guid.NewGuid().ToString();
       await setup.Command(new SendNotificationToUser(message, setup.Auth.ByName("john")), true);
-      await EventuallyConsistent.WaitForAggregation(async () =>
-      {
-        var notifications = await setup.ReadModels<UserNotificationReadModel>(asUser: "john");
-        Assert.Single(notifications.Items);
-        var notification = notifications.Items.First();
-        Assert.Equal(message, notification.Message);
-        Assert.False(notification.IsRead);
-        Assert.Equal("banana", notification.AdditionalDetails.GetValueOrDefault("banana"));
-      });
+      await setup.WaitForConsistency();
+      var notifications = await setup.ReadModels<UserNotificationReadModel>(asUser: "john");
+      Assert.Single(notifications.Items);
+      var notification = notifications.Items.First();
+      Assert.Equal(message, notification.Message);
+      Assert.False(notification.IsRead);
+      Assert.Equal("banana", notification.AdditionalDetails.GetValueOrDefault("banana"));
     }
 
     async Task Tenancy()

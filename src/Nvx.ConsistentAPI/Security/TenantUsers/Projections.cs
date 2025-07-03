@@ -5,6 +5,9 @@ namespace Nvx.ConsistentAPI.TenantUsers;
 public class UserAddedToTenantProjection :
   ProjectionDefinition<AddedToTenant, UserWasAddedToTenant, UserSecurity, TenantUsersEntity, StrongGuid>
 {
+  public override string Name => "projection-user-added-to-tenant-to-tenant-users";
+  public override string SourcePrefix => UserSecurity.StreamPrefix;
+
   public override Option<UserWasAddedToTenant> Project(
     AddedToTenant eventToProject,
     UserSecurity e,
@@ -13,9 +16,6 @@ public class UserAddedToTenantProjection :
     Uuid sourceEventUuid,
     EventMetadata metadata) =>
     new UserWasAddedToTenant(eventToProject.TenantId, eventToProject.Sub);
-
-  public override string Name => "projection-user-added-to-tenant-to-tenant-users";
-  public override string SourcePrefix => UserSecurity.StreamPrefix;
 
   public override IEnumerable<StrongGuid> GetProjectionIds(
     AddedToTenant sourceEvent,
@@ -27,6 +27,9 @@ public class UserAddedToTenantProjection :
 public class UserAddedToTenantFeedbackProjection :
   ProjectionDefinition<UserWasAddedToTenant, TenantDetailsReceived, TenantUsersEntity, UserSecurity, StrongString>
 {
+  public override string Name => "projection-user-added-to-tenant-feedback-to-user-security";
+  public override string SourcePrefix => TenantUsersEntity.StreamPrefix;
+
   public override Option<TenantDetailsReceived> Project(
     UserWasAddedToTenant eventToProject,
     TenantUsersEntity e,
@@ -35,9 +38,6 @@ public class UserAddedToTenantFeedbackProjection :
     Uuid sourceEventUuid,
     EventMetadata metadata) =>
     new TenantDetailsReceived(eventToProject.UserId, e.TenantId, e.TenantName);
-
-  public override string Name => "projection-user-added-to-tenant-feedback-to-user-security";
-  public override string SourcePrefix => TenantUsersEntity.StreamPrefix;
 
   public override IEnumerable<StrongString> GetProjectionIds(
     UserWasAddedToTenant sourceEvent,
@@ -49,6 +49,9 @@ public class UserAddedToTenantFeedbackProjection :
 public class UserRemovedFromTenantProjection :
   ProjectionDefinition<RemovedFromTenant, UserWasRemovedFromTenant, UserSecurity, TenantUsersEntity, StrongGuid>
 {
+  public override string Name => "projection-user-removed-from-tenant-to-tenant-users";
+  public override string SourcePrefix => UserSecurity.StreamPrefix;
+
   public override Option<UserWasRemovedFromTenant> Project(
     RemovedFromTenant eventToProject,
     UserSecurity e,
@@ -57,9 +60,6 @@ public class UserRemovedFromTenantProjection :
     Uuid sourceEventUuid,
     EventMetadata metadata) =>
     new UserWasRemovedFromTenant(eventToProject.TenantId, eventToProject.Sub);
-
-  public override string Name => "projection-user-removed-from-tenant-to-tenant-users";
-  public override string SourcePrefix => UserSecurity.StreamPrefix;
 
   public override IEnumerable<StrongGuid> GetProjectionIds(
     RemovedFromTenant sourceEvent,
@@ -71,6 +71,9 @@ public class UserRemovedFromTenantProjection :
 public class TenantNameUpdatedProjection :
   ProjectionDefinition<TenantRenamed, TenantNameWasChanged, Tenant, TenantUsersEntity, StrongGuid>
 {
+  public override string Name => "projection-tenant-name-updated-to-tenant-users";
+  public override string SourcePrefix => Tenant.StreamPrefix;
+
   public override Option<TenantNameWasChanged> Project(
     TenantRenamed eventToProject,
     Tenant e,
@@ -79,9 +82,6 @@ public class TenantNameUpdatedProjection :
     Uuid sourceEventUuid,
     EventMetadata metadata) =>
     new TenantNameWasChanged(eventToProject.Id, eventToProject.NewName);
-
-  public override string Name => "projection-tenant-name-updated-to-tenant-users";
-  public override string SourcePrefix => Tenant.StreamPrefix;
 
   public override IEnumerable<StrongGuid> GetProjectionIds(
     TenantRenamed sourceEvent,
@@ -93,6 +93,9 @@ public class TenantNameUpdatedProjection :
 public class TenantCreatedProjection :
   ProjectionDefinition<TenantCreated, TenantNameWasChanged, Tenant, TenantUsersEntity, StrongGuid>
 {
+  public override string Name => "projection-tenant-created-to-tenant-users";
+  public override string SourcePrefix => Tenant.StreamPrefix;
+
   public override Option<TenantNameWasChanged> Project(
     TenantCreated eventToProject,
     Tenant e,
@@ -101,9 +104,6 @@ public class TenantCreatedProjection :
     Uuid sourceEventUuid,
     EventMetadata metadata) =>
     new TenantNameWasChanged(eventToProject.Id, eventToProject.Name);
-
-  public override string Name => "projection-tenant-created-to-tenant-users";
-  public override string SourcePrefix => Tenant.StreamPrefix;
 
   public override IEnumerable<StrongGuid> GetProjectionIds(
     TenantCreated sourceEvent,
@@ -115,6 +115,9 @@ public class TenantCreatedProjection :
 public class TenantNameSetFeedbackProjection :
   ProjectionDefinition<TenantNameWasChanged, TenantDetailsReceived, TenantUsersEntity, UserSecurity, StrongString>
 {
+  public override string Name => "projection-tenant-name-set-feedback-to-user-security";
+  public override string SourcePrefix => TenantUsersEntity.StreamPrefix;
+
   public override Option<TenantDetailsReceived> Project(
     TenantNameWasChanged eventToProject,
     TenantUsersEntity e,
@@ -122,9 +125,6 @@ public class TenantNameSetFeedbackProjection :
     StrongString projectionId,
     Uuid sourceEventUuid,
     EventMetadata metadata) => new TenantDetailsReceived(projectionId.Value, e.TenantId, eventToProject.NewName);
-
-  public override string Name => "projection-tenant-name-set-feedback-to-user-security";
-  public override string SourcePrefix => TenantUsersEntity.StreamPrefix;
 
   public override IEnumerable<StrongString> GetProjectionIds(
     TenantNameWasChanged sourceEvent,

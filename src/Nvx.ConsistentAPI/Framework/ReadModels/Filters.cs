@@ -64,7 +64,7 @@ public interface ReadModelFilter
     UnderlyingType(propertyType)
       .Apply<Type, OpenApiSchema>(ut =>
       {
-        OpenApiSchema item = ut switch
+        var item = ut switch
         {
           not null when ut == typeof(int) => new OpenApiSchema { Type = "integer" },
           not null when ut == typeof(long) => new OpenApiSchema { Type = "integer", Format = "int64" },
