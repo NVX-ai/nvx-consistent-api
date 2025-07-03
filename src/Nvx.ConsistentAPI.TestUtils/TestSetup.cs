@@ -138,10 +138,10 @@ public record TestSetup(
       StreamState.Any,
       Emitter.ToEventData(evt, null));
 
-  public async Task WaitForConsistency()
+  public async Task WaitForConsistency(int? timeoutMs = null)
   {
     var timer = Stopwatch.StartNew();
-    while (timer.ElapsedMilliseconds < WaitForCatchUpTimeout)
+    while (timer.ElapsedMilliseconds < (timeoutMs ?? WaitForCatchUpTimeout))
     {
       try
       {

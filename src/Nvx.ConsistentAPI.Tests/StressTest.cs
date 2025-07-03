@@ -18,11 +18,8 @@ public class StressTest
       })
       .Parallel();
     await setup.WaitForConsistency();
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var readModel = await setup.ReadModel<ExtremeCountReadModel>(countId.ToString());
-      Assert.Equal(count, readModel.Count);
-    });
+    var readModel = await setup.ReadModel<ExtremeCountReadModel>(countId.ToString());
+    Assert.Equal(count, readModel.Count);
   }
 
   [Fact(DisplayName = "The application can take a lot of commands in different streams a short time")]
@@ -48,13 +45,10 @@ public class StressTest
       })
       .Parallel();
     await setup.WaitForConsistency();
-    await EventuallyConsistent.WaitFor(async () =>
+    foreach (var id in ids)
     {
-      foreach (var id in ids)
-      {
-        var readModel = await setup.ReadModel<ExtremeCountReadModel>(id.ToString());
-        Assert.Equal(4, readModel.Count);
-      }
-    });
+      var readModel = await setup.ReadModel<ExtremeCountReadModel>(id.ToString());
+      Assert.Equal(4, readModel.Count);
+    }
   }
 }

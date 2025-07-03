@@ -12,11 +12,9 @@ public class DateHandling
     var now = DateTime.Now;
     var saveEntityWithDates = new SaveEntityWithDates(entityId, now);
     await setup.Command(saveEntityWithDates);
-    await EventuallyConsistent.WaitFor(async () =>
-    {
+    await setup.WaitForConsistency();
       var readModel = await setup.ReadModel<EntityWithDatesReadModel>(entityId.ToString());
       readModel.TheDate.IsCloseTo(now);
-    });
   }
 
   [Fact(DisplayName = "get the date as expected in UTC")]
@@ -27,11 +25,9 @@ public class DateHandling
     var now = DateTime.Now.ToUniversalTime();
     var saveEntityWithDates = new SaveEntityWithDates(entityId, now);
     await setup.Command(saveEntityWithDates);
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var readModel = await setup.ReadModel<EntityWithDatesReadModel>(entityId.ToString());
-      readModel.TheDate.IsCloseTo(now);
-    });
+    await setup.WaitForConsistency();
+    var readModel = await setup.ReadModel<EntityWithDatesReadModel>(entityId.ToString());
+    readModel.TheDate.IsCloseTo(now);
   }
 
   [Theory(DisplayName = "filters on date only")]
@@ -43,138 +39,136 @@ public class DateHandling
     var today = DateTime.UtcNow;
     var theDate = new DateTimeOffset(today.Year, today.Month, today.Day, 0, 0, 0, TimeSpan.FromHours(offset));
     await setup.Command(new SaveEntityWithDates(entityId, theDate));
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      Assert.Single(
-        await setup
-          .ReadModels<EntityWithDatesReadModel>(
-            queryParameters: new Dictionary<string, string[]>
+    await setup.WaitForConsistency();
+    Assert.Single(
+      await setup
+        .ReadModels<EntityWithDatesReadModel>(
+          queryParameters: new Dictionary<string, string[]>
+          {
             {
-              {
-                "eq-OnlyTheDate",
-                [theDate.ToLocalDateOnly().ToString("yyyy/MM/dd")]
-              },
-              { "eq-Id", [entityId.ToString()] }
-            })
-          .Map(r => r.Items));
+              "eq-OnlyTheDate",
+              [theDate.ToLocalDateOnly().ToString("yyyy/MM/dd")]
+            },
+            { "eq-Id", [entityId.ToString()] }
+          })
+        .Map(r => r.Items));
 
-      Assert.Empty(
-        await setup
-          .ReadModels<EntityWithDatesReadModel>(
-            queryParameters: new Dictionary<string, string[]>
+    Assert.Empty(
+      await setup
+        .ReadModels<EntityWithDatesReadModel>(
+          queryParameters: new Dictionary<string, string[]>
+          {
             {
-              {
-                "eq-OnlyTheDate",
-                [theDate.ToLocalDateOnly().AddDays(120).ToString("yyyy-MM-dd")]
-              },
-              { "eq-Id", [entityId.ToString()] }
-            })
-          .Map(r => r.Items));
+              "eq-OnlyTheDate",
+              [theDate.ToLocalDateOnly().AddDays(120).ToString("yyyy-MM-dd")]
+            },
+            { "eq-Id", [entityId.ToString()] }
+          })
+        .Map(r => r.Items));
 
-      Assert.Empty(
-        await setup
-          .ReadModels<EntityWithDatesReadModel>(
-            queryParameters: new Dictionary<string, string[]>
+    Assert.Empty(
+      await setup
+        .ReadModels<EntityWithDatesReadModel>(
+          queryParameters: new Dictionary<string, string[]>
+          {
             {
-              {
-                "gt-OnlyTheDate",
-                [theDate.ToLocalDateOnly().AddDays(1).ToString("yyyy-MM-dd")]
-              },
-              { "eq-Id", [entityId.ToString()] }
-            })
-          .Map(r => r.Items));
+              "gt-OnlyTheDate",
+              [theDate.ToLocalDateOnly().AddDays(1).ToString("yyyy-MM-dd")]
+            },
+            { "eq-Id", [entityId.ToString()] }
+          })
+        .Map(r => r.Items));
 
-      Assert.Empty(
-        await setup
-          .ReadModels<EntityWithDatesReadModel>(
-            queryParameters: new Dictionary<string, string[]>
+    Assert.Empty(
+      await setup
+        .ReadModels<EntityWithDatesReadModel>(
+          queryParameters: new Dictionary<string, string[]>
+          {
             {
-              {
-                "gte-OnlyTheDate",
-                [theDate.ToLocalDateOnly().AddDays(1).ToString("yyyy-MM-dd")]
-              },
-              { "eq-Id", [entityId.ToString()] }
-            })
-          .Map(r => r.Items));
+              "gte-OnlyTheDate",
+              [theDate.ToLocalDateOnly().AddDays(1).ToString("yyyy-MM-dd")]
+            },
+            { "eq-Id", [entityId.ToString()] }
+          })
+        .Map(r => r.Items));
 
-      Assert.Empty(
-        await setup
-          .ReadModels<EntityWithDatesReadModel>(
-            queryParameters: new Dictionary<string, string[]>
+    Assert.Empty(
+      await setup
+        .ReadModels<EntityWithDatesReadModel>(
+          queryParameters: new Dictionary<string, string[]>
+          {
             {
-              {
-                "lt-OnlyTheDate",
-                [theDate.ToLocalDateOnly().AddDays(-1).ToString("yyyy-MM-dd")]
-              },
-              { "eq-Id", [entityId.ToString()] }
-            })
-          .Map(r => r.Items));
+              "lt-OnlyTheDate",
+              [theDate.ToLocalDateOnly().AddDays(-1).ToString("yyyy-MM-dd")]
+            },
+            { "eq-Id", [entityId.ToString()] }
+          })
+        .Map(r => r.Items));
 
-      Assert.Empty(
-        await setup
-          .ReadModels<EntityWithDatesReadModel>(
-            queryParameters: new Dictionary<string, string[]>
+    Assert.Empty(
+      await setup
+        .ReadModels<EntityWithDatesReadModel>(
+          queryParameters: new Dictionary<string, string[]>
+          {
             {
-              {
-                "lte-OnlyTheDate",
-                [theDate.ToLocalDateOnly().AddDays(-1).ToString("yyyy-MM-dd")]
-              },
-              { "eq-Id", [entityId.ToString()] }
-            })
-          .Map(r => r.Items));
+              "lte-OnlyTheDate",
+              [theDate.ToLocalDateOnly().AddDays(-1).ToString("yyyy-MM-dd")]
+            },
+            { "eq-Id", [entityId.ToString()] }
+          })
+        .Map(r => r.Items));
 
-      Assert.Single(
-        await setup
-          .ReadModels<EntityWithDatesReadModel>(
-            queryParameters: new Dictionary<string, string[]>
+    Assert.Single(
+      await setup
+        .ReadModels<EntityWithDatesReadModel>(
+          queryParameters: new Dictionary<string, string[]>
+          {
             {
-              {
-                "gte-TheDate",
-                [theDate.ToString()]
-              },
-              { "eq-Id", [entityId.ToString()] }
-            })
-          .Map(r => r.Items));
+              "gte-TheDate",
+              [theDate.ToString()]
+            },
+            { "eq-Id", [entityId.ToString()] }
+          })
+        .Map(r => r.Items));
 
-      Assert.Single(
-        await setup
-          .ReadModels<EntityWithDatesReadModel>(
-            queryParameters: new Dictionary<string, string[]>
+    Assert.Single(
+      await setup
+        .ReadModels<EntityWithDatesReadModel>(
+          queryParameters: new Dictionary<string, string[]>
+          {
             {
-              {
-                "gt-TheDate",
-                [theDate.AddSeconds(-1).ToString()]
-              },
-              { "eq-Id", [entityId.ToString()] }
-            })
-          .Map(r => r.Items));
+              "gt-TheDate",
+              [theDate.AddSeconds(-1).ToString()]
+            },
+            { "eq-Id", [entityId.ToString()] }
+          })
+        .Map(r => r.Items));
 
-      Assert.Single(
-        await setup
-          .ReadModels<EntityWithDatesReadModel>(
-            queryParameters: new Dictionary<string, string[]>
+    Assert.Single(
+      await setup
+        .ReadModels<EntityWithDatesReadModel>(
+          queryParameters: new Dictionary<string, string[]>
+          {
             {
-              {
-                "lte-TheDate",
-                [theDate.ToString()]
-              },
-              { "eq-Id", [entityId.ToString()] }
-            })
-          .Map(r => r.Items));
+              "lte-TheDate",
+              [theDate.ToString()]
+            },
+            { "eq-Id", [entityId.ToString()] }
+          })
+        .Map(r => r.Items));
 
-      Assert.Single(
-        await setup
-          .ReadModels<EntityWithDatesReadModel>(
-            queryParameters: new Dictionary<string, string[]>
+    Assert.Single(
+      await setup
+        .ReadModels<EntityWithDatesReadModel>(
+          queryParameters: new Dictionary<string, string[]>
+          {
             {
-              {
-                "lt-TheDate",
-                [theDate.AddSeconds(1).ToString()]
-              },
-              { "eq-Id", [entityId.ToString()] }
-            })
-          .Map(r => r.Items));
-    });
+              "lt-TheDate",
+              [theDate.AddSeconds(1).ToString()]
+            },
+            { "eq-Id", [entityId.ToString()] }
+          })
+        .Map(r => r.Items));
 
     Assert.Empty(
       await setup
