@@ -200,39 +200,34 @@ public class StandardFlowTest
         queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString().ToLower()] } });
     Assert.Equal(50, aggregated1.Items.Count());
     Assert.Equal(99, aggregated1.Total);
-    var otherProductId = Guid.Parse(aggregated1.Items.First().Id);
 
+    var otherProductId = Guid.Parse(aggregated1.Items.First().Id);
     await setup.Command(new HideAggregatingProduct(otherProductId));
 
-    await EventuallyConsistent.WaitForAggregation(async () =>
-    {
-      var aggregated = await setup
-        .ReadModels<AggregatingStockReadModel>(
-          queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString().ToLower()] } });
-      Assert.Equal(50, aggregated.Items.Count());
-      Assert.Equal(98, aggregated.Total);
-    });
+    await setup.WaitForConsistency();
+    var afterHiding = await setup
+      .ReadModels<AggregatingStockReadModel>(
+        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString().ToLower()] } });
+    Assert.Equal(50, afterHiding.Items.Count());
+    Assert.Equal(98, afterHiding.Total);
 
     await setup.Command(new ShowAggregatingProduct(otherProductId));
 
-    await EventuallyConsistent.WaitForAggregation(async () =>
-    {
-      var aggregated = await setup
-        .ReadModels<AggregatingStockReadModel>(
-          queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString()] } });
-      Assert.Equal(50, aggregated.Items.Count());
-      Assert.Equal(99, aggregated.Total);
-    });
+    await setup.WaitForConsistency();
+    var afterShowingAgain = await setup
+      .ReadModels<AggregatingStockReadModel>(
+        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString()] } });
+    Assert.Equal(50, afterShowingAgain.Items.Count());
+    Assert.Equal(99, afterShowingAgain.Total);
 
     // Ingestor
     var ingestedProductId = Guid.NewGuid();
     await setup.Ingest<ProductNameIngestor>(
       JsonConvert.SerializeObject(new ProductNameToBeIngested("Blah", ingestedProductId)));
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var ingestedProduct = await setup.ReadModel<ProductStock>(ingestedProductId.ToString());
-      Assert.Equal("Blah", ingestedProduct.Name);
-    });
+
+    await setup.WaitForConsistency();
+    var ingestedProduct = await setup.ReadModel<ProductStock>(ingestedProductId.ToString());
+    Assert.Equal("Blah", ingestedProduct.Name);
 
     return;
 
