@@ -54,11 +54,10 @@ public class CrossStreamFoldIntegration
     var entityThatDependsId = Guid.NewGuid();
     var entityDependedOnId = Guid.NewGuid();
     await setup.InsertEvents(new EntityDependedOnHeardAboutEntityThatDepends(entityDependedOnId, entityThatDependsId));
-    await EventuallyConsistent.WaitFor(async () =>
-    {
-      var readModel = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
-      Assert.Empty(readModel.DependedOnTags);
-      Assert.Contains(readModel.DependsOnIds, t => t == entityDependedOnId);
-    });
+
+    await setup.WaitForConsistency();
+    var readModel = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
+    Assert.Empty(readModel.DependedOnTags);
+    Assert.Contains(readModel.DependsOnIds, t => t == entityDependedOnId);
   }
 }
