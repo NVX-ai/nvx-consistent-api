@@ -32,15 +32,21 @@ internal class ReadModelHydrationDaemon(
   private bool isInitialized;
   private ulong? lastCheckpoint;
   private Position? lastPosition;
+  private DateTime lastMessageReceivedAt = DateTime.UtcNow;
   internal FailedHydration[] FailedHydrations { get; private set; } = [];
 
-  public HydrationDaemonInsights Insights(ulong lastEventPosition)
+  public async Task<HydrationDaemonInsights> Insights(ulong lastEventPosition)
   {
     var currentPosition = lastPosition?.CommitPosition ?? 0UL;
     var percentageComplete = lastEventPosition == 0 || isCaughtUp
       ? 100m
       : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(lastEventPosition);
-    return new HydrationDaemonInsights(currentPosition, lastCheckpoint ?? 0, Math.Min(100m, percentageComplete));
+    return new HydrationDaemonInsights(
+      currentPosition,
+      lastCheckpoint ?? 0,
+      Math.Min(100m, percentageComplete),
+      await stateMachine.EventsBeingProcessedCount(),
+      lastMessageReceivedAt);
   }
 
   public bool IsUpToDate(Position? position) =>
@@ -155,6 +161,7 @@ internal class ReadModelHydrationDaemon(
           filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()));
         await foreach (var message in subscription.Messages)
         {
+          lastMessageReceivedAt = DateTime.UtcNow;
           switch (message)
           {
             case StreamMessage.Event(var evt):

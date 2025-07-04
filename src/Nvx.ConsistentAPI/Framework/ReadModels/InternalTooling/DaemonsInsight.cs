@@ -140,7 +140,7 @@ internal static class DaemonsInsight
       await readModelDaemon.GetLingeringFailedHydrations(),
       processor.RunningTodoTasks,
       projectionDaemon.Insights(lastEventPosition),
-      isHydrating ? readModelDaemon.Insights(lastEventPosition) : null,
+      isHydrating ? await readModelDaemon.Insights(lastEventPosition) : null,
       dynamicConsistencyBoundaryDaemon.Insights(lastEventPosition),
       lastEventPosition);
   }
@@ -160,8 +160,9 @@ public record DaemonsInsights(
     CatchingUpReadModels.All(rm => rm.PercentageComplete == 100)
     && ReadModels.Total == ReadModels.UpToDate
     && FailedHydrations.Length == 0
-    && ProjectorDaemon is { PercentageComplete: 100, CatchUpPercentageComplete: 100 }
-    && (HydrationDaemonInsights is null || HydrationDaemonInsights.PercentageComplete == 100)
+    && ProjectorDaemon is { PercentageComplete: 100, CatchUpPercentageComplete: 100, IsProjecting: false }
+    && (HydrationDaemonInsights is null
+        || (HydrationDaemonInsights.PercentageComplete == 100 && HydrationDaemonInsights.EventsBeingProcessed == 0))
     && DynamicConsistencyBoundaryDaemonInsights.CurrentPercentageComplete == 100;
 
   public bool IsFullyIdle => AreDaemonsIdle && Tasks.Length == 0;
@@ -171,7 +172,12 @@ public record ReadModelsInsights(int Total, int UpToDate);
 
 public record RunningTodoTaskInsight(string TaskType, string[] RelatedEntityIds);
 
-public record HydrationDaemonInsights(ulong LastProcessedPosition, ulong LastCheckpoint, decimal PercentageComplete);
+public record HydrationDaemonInsights(
+  ulong LastProcessedPosition,
+  ulong LastCheckpoint,
+  decimal PercentageComplete,
+  int EventsBeingProcessed,
+  DateTime LastEventReceivedAt);
 
 public record DynamicConsistencyBoundaryDaemonInsights(
   ulong CurrentProcessedPosition,
@@ -195,4 +201,5 @@ public record ProjectorDaemonInsights(
   string[] CatchingUpProjections,
   ulong? CatchUpLastPositionProcessed,
   decimal CatchUpPercentageComplete,
-  int EventsProjectedSinceStartup);
+  int EventsProjectedSinceStartup,
+  bool IsProjecting);

@@ -99,6 +99,8 @@ public record TestSetup(
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
 
+  private DateTime lastActivityAt = DateTime.UtcNow;
+
   public async ValueTask DisposeAsync()
   {
     await InstanceTracking.Dispose(Model.GetHashCode());
@@ -120,38 +122,46 @@ public record TestSetup(
             new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
           ])));
 
-  public async Task InsertEvents(params EventModelEvent[] evt) =>
+  public async Task InsertEvents(params EventModelEvent[] evt)
+  {
     await EventStoreClient.AppendToStreamAsync(
       evt.GroupBy(e => e.GetStreamName()).Single().Key,
       StreamState.Any,
       Emitter.ToEventData(evt, null));
+    lastActivityAt = DateTime.UtcNow;
+  }
 
   /// <summary>
-  ///   Waits for the system to be in a consistent state for three consecutive requests.
+  ///   Waits for the system to be in a consistent state.
   /// </summary>
   /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
   public async Task WaitForConsistency(int? timeoutMs = null)
   {
-    var consistencyCounter = 0;
     var timeout = timeoutMs ?? WaitForCatchUpTimeout;
     var timer = Stopwatch.StartNew();
+    // Wait until it's inactive and is seen as inconsistent
     while (timer.ElapsedMilliseconds < timeout)
     {
-      var wasConsistent = await IsConsistent();
-      consistencyCounter = wasConsistent ? consistencyCounter + 1 : 0;
-      if (consistencyCounter == 3)
+      if (await IsConsistent())
       {
         return;
       }
 
-      await Task.Delay(wasConsistent ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(250));
+      await Task.Delay(TimeSpan.FromSeconds(1));
     }
 
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
+    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromSeconds(2);
+
     async Task<bool> IsConsistent()
     {
+      if (IsActive())
+      {
+        return false;
+      }
+
       var status = await $"{Url}{CatchUp.Route}"
         .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
         .GetJsonAsync<HydrationStatus>();
@@ -160,23 +170,41 @@ public record TestSetup(
         .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
         .GetJsonAsync<DaemonsInsights>();
 
-      return status.IsCaughtUp && daemonInsights.IsFullyIdle;
+      var isConsistent =
+        status.IsCaughtUp
+        && daemonInsights.IsFullyIdle
+        && DateTime.UtcNow - (daemonInsights.HydrationDaemonInsights?.LastEventReceivedAt ?? DateTime.UtcNow)
+        < TimeSpan.FromSeconds(2);
+      if (!isConsistent)
+      {
+        lastActivityAt = DateTime.UtcNow;
+      }
+
+      return isConsistent;
     }
   }
 
-  public async Task<CommandAcceptedResult> Upload() =>
-    await $"{Url}/files/upload"
+  public async Task<CommandAcceptedResult> Upload()
+  {
+    var result = await $"{Url}/files/upload"
       .PostMultipartAsync(multipartContent =>
         multipartContent.AddFile("file", new MemoryStream("banana"u8.ToArray()), "text.txt")
       )
       .ReceiveJson<CommandAcceptedResult>();
+    lastActivityAt = DateTime.UtcNow;
+    return result;
+  }
 
-  public async Task<CommandAcceptedResult> UploadPath(string path) =>
-    await $"{Url}/files/upload"
+  public async Task<CommandAcceptedResult> UploadPath(string path)
+  {
+    var result = await $"{Url}/files/upload"
       .PostMultipartAsync(multipartContent =>
         multipartContent.AddFile("file", path)
       )
       .ReceiveJson<CommandAcceptedResult>();
+    lastActivityAt = DateTime.UtcNow;
+    return result;
+  }
 
   public async Task DownloadAndComparePath(Guid fileId, string path)
   {
@@ -203,6 +231,7 @@ public record TestSetup(
     }
 
     await req.PostStringAsync(body);
+    lastActivityAt = DateTime.UtcNow;
   }
 
   public async Task<CommandAcceptedResult> Command<C>(
@@ -223,7 +252,9 @@ public record TestSetup(
 
     var response = await req
       .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json"));
-    return await response.GetJsonAsync<CommandAcceptedResult>();
+    var result = await response.GetJsonAsync<CommandAcceptedResult>();
+    lastActivityAt = DateTime.UtcNow;
+    return result;
   }
 
   public async Task<ErrorResponse> FailingCommand<C>(

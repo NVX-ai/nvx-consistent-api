@@ -26,6 +26,7 @@ public class ProjectionDaemon(
   private ulong lastCatchUpProcessedPosition;
   private ulong lastProcessedPosition;
   private int projectedCount;
+  private bool isProjecting;
 
   public ProjectorDaemonInsights Insights(ulong lastEventPosition)
   {
@@ -42,7 +43,8 @@ public class ProjectionDaemon(
       catchingUp,
       lastCatchUpProcessedPosition,
       Math.Min(100m, catchUpPercentage),
-      projectedCount);
+      projectedCount,
+      isProjecting);
   }
 
   public async Task Initialize()
@@ -174,7 +176,6 @@ public class ProjectionDaemon(
                 {
                   continue;
                 }
-
                 await projector.HandleEvent(evt, parser, fetcher, client);
                 Interlocked.Increment(ref projectedCount);
               }
@@ -241,11 +242,14 @@ public class ProjectionDaemon(
                       continue;
                     }
 
+                    isProjecting = true;
                     await projector.HandleEvent(evt, parser, fetcher, client);
+                    isProjecting = false;
                     hasProjected = true;
                   }
                   catch (Exception ex)
                   {
+                    isProjecting = false;
                     logger.LogError(
                       ex,
                       "Error during projection daemon subscription for event {Event} with projector {Projector}, won't be retried",
