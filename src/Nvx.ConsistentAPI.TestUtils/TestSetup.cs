@@ -139,7 +139,6 @@ public record TestSetup(
   /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
   public async Task WaitForConsistency(int? timeoutMs = null)
   {
-    var checkStartedAt = DateTime.UtcNow;
     var timeout = timeoutMs ?? WaitForCatchUpTimeout;
     var timer = Stopwatch.StartNew();
     // Wait until it's inactive and is seen as inconsistent
@@ -182,7 +181,7 @@ public record TestSetup(
         var isConsistent =
           status.IsCaughtUp
           && daemonInsights.IsFullyIdle
-          && timePassedSinceLastEvent > TimeSpan.FromSeconds(2);
+          && timePassedSinceLastEvent > TimeSpan.FromSeconds(4);
         if (!isConsistent)
         {
           lastActivityAt = DateTime.UtcNow;
