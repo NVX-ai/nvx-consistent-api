@@ -99,6 +99,8 @@ public record TestSetup(
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
 
+  private readonly SemaphoreSlim WaitForConsistencySemaphore = new(1);
+
   private DateTime lastActivityAt = DateTime.UtcNow;
 
   public async ValueTask DisposeAsync()
@@ -137,6 +139,7 @@ public record TestSetup(
   /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
   public async Task WaitForConsistency(int? timeoutMs = null)
   {
+    var checkStartedAt = DateTime.UtcNow;
     var timeout = timeoutMs ?? WaitForCatchUpTimeout;
     var timer = Stopwatch.StartNew();
     // Wait until it's inactive and is seen as inconsistent
@@ -147,13 +150,13 @@ public record TestSetup(
         return;
       }
 
-      await Task.Delay(TimeSpan.FromSeconds(1));
+      await Task.Delay(100);
     }
 
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromSeconds(3);
+    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromSeconds(2);
 
     async Task<bool> IsConsistent()
     {
@@ -162,26 +165,35 @@ public record TestSetup(
         return false;
       }
 
-      var status = await $"{Url}{CatchUp.Route}"
-        .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-        .GetJsonAsync<HydrationStatus>();
-
-      var daemonInsights = await $"{Url}{DaemonsInsight.Route}"
-        .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-        .GetJsonAsync<DaemonsInsights>();
-
-      var timePassedSinceLastEvent = DateTime.UtcNow - daemonInsights.LastEventEmittedAt;
-
-      var isConsistent =
-        status.IsCaughtUp
-        && daemonInsights.IsFullyIdle
-        && timePassedSinceLastEvent < TimeSpan.FromSeconds(5);
-      if (!isConsistent)
+      try
       {
-        lastActivityAt = DateTime.UtcNow;
-      }
+        await WaitForConsistencySemaphore.WaitAsync();
 
-      return isConsistent;
+        var status = await $"{Url}{CatchUp.Route}"
+          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
+          .GetJsonAsync<HydrationStatus>();
+
+        var daemonInsights = await $"{Url}{DaemonsInsight.Route}"
+          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
+          .GetJsonAsync<DaemonsInsights>();
+
+        var timePassedSinceLastEvent = DateTime.UtcNow - daemonInsights.LastEventEmittedAt;
+
+        var isConsistent =
+          status.IsCaughtUp
+          && daemonInsights.IsFullyIdle
+          && timePassedSinceLastEvent > TimeSpan.FromSeconds(2);
+        if (!isConsistent)
+        {
+          lastActivityAt = DateTime.UtcNow;
+        }
+
+        return isConsistent;
+      }
+      finally
+      {
+        WaitForConsistencySemaphore.Release();
+      }
     }
   }
 
