@@ -182,7 +182,7 @@ public record TestSetup(
         var isConsistent =
           status.IsCaughtUp
           && daemonInsights.IsFullyIdle
-          && timePassedSinceLastEvent > TimeSpan.FromSeconds(2);
+          && timePassedSinceLastEvent > TimeSpan.FromSeconds(3);
         if (!isConsistent)
         {
           lastActivityAt = DateTime.UtcNow;
