@@ -150,24 +150,24 @@ public record TestSetup(
         return;
       }
 
-      await Task.Delay(100);
+      await Task.Delay(Random.Shared.Next(100, 500));
     }
 
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromSeconds(2);
+    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(500);
 
     async Task<bool> IsConsistent()
     {
-      if (IsActive())
-      {
-        return false;
-      }
-
       try
       {
         await WaitForConsistencySemaphore.WaitAsync();
+
+        if (IsActive())
+        {
+          return false;
+        }
 
         var status = await $"{Url}{CatchUp.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
