@@ -277,6 +277,7 @@ public record TestSetup(
     bool asAdmin = false,
     string? asUser = null)
   {
+    await WaitForConsistency();
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var result = await $"{Url}{tenancySegment}/commands/{Naming.ToSpinalCase<C>()}"
       .WithOAuthBearerToken(CreateTestJwt(asAdmin ? "admin" : asUser ?? "cando"))
