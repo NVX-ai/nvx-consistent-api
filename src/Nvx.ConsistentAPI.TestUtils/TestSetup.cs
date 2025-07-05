@@ -174,7 +174,7 @@ public record TestSetup(
         status.IsCaughtUp
         && daemonInsights.IsFullyIdle
         && DateTime.UtcNow - (daemonInsights.HydrationDaemonInsights?.LastEventReceivedAt ?? DateTime.UtcNow)
-        < TimeSpan.FromSeconds(2);
+        < TimeSpan.FromSeconds(5);
       if (!isConsistent)
       {
         lastActivityAt = DateTime.UtcNow;
