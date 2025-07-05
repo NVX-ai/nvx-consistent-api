@@ -156,7 +156,7 @@ public record TestSetup(
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(500);
+    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(2_000);
 
     async Task<bool> IsConsistent()
     {
@@ -182,7 +182,7 @@ public record TestSetup(
         var isConsistent =
           status.IsCaughtUp
           && daemonInsights.IsFullyIdle
-          && timePassedSinceLastEvent > TimeSpan.FromSeconds(3);
+          && timePassedSinceLastEvent > TimeSpan.FromSeconds(2);
         if (!isConsistent)
         {
           lastActivityAt = DateTime.UtcNow;
