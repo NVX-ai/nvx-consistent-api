@@ -153,7 +153,7 @@ public record TestSetup(
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromSeconds(2);
+    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromSeconds(3);
 
     async Task<bool> IsConsistent()
     {
@@ -170,11 +170,12 @@ public record TestSetup(
         .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
         .GetJsonAsync<DaemonsInsights>();
 
+      var timePassedSinceLastEvent = DateTime.UtcNow - daemonInsights.LastEventEmittedAt;
+
       var isConsistent =
         status.IsCaughtUp
         && daemonInsights.IsFullyIdle
-        && DateTime.UtcNow - (daemonInsights.HydrationDaemonInsights?.LastEventReceivedAt ?? DateTime.UtcNow)
-        < TimeSpan.FromSeconds(5);
+        && timePassedSinceLastEvent < TimeSpan.FromSeconds(5);
       if (!isConsistent)
       {
         lastActivityAt = DateTime.UtcNow;

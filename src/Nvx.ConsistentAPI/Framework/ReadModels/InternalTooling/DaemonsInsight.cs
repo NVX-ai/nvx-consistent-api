@@ -116,11 +116,13 @@ internal static class DaemonsInsight
   {
     var isHydrating = settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration);
     var lastEventPosition = 0UL;
+    var lastEventEmittedAt = DateTime.UnixEpoch;
     await foreach (var evt in eventStoreClient
                      .ReadAllAsync(Direction.Backwards, Position.End, EventTypeFilter.ExcludeSystemEvents(), 1)
                      .Take(1))
     {
       lastEventPosition = evt.Event.Position.CommitPosition;
+      lastEventEmittedAt = evt.Event.Created;
     }
 
     var catchingUpReadModels = isHydrating
@@ -142,6 +144,7 @@ internal static class DaemonsInsight
       projectionDaemon.Insights(lastEventPosition),
       isHydrating ? await readModelDaemon.Insights(lastEventPosition) : null,
       dynamicConsistencyBoundaryDaemon.Insights(lastEventPosition),
+      lastEventEmittedAt,
       lastEventPosition);
   }
 }
@@ -154,6 +157,7 @@ public record DaemonsInsights(
   ProjectorDaemonInsights ProjectorDaemon,
   HydrationDaemonInsights? HydrationDaemonInsights,
   DynamicConsistencyBoundaryDaemonInsights DynamicConsistencyBoundaryDaemonInsights,
+  DateTime LastEventEmittedAt,
   ulong LastEventPosition)
 {
   public bool AreDaemonsIdle =>
@@ -176,8 +180,7 @@ public record HydrationDaemonInsights(
   ulong LastProcessedPosition,
   ulong LastCheckpoint,
   decimal PercentageComplete,
-  int EventsBeingProcessed,
-  DateTime LastEventReceivedAt);
+  int EventsBeingProcessed);
 
 public record DynamicConsistencyBoundaryDaemonInsights(
   ulong CurrentProcessedPosition,
