@@ -30,7 +30,7 @@ public class ProjectionDaemon(
 
   public ProjectorDaemonInsights Insights(ulong lastEventPosition)
   {
-    var daemonPercentage = lastEventPosition == 0 || isDaemonCaughtUp
+    var daemonPercentage = lastEventPosition == 0
       ? 100m
       : Convert.ToDecimal(lastProcessedPosition) * 100m / Convert.ToDecimal(lastEventPosition);
     var catchUpPercentage = lastEventPosition == 0 || catchingUp.Length == 0
@@ -166,7 +166,7 @@ public class ProjectionDaemon(
           await foreach (var evt in client.ReadAllAsync(
                            Direction.Forwards,
                            position,
-                           StreamFilter.Prefix(projectorsBehind.Select(p => p.SourcePrefix).Distinct().ToArray())))
+                           EventTypeFilter.ExcludeSystemEvents()))
           {
             foreach (var projector in projectorsBehind)
             {
