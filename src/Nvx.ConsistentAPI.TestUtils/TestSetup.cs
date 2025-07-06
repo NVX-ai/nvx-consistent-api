@@ -99,9 +99,9 @@ public record TestSetup(
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
 
-  private readonly SemaphoreSlim WaitForConsistencySemaphore = new(1);
+  private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
 
-  private DateTime lastActivityAt = DateTime.UtcNow;
+  private DateTime lastActivityAt = DateTime.UtcNow.AddSeconds(-1);
 
   public async ValueTask DisposeAsync()
   {
@@ -155,13 +155,13 @@ public record TestSetup(
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(2_000);
+    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromSeconds(1);
 
     async Task<bool> IsConsistent()
     {
       try
       {
-        await WaitForConsistencySemaphore.WaitAsync();
+        await waitForConsistencySemaphore.WaitAsync();
 
         if (IsActive())
         {
@@ -176,12 +176,7 @@ public record TestSetup(
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<DaemonsInsights>();
 
-        var timePassedSinceLastEvent = DateTime.UtcNow - daemonInsights.LastEventEmittedAt;
-
-        var isConsistent =
-          status.IsCaughtUp
-          && daemonInsights.IsFullyIdle
-          && timePassedSinceLastEvent > TimeSpan.FromSeconds(4);
+        var isConsistent = status.IsCaughtUp && daemonInsights.IsFullyIdle;
         if (!isConsistent)
         {
           lastActivityAt = DateTime.UtcNow;
@@ -191,7 +186,7 @@ public record TestSetup(
       }
       finally
       {
-        WaitForConsistencySemaphore.Release();
+        waitForConsistencySemaphore.Release();
       }
     }
   }
