@@ -158,11 +158,13 @@ public record TestSetup(
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() => DateTime.UtcNow - lastActivityAt
-                       < TimeSpan.FromMilliseconds(
-                         type.HasFlag(ConsistencyWaitType.Tasks) || type.HasFlag(ConsistencyWaitType.Daemons)
-                           ? 1_000
-                           : 150);
+    bool IsActive() =>
+      DateTime.UtcNow - lastActivityAt
+      < TimeSpan.FromMilliseconds(
+        type.HasFlag(ConsistencyWaitType.Tasks)
+        || type.HasFlag(ConsistencyWaitType.Daemons)
+          ? 1_000
+          : 150);
 
     bool WasJustIdle() =>
       lastIdleType.HasFlag(type) && DateTime.UtcNow - lastIdleAt < TimeSpan.FromMilliseconds(10);
@@ -197,19 +199,21 @@ public record TestSetup(
           && (!type.HasFlag(ConsistencyWaitType.Daemons) || daemonInsights.AreDaemonsIdle)
           && (!type.HasFlag(ConsistencyWaitType.Tasks) || daemonInsights.IsFullyIdle);
 
-        switch (isConsistent)
+        if (!isConsistent)
         {
-          case false:
-            lastActivityAt = DateTime.UtcNow;
-            break;
-          case true:
-            lastIdleAt = DateTime.UtcNow;
-            lastIdleType =
-              (daemonInsights.AreReadModelsUpToDate ? ConsistencyWaitType.ReadModels : ConsistencyWaitType.None)
-              | (daemonInsights.AreDaemonsIdle ? ConsistencyWaitType.Daemons : ConsistencyWaitType.None)
-              | (daemonInsights.IsFullyIdle ? ConsistencyWaitType.Tasks : ConsistencyWaitType.None);
-            break;
+          lastActivityAt = DateTime.UtcNow;
         }
+
+        lastIdleAt =
+          daemonInsights.AreReadModelsUpToDate
+          || daemonInsights.AreDaemonsIdle
+            ? DateTime.UtcNow
+            : lastIdleAt;
+
+        lastIdleType =
+          (daemonInsights.AreReadModelsUpToDate ? ConsistencyWaitType.ReadModels : ConsistencyWaitType.None)
+          | (daemonInsights.AreDaemonsIdle ? ConsistencyWaitType.Daemons : ConsistencyWaitType.None)
+          | (daemonInsights.IsFullyIdle ? ConsistencyWaitType.Tasks : ConsistencyWaitType.None);
 
         return isConsistent;
       }
