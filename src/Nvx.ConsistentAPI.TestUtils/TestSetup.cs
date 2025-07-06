@@ -134,8 +134,9 @@ public record TestSetup(
   /// <summary>
   ///   Waits for the system to be in a consistent state.
   /// </summary>
+  /// <param name="type">Type of consistency to wait for.</param>
   /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
-  public async Task WaitForConsistency(int? timeoutMs = null)
+  public async Task WaitForConsistency(ConsistencyWaitType type = ConsistencyWaitType.ReadModels, int? timeoutMs = null)
   {
     var timeout = timeoutMs ?? WaitForCatchUpTimeout;
     var timer = Stopwatch.StartNew();
@@ -180,7 +181,12 @@ public record TestSetup(
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<DaemonsInsights>();
 
-        var isConsistent = status.IsCaughtUp && daemonInsights.IsFullyIdle;
+        var isConsistent =
+          status.IsCaughtUp
+          && (!type.HasFlag(ConsistencyWaitType.ReadModels) || daemonInsights.AreReadModelsUpToDate)
+          && (!type.HasFlag(ConsistencyWaitType.Daemons) || daemonInsights.AreDaemonsIdle)
+          && (!type.HasFlag(ConsistencyWaitType.Tasks) || daemonInsights.AreTasksIdle);
+
         switch (isConsistent)
         {
           case false:
@@ -662,4 +668,13 @@ public class TestSettings
     && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
       ? "mcr.microsoft.com/azure-storage/azurite:3.34.0-arm64"
       : "mcr.microsoft.com/azure-storage/azurite:3.34.0";
+}
+
+[Flags]
+public enum ConsistencyWaitType
+{
+  ReadModels = 1,
+  Daemons = 2,
+  Tasks = 4,
+  All = 7
 }

@@ -122,6 +122,7 @@ public class StandardFlowTest
       new AddProductPicture(productId, new AttachedFile(uploadResult.EntityId.Apply(Guid.Parse), null)));
 
     // Verify the background runners.
+    await setup.WaitForConsistency(ConsistencyWaitType.All);
     var readModel = await setup.ReadModel<UserRegistryOfNamedProductsReadModel>(setup.Auth.CandoSub);
     Assert.True(100 <= readModel.Count, $"Expecting at least 100 products, got {readModel.Count}");
 

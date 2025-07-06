@@ -164,16 +164,20 @@ public record DaemonsInsights(
   DateTime LastEventEmittedAt,
   ulong LastEventPosition)
 {
-  public bool AreDaemonsIdle =>
+  public bool AreReadModelsUpToDate =>
     CatchingUpReadModels.All(rm => rm.PercentageComplete == 100)
     && ReadModels.Total == ReadModels.UpToDate
     && FailedHydrations.Length == 0
-    && ProjectorDaemon is { PercentageComplete: 100, CatchUpPercentageComplete: 100, IsProjecting: false }
     && (HydrationDaemonInsights is null
-        || (HydrationDaemonInsights.PercentageComplete == 100 && HydrationDaemonInsights.EventsBeingProcessed == 0))
+        || (HydrationDaemonInsights.PercentageComplete == 100 && HydrationDaemonInsights.EventsBeingProcessed == 0));
+
+  public bool AreDaemonsIdle =>
+    ProjectorDaemon is { PercentageComplete: 100, CatchUpPercentageComplete: 100, IsProjecting: false }
     && DynamicConsistencyBoundaryDaemonInsights.CurrentPercentageComplete == 100;
 
-  public bool IsFullyIdle => AreDaemonsIdle && Tasks.Length == 0;
+  public bool AreTasksIdle => Tasks.Length == 0;
+
+  public bool IsFullyIdle => AreDaemonsIdle && AreReadModelsUpToDate && AreTasksIdle;
 }
 
 public record ReadModelsInsights(int Total, int UpToDate);
