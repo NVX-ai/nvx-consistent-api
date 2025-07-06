@@ -137,7 +137,7 @@ public record TestSetup(
   /// </summary>
   /// <param name="type">Type of consistency to wait for.</param>
   /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
-  public async Task WaitForConsistency(ConsistencyWaitType type = ConsistencyWaitType.ReadModels, int? timeoutMs = null)
+  public async Task WaitForConsistency(ConsistencyWaitType type = ConsistencyWaitType.All, int? timeoutMs = null)
   {
     var timeout = timeoutMs ?? WaitForCatchUpTimeout;
     var timer = Stopwatch.StartNew();
@@ -197,7 +197,10 @@ public record TestSetup(
             break;
           case true:
             lastIdleAt = DateTime.UtcNow;
-            lastIdleType = type;
+            lastIdleType =
+              (daemonInsights.AreReadModelsUpToDate ? ConsistencyWaitType.ReadModels : ConsistencyWaitType.None)
+              | (daemonInsights.AreDaemonsIdle ? ConsistencyWaitType.Daemons : ConsistencyWaitType.None)
+              | (daemonInsights.AreTasksIdle ? ConsistencyWaitType.Tasks : ConsistencyWaitType.None);
             break;
         }
 
@@ -690,6 +693,7 @@ public class TestSettings
 [Flags]
 public enum ConsistencyWaitType
 {
+  None = 0,
   ReadModels = 1,
   Daemons = 2,
   Tasks = 4,
