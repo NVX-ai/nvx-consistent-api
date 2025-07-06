@@ -122,8 +122,9 @@ public class StandardFlowTest
       new AddProductPicture(productId, new AttachedFile(uploadResult.EntityId.Apply(Guid.Parse), null)));
 
     // Verify the background runners.
-    await setup.WaitForConsistency();
-    var readModel = await setup.ReadModel<UserRegistryOfNamedProductsReadModel>(setup.Auth.CandoSub);
+    var readModel = await setup.ReadModel<UserRegistryOfNamedProductsReadModel>(
+      setup.Auth.CandoSub,
+      waitType: ConsistencyWaitType.All);
     Assert.True(100 <= readModel.Count, $"Expecting at least 100 products, got {readModel.Count}");
 
     await setup.FailingCommand(new CreateProduct(productId, productName, null), 409);
@@ -207,7 +208,9 @@ public class StandardFlowTest
     await setup.Ingest<ProductNameIngestor>(
       JsonConvert.SerializeObject(new ProductNameToBeIngested("Blah", ingestedProductId)));
 
-    var ingestedProduct = await setup.ReadModel<ProductStock>(ingestedProductId.ToString());
+    var ingestedProduct = await setup.ReadModel<ProductStock>(
+      ingestedProductId.ToString(),
+      waitType: ConsistencyWaitType.All);
     Assert.Equal("Blah", ingestedProduct.Name);
 
     return;

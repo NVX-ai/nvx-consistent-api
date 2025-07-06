@@ -126,11 +126,14 @@ public record TestSetup(
             new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
           ])));
 
-  public async Task InsertEvents(params EventModelEvent[] evt) =>
+  public async Task InsertEvents(params EventModelEvent[] evt)
+  {
     await EventStoreClient.AppendToStreamAsync(
       evt.GroupBy(e => e.GetStreamName()).Single().Key,
       StreamState.Any,
       Emitter.ToEventData(evt, null));
+    lastActivityAt = DateTime.UtcNow;
+  }
 
   /// <summary>
   ///   Waits for the system to be in a consistent state.
@@ -155,7 +158,10 @@ public record TestSetup(
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(150);
+    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(
+      type.HasFlag(ConsistencyWaitType.Tasks)
+        ? 1_000
+        : 150);
 
     bool WasJustIdle() =>
       lastIdleType.HasFlag(type) && DateTime.UtcNow - lastIdleAt < TimeSpan.FromMilliseconds(10);
@@ -220,6 +226,7 @@ public record TestSetup(
         multipartContent.AddFile("file", new MemoryStream("banana"u8.ToArray()), "text.txt")
       )
       .ReceiveJson<CommandAcceptedResult>();
+    lastActivityAt = DateTime.UtcNow;
     return result;
   }
 
@@ -230,6 +237,7 @@ public record TestSetup(
         multipartContent.AddFile("file", path)
       )
       .ReceiveJson<CommandAcceptedResult>();
+    lastActivityAt = DateTime.UtcNow;
     return result;
   }
 
@@ -258,6 +266,7 @@ public record TestSetup(
     }
 
     await req.PostStringAsync(body);
+    lastActivityAt = DateTime.UtcNow;
   }
 
   public async Task<CommandAcceptedResult> Command<C>(
@@ -279,6 +288,7 @@ public record TestSetup(
     var response = await req
       .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json"));
     var result = await response.GetJsonAsync<CommandAcceptedResult>();
+    lastActivityAt = DateTime.UtcNow;
     return result;
   }
 
