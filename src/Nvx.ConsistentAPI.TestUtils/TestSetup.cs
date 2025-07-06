@@ -158,10 +158,11 @@ public record TestSetup(
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(
-      type.HasFlag(ConsistencyWaitType.Tasks)
-        ? 1_000
-        : 150);
+    bool IsActive() => DateTime.UtcNow - lastActivityAt
+                       < TimeSpan.FromMilliseconds(
+                         type.HasFlag(ConsistencyWaitType.Tasks) || type.HasFlag(ConsistencyWaitType.Daemons)
+                           ? 1_000
+                           : 150);
 
     bool WasJustIdle() =>
       lastIdleType.HasFlag(type) && DateTime.UtcNow - lastIdleAt < TimeSpan.FromMilliseconds(10);
