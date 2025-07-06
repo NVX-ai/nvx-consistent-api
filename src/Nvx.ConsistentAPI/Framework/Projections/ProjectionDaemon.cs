@@ -166,7 +166,7 @@ public class ProjectionDaemon(
           await foreach (var evt in client.ReadAllAsync(
                            Direction.Forwards,
                            position,
-                           EventTypeFilter.ExcludeSystemEvents()))
+                           StreamFilter.Prefix(projectorsBehind.Select(p => p.SourcePrefix).Distinct().ToArray())))
           {
             foreach (var projector in projectorsBehind)
             {
@@ -225,8 +225,7 @@ public class ProjectionDaemon(
 
           await foreach (var message in client.SubscribeToAll(
                              position,
-                             filterOptions: new SubscriptionFilterOptions(
-                               StreamFilter.Prefix(projectors.Select(p => p.SourcePrefix).Distinct().ToArray())))
+                             filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()))
                            .Messages)
           {
             var hasProjected = false;
