@@ -56,7 +56,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
   public bool IsUpToDate(Position? position) => isUpToDate;
 
-  public SingleReadModelInsights Insights(ulong lastEventPosition)
+  public Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClien)
   {
     var currentPosition = lastProcessedEventPosition ?? lastCheckpointPosition ?? lastEventPosition;
     var percentageComplete = isUpToDate || lastEventPosition == 0
@@ -64,12 +64,13 @@ public class ReadModelDefinition<Shape, EntityShape> :
       : ReadModelProgress.InventerPercentageProgress(
         Convert.ToDecimal(currentPosition),
         Convert.ToDecimal(lastEventPosition));
-    return new SingleReadModelInsights(
+    return Task.FromResult(
+      new SingleReadModelInsights(
       DatabaseHandler<Shape>.TableName(typeof(Shape)),
       lastProcessedEventPosition,
       lastCheckpointPosition,
       false,
-      percentageComplete);
+      percentageComplete));
   }
 
   public async Task ApplyTo(

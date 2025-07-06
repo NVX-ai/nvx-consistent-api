@@ -156,8 +156,8 @@ public record TestSetup(
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(500);
-    bool WasJustIdle() => DateTime.UtcNow - lastIdleAt < TimeSpan.FromMilliseconds(20);
+    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(100);
+    bool WasJustIdle() => DateTime.UtcNow - lastIdleAt < TimeSpan.FromMilliseconds(5);
 
     async Task<bool> IsConsistent()
     {

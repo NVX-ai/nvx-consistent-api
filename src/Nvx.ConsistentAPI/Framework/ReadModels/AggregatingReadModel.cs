@@ -32,12 +32,19 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false);
   private bool isProcessing;
 
-  public SingleReadModelInsights Insights(ulong lastEventPosition)
+  public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
   {
+    var effectivePosition = lastEventPosition;
+    var prefixFilter = EventTypeFilter.Prefix(StreamPrefixes);
+    await foreach (var msg in eventStoreClient.ReadAllAsync(Direction.Backwards, Position.End, prefixFilter).Take(1))
+    {
+      effectivePosition = msg.Event.Position.CommitPosition;
+    }
+
     var currentPosition = lastProcessedEventPosition ?? currentCheckpointPosition ?? 0UL;
-    var percentageComplete = lastEventPosition == 0
+    var percentageComplete = effectivePosition == 0
       ? 100m
-      : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(lastEventPosition);
+      : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(effectivePosition);
     return new SingleReadModelInsights(
       DatabaseHandler<Shape>.TableName(typeof(Shape)),
       lastProcessedEventPosition,
@@ -151,7 +158,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
     TableDetails tableDetails,
     ILogger logger)
   {
-    var syncDelay = new Random().Next(300, 600);
+    var syncDelay = Random.Shared.Next(300, 600);
     var prefixFilter = StreamFilter.Prefix(StreamPrefixes);
     var filterOptions = new SubscriptionFilterOptions(prefixFilter);
     reset = async () =>
@@ -161,7 +168,6 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       return unit;
     };
     var processId = Guid.NewGuid();
-    var random = new Random();
     HydrationCountTracker? hydrationCountTracker = null;
 
     while (true)
@@ -175,7 +181,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       {
         if (!IsIdempotent && !await databaseHandler.TryAcquireLock(processId, SubCancelSource.Token))
         {
-          await Task.Delay(random.Next(500, 2_500), SubCancelSource.Token);
+          await Task.Delay(Random.Shared.Next(500, 2_500), SubCancelSource.Token);
           continue;
         }
 

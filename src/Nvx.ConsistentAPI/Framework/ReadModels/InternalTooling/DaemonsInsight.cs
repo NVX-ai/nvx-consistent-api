@@ -126,12 +126,16 @@ internal static class DaemonsInsight
     }
 
     var catchingUpReadModels = isHydrating
-      ? readModels
-        .Select(rm => rm.Insights(lastEventPosition))
-        .Where(s => s.PercentageComplete < 100)
-        .OrderBy(s => s.PercentageComplete)
-        .ThenBy(s => s.ModelName)
-        .ToArray()
+      ? await readModels
+        .Select<EventModelingReadModelArtifact, Func<Task<SingleReadModelInsights>>>(rm =>
+          async () => await rm.Insights(lastEventPosition, eventStoreClient))
+        .Parallel()
+        .Map(i =>
+          i
+            .Where(s => s.PercentageComplete < 100)
+            .OrderBy(s => s.PercentageComplete)
+            .ThenBy(s => s.ModelName)
+            .ToArray())
       : [];
 
     return new DaemonsInsights(

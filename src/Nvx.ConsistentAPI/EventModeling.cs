@@ -20,7 +20,7 @@ public interface EventModelingReadModelArtifact
 {
   AuthOptions Auth { get; }
   Type ShapeType { get; }
-  SingleReadModelInsights Insights(ulong lastEventPosition);
+  Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClien);
 
   Task ApplyTo(
     WebApplication app,
