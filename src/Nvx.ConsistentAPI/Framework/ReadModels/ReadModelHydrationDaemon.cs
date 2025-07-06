@@ -227,6 +227,8 @@ internal class ReadModelHydrationDaemon(
     }
   }
 
+  private readonly SemaphoreSlim lastPositionSemaphore = new(1);
+
   private async Task TryProcess(ResolvedEvent evt)
   {
     try
@@ -282,7 +284,9 @@ internal class ReadModelHydrationDaemon(
             });
           await interestedTask;
         });
+      await lastPositionSemaphore.WaitAsync();
       lastPosition = evt.Event.Position > lastPosition ? evt.Event.Position : lastPosition;
+      lastPositionSemaphore.Release();
     }
     catch (Exception ex)
     {
