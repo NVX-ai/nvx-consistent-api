@@ -265,7 +265,7 @@ public class StandardFlowTest
       await setup.Command(new RenameTenant(tenant1Id, newTenant1Name), true);
       await setup.Command(new RenameTenant(tenant3Id, newTenant3Name), true);
 
-      var canDoAfterRename = await setup.CurrentUser();
+      var canDoAfterRename = await setup.CurrentUser(waitType: ConsistencyWaitType.All);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant3Id && td.TenantName == newTenant3Name);
