@@ -103,7 +103,7 @@ public record TestSetup(
 
   private DateTime lastActivityAt = DateTime.UtcNow.AddSeconds(-1);
   private DateTime lastIdleAt = DateTime.UtcNow.AddSeconds(-1);
-  private ConsistencyWaitType lastIdleType = ConsistencyWaitType.All;
+  private ConsistencyWaitType lastIdleType = ConsistencyWaitType.None;
 
   public async ValueTask DisposeAsync()
   {
@@ -140,7 +140,7 @@ public record TestSetup(
   /// </summary>
   /// <param name="type">Type of consistency to wait for.</param>
   /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
-  public async Task WaitForConsistency(ConsistencyWaitType type = ConsistencyWaitType.All, int? timeoutMs = null)
+  public async Task WaitForConsistency(ConsistencyWaitType type = ConsistencyWaitType.Tasks, int? timeoutMs = null)
   {
     var timeout = timeoutMs ?? WaitForCatchUpTimeout;
     var timer = Stopwatch.StartNew();
@@ -195,7 +195,7 @@ public record TestSetup(
           status.IsCaughtUp
           && (!type.HasFlag(ConsistencyWaitType.ReadModels) || daemonInsights.AreReadModelsUpToDate)
           && (!type.HasFlag(ConsistencyWaitType.Daemons) || daemonInsights.AreDaemonsIdle)
-          && (!type.HasFlag(ConsistencyWaitType.Tasks) || daemonInsights.AreTasksIdle);
+          && (!type.HasFlag(ConsistencyWaitType.Tasks) || daemonInsights.IsFullyIdle);
 
         switch (isConsistent)
         {
@@ -207,7 +207,7 @@ public record TestSetup(
             lastIdleType =
               (daemonInsights.AreReadModelsUpToDate ? ConsistencyWaitType.ReadModels : ConsistencyWaitType.None)
               | (daemonInsights.AreDaemonsIdle ? ConsistencyWaitType.Daemons : ConsistencyWaitType.None)
-              | (daemonInsights.AreTasksIdle ? ConsistencyWaitType.Tasks : ConsistencyWaitType.None);
+              | (daemonInsights.IsFullyIdle ? ConsistencyWaitType.Tasks : ConsistencyWaitType.None);
             break;
         }
 
@@ -707,6 +707,5 @@ public enum ConsistencyWaitType
   None = 0,
   ReadModels = 1,
   Daemons = 2,
-  Tasks = 4,
-  All = 7
+  Tasks = 7
 }

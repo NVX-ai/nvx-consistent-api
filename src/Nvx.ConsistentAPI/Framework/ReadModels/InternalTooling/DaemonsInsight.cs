@@ -175,9 +175,7 @@ public record DaemonsInsights(
     ProjectorDaemon is { PercentageComplete: 100, CatchUpPercentageComplete: 100, IsProjecting: false }
     && DynamicConsistencyBoundaryDaemonInsights.CurrentPercentageComplete == 100;
 
-  public bool AreTasksIdle => Tasks.Length == 0;
-
-  public bool IsFullyIdle => AreDaemonsIdle && AreReadModelsUpToDate && AreTasksIdle;
+  public bool IsFullyIdle => AreDaemonsIdle && AreReadModelsUpToDate && Tasks.Length == 0;
 }
 
 public record ReadModelsInsights(int Total, int UpToDate);
