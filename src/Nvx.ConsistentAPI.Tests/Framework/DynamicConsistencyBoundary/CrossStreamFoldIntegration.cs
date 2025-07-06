@@ -29,7 +29,6 @@ public class CrossStreamFoldIntegration
     Assert.Contains(moreTags.DependedOnTags, t => t == tag);
 
     await setup.InsertEvents(new EntityThatDependsOnRemovedDependency(entityThatDependsId, entityDependedOnId));
-
     var afterDependencyRemoved = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
     Assert.Empty(afterDependencyRemoved.DependsOnIds);
     Assert.Empty(afterDependencyRemoved.DependedOnTags);

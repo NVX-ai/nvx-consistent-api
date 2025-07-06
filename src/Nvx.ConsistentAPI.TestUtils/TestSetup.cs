@@ -103,6 +103,7 @@ public record TestSetup(
 
   private DateTime lastActivityAt = DateTime.UtcNow.AddSeconds(-1);
   private DateTime lastIdleAt = DateTime.UtcNow.AddSeconds(-1);
+  private ConsistencyWaitType lastIdleType = ConsistencyWaitType.All;
 
   public async ValueTask DisposeAsync()
   {
@@ -155,7 +156,9 @@ public record TestSetup(
     return;
 
     bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(150);
-    bool WasJustIdle() => DateTime.UtcNow - lastIdleAt < TimeSpan.FromMilliseconds(10);
+
+    bool WasJustIdle() =>
+      lastIdleType.HasFlag(type) && DateTime.UtcNow - lastIdleAt < TimeSpan.FromMilliseconds(10);
 
     async Task<bool> IsConsistent()
     {
@@ -194,6 +197,7 @@ public record TestSetup(
             break;
           case true:
             lastIdleAt = DateTime.UtcNow;
+            lastIdleType = type;
             break;
         }
 
@@ -280,9 +284,10 @@ public record TestSetup(
     int responseCode,
     Guid? tenantId = null,
     bool asAdmin = false,
-    string? asUser = null)
+    string? asUser = null,
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
-    await WaitForConsistency();
+    await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var result = await $"{Url}{tenancySegment}/commands/{Naming.ToSpinalCase<C>()}"
       .WithOAuthBearerToken(CreateTestJwt(asAdmin ? "admin" : asUser ?? "cando"))
@@ -309,9 +314,12 @@ public record TestSetup(
         .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json")))
       .StatusCode);
 
-  public async Task<UserSecurity> CurrentUser(bool asAdmin = false, string asUser = "cando")
+  public async Task<UserSecurity> CurrentUser(
+    bool asAdmin = false,
+    string asUser = "cando",
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
-    await WaitForConsistency();
+    await WaitForConsistency(waitType);
     return await $"{Url}/current-user"
       .WithOAuthBearerToken(CreateTestJwt(asAdmin ? "admin" : asUser))
       .GetJsonAsync<UserSecurity>();
@@ -321,9 +329,10 @@ public record TestSetup(
     bool asAdmin = false,
     Guid? tenantId = null,
     Dictionary<string, string[]>? queryParameters = null,
-    string asUser = "cando")
+    string asUser = "cando",
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
-    await WaitForConsistency();
+    await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var result = await (queryParameters ?? new Dictionary<string, string[]>())
       .Aggregate(
@@ -339,9 +348,10 @@ public record TestSetup(
     Dictionary<string, string[]>? queryParameters = null,
     bool asAdmin = false,
     Guid? tenantId = null,
-    string? asUser = null)
+    string? asUser = null,
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
-    await WaitForConsistency();
+    await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var result = await (queryParameters ?? new Dictionary<string, string[]>())
       .Aggregate(
@@ -357,9 +367,14 @@ public record TestSetup(
       .WithOAuthBearerToken(CreateTestJwt("admin"))
       .GetAsync();
 
-  public async Task ReadModelNotFound<Rm>(string id, Guid? tenantId = null, bool asAdmin = false, string? asUser = null)
+  public async Task ReadModelNotFound<Rm>(
+    string id,
+    Guid? tenantId = null,
+    bool asAdmin = false,
+    string? asUser = null,
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
-    await WaitForConsistency();
+    await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var response = await $"{Url}{tenancySegment}/read-models/{Naming.ToSpinalCase<Rm>()}/{id}"
       .WithOAuthBearerToken(CreateTestJwt(asAdmin ? "admin" : asUser ?? "cando"))
@@ -368,9 +383,11 @@ public record TestSetup(
     Assert.Equal(404, response.StatusCode);
   }
 
-  public async Task ForbiddenReadModel<Rm>(Guid? tenantId = null)
+  public async Task ForbiddenReadModel<Rm>(
+    Guid? tenantId = null,
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
-    await WaitForConsistency();
+    await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var response = await $"{Url}{tenancySegment}/read-models/{Naming.ToSpinalCase<Rm>()}"
       .WithOAuthBearerToken(CreateTestJwt("nocando"))
