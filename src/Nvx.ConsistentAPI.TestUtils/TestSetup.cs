@@ -102,6 +102,7 @@ public record TestSetup(
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
 
   private DateTime lastActivityAt = DateTime.UtcNow.AddSeconds(-1);
+  private DateTime lastIdleAt = DateTime.UtcNow.AddSeconds(-1);
 
   public async ValueTask DisposeAsync()
   {
@@ -155,7 +156,8 @@ public record TestSetup(
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromSeconds(1);
+    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(500);
+    bool WasJustIdle() => DateTime.UtcNow - lastIdleAt < TimeSpan.FromMilliseconds(20);
 
     async Task<bool> IsConsistent()
     {
@@ -168,6 +170,11 @@ public record TestSetup(
           return false;
         }
 
+        if (WasJustIdle())
+        {
+          return true;
+        }
+
         var status = await $"{Url}{CatchUp.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<HydrationStatus>();
@@ -177,9 +184,14 @@ public record TestSetup(
           .GetJsonAsync<DaemonsInsights>();
 
         var isConsistent = status.IsCaughtUp && daemonInsights.IsFullyIdle;
-        if (!isConsistent)
+        switch (isConsistent)
         {
-          lastActivityAt = DateTime.UtcNow;
+          case false:
+            lastActivityAt = DateTime.UtcNow;
+            break;
+          case true:
+            lastIdleAt = DateTime.UtcNow;
+            break;
         }
 
         return isConsistent;

@@ -30,6 +30,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public BuildCustomFilter CustomFilterBuilder { get; init; } = (_, _, _) => new CustomFilter(null, [], null);
   public ReadModelDefaulter<Shape> Defaulter { get; init; } = (_, _, _) => None;
   private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false);
+  private bool isProcessing;
 
   public SingleReadModelInsights Insights(ulong lastEventPosition)
   {
@@ -42,7 +43,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       lastProcessedEventPosition,
       currentCheckpointPosition,
       true,
-      isCaughtUp ? 100 : percentageComplete);
+      isCaughtUp && !isProcessing ? 100 : percentageComplete);
   }
 
   public async Task ApplyTo(
@@ -201,6 +202,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
               var parsed = parser(evt);
               var relevantAggregators = Aggregators.Where(a => a.Processes(parsed)).ToArray();
               var canBeAggregated = relevantAggregators.Length != 0;
+              isProcessing = true;
               await parsed
                 .Async()
                 .Iter(async e =>
@@ -252,6 +254,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
               {
                 LastPosition = FromAll.After(evt.OriginalEvent.Position), LastSync = DateTime.UtcNow
               };
+              isProcessing = false;
               break;
             }
             case StreamMessage.AllStreamCheckpointReached(var pos):
@@ -264,6 +267,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                 currentCheckpointPosition = pos.CommitPosition;
               }
 
+              isProcessing = false;
               break;
             }
             case StreamMessage.CaughtUp:
@@ -293,6 +297,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       }
       finally
       {
+        isProcessing = false;
         activity?.Dispose();
         ClearTracker();
         await databaseHandler.ReleaseLock(processId);
