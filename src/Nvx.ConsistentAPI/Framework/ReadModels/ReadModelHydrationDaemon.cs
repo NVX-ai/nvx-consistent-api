@@ -37,7 +37,7 @@ internal class ReadModelHydrationDaemon(
   public async Task<HydrationDaemonInsights> Insights(ulong lastEventPosition)
   {
     var currentPosition = lastPosition?.CommitPosition ?? 0UL;
-    var percentageComplete = lastEventPosition == 0 || isCaughtUp
+    var percentageComplete = lastEventPosition == 0
       ? 100m
       : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(lastEventPosition);
     return new HydrationDaemonInsights(
