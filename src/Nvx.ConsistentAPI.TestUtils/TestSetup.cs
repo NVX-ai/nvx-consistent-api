@@ -196,6 +196,12 @@ public record TestSetup(
 
         return isConsistent;
       }
+      catch
+      {
+        lastActivityAt = DateTime.UtcNow;
+        await Task.Delay(5_000);
+        return false;
+      }
       finally
       {
         waitForConsistencySemaphore.Release();
