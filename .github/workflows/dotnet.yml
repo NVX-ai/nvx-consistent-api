@@ -28,13 +28,13 @@ jobs:
         run: dotnet test --no-restore
       - name: Package Framework
         run: dotnet pack -c Release -o . ./src/Nvx.ConsistentAPI/Nvx.ConsistentAPI.csproj
-      # - name: Publish Framework
-      #   if: github.ref == 'refs/heads/main'
-      #   run: dotnet nuget push **/Release/**/Nvx.ConsistentAPI.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Publish Framework
+        if: github.ref == 'refs/heads/main'
+        run: dotnet nuget push **/Release/**/Nvx.ConsistentAPI.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
       - name: Build Test Utils
         run: dotnet build -c Release --no-restore ./src/Nvx.ConsistentAPI.TestUtils/Nvx.ConsistentAPI.TestUtils.csproj
       - name: Package Test Utils
         run: dotnet pack -c Release -o . ./src/Nvx.ConsistentAPI.TestUtils/Nvx.ConsistentAPI.TestUtils.csproj
-      # - name: Publish Test Utils
-      #   if: github.ref == 'refs/heads/main'
-      #   run: dotnet nuget push **/Release/**/Nvx.ConsistentAPI.TestUtils.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Publish Test Utils
+        if: github.ref == 'refs/heads/main'
+        run: dotnet nuget push **/Release/**/Nvx.ConsistentAPI.TestUtils.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
