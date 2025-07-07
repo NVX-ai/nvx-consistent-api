@@ -45,102 +45,42 @@ internal static class InstanceTracking
         h.Auth,
         h.EventStoreClient,
         h.Model,
-        (settings ?? new TestSettings()).WaitForCatchUpTimeout);
+        (settings ?? new TestSettings()).WaitForCatchUpTimeout,
+        h.ConsistencyStateMachine);
     }
 
     var holder = await TestSetup.InitializeInternal(model, settings ?? new TestSettings());
     holder.Logger.LogInformation("Initialized test setup for {Hash}", hash);
     Holders[hash] = holder;
     Semaphore.Release();
-
     return new TestSetup(
       holder.Url,
       holder.Auth,
       holder.EventStoreClient,
       holder.Model,
-      (settings ?? new TestSettings()).WaitForCatchUpTimeout);
+      (settings ?? new TestSettings()).WaitForCatchUpTimeout,
+      holder.ConsistencyStateMachine);
   }
 
   internal static Task Dispose(int _) => Task.CompletedTask;
 }
 
-internal record TestSetupHolder(
-  string Url,
-  TestAuth Auth,
-  EventStoreClient EventStoreClient,
-  EventModel Model,
-  int Count,
-  ILogger Logger);
-
-internal record TestUser(string Sub, Claim[] Claims);
-
-public record TestSetup(
-  string Url,
-  TestAuth Auth,
-  EventStoreClient EventStoreClient,
-  EventModel Model,
-  int WaitForCatchUpTimeout) : IAsyncDisposable
+internal class ConsistencyStateMachine(string url)
 {
-  private const string SecretKey = "2EYZvr55gtbEDgVbCqMt2xk2kE7TPrvj";
-
-  private static readonly ConcurrentDictionary<string, TestUser> TestUsers = new();
-
-  private static readonly SemaphoreSlim Semaphore = new(1);
-
-  private static readonly Random Random = new();
-
-  private static readonly SemaphoreSlim InitializerSemaphore = new(1);
-
-  private static readonly SigningCredentials SigningCredentials = new(
-    new SymmetricSecurityKey(Encoding.UTF8.GetBytes(SecretKey)),
-    SecurityAlgorithms.HmacSha256);
-
-  private static readonly JwtSecurityTokenHandler TokenHandler = new();
-
-  private static readonly ConcurrentDictionary<string, string> Tokens = new();
-
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
-
+  private readonly SemaphoreSlim activitySemaphore = new(1);
   private DateTime lastActivityAt = DateTime.UtcNow.AddSeconds(-1);
   private ConsistencyWaitType lastConsistencyResult = ConsistencyWaitType.None;
   private DateTime lastConsistencyResultStartedAt = DateTime.UtcNow;
 
-  public async ValueTask DisposeAsync()
+  public void RegisterActivity()
   {
-    await InstanceTracking.Dispose(Model.GetHashCode());
-    GC.SuppressFinalize(this);
-  }
-
-  private static TestUser GetTestUser(string name) =>
-    TestUsers.GetOrAdd(
-      name,
-      n => Guid
-        .NewGuid()
-        .ToString()
-        .Apply(sub => new TestUser(
-          sub,
-          [
-            new Claim(JwtRegisteredClaimNames.Sub, sub),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new Claim(JwtRegisteredClaimNames.Name, n),
-            new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
-          ])));
-
-  public async Task InsertEvents(params EventModelEvent[] evt)
-  {
-    await EventStoreClient.AppendToStreamAsync(
-      evt.GroupBy(e => e.GetStreamName()).Single().Key,
-      StreamState.Any,
-      Emitter.ToEventData(evt, null));
+    activitySemaphore.Wait();
     lastActivityAt = DateTime.UtcNow;
+    activitySemaphore.Release();
   }
 
-  /// <summary>
-  ///   Waits for the system to be in a consistent state.
-  /// </summary>
-  /// <param name="type">Type of consistency to wait for.</param>
-  /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
-  public async Task WaitForConsistency(ConsistencyWaitType type = ConsistencyWaitType.Tasks, int? timeoutMs = null)
+  public async Task WaitForConsistency(int timeout, ConsistencyWaitType type = ConsistencyWaitType.Tasks)
   {
     if (type == ConsistencyWaitType.None)
     {
@@ -148,7 +88,6 @@ public record TestSetup(
     }
 
     var startedAt = DateTime.UtcNow;
-    var timeout = timeoutMs ?? WaitForCatchUpTimeout;
     var timer = Stopwatch.StartNew();
     // Wait until it's inactive and is seen as inconsistent
     while (timer.ElapsedMilliseconds < timeout)
@@ -164,13 +103,7 @@ public record TestSetup(
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() =>
-      DateTime.UtcNow - lastActivityAt
-      < TimeSpan.FromMilliseconds(
-        type.HasFlag(ConsistencyWaitType.Tasks)
-        || type.HasFlag(ConsistencyWaitType.Daemons)
-          ? 1_000
-          : 150);
+    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(150);
 
     bool IsAlreadyConsistent() =>
       startedAt < lastConsistencyResultStartedAt && lastConsistencyResult.HasFlag(type);
@@ -191,11 +124,11 @@ public record TestSetup(
           return true;
         }
 
-        var status = await $"{Url}{CatchUp.Route}"
+        var status = await $"{url}{CatchUp.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<HydrationStatus>();
 
-        var daemonInsights = await $"{Url}{DaemonsInsight.Route}"
+        var daemonInsights = await $"{url}{DaemonsInsight.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<DaemonsInsights>();
 
@@ -207,7 +140,7 @@ public record TestSetup(
 
         if (!isConsistent)
         {
-          lastActivityAt = DateTime.UtcNow;
+          RegisterActivity();
         }
 
         if (!daemonInsights.AreReadModelsUpToDate && !daemonInsights.AreDaemonsIdle)
@@ -236,6 +169,99 @@ public record TestSetup(
       }
     }
   }
+}
+
+internal record TestSetupHolder(
+  string Url,
+  TestAuth Auth,
+  EventStoreClient EventStoreClient,
+  EventModel Model,
+  int Count,
+  ILogger Logger,
+  ConsistencyStateMachine ConsistencyStateMachine);
+
+internal record TestUser(string Sub, Claim[] Claims);
+
+public class TestSetup : IAsyncDisposable
+{
+  private const string SecretKey = "2EYZvr55gtbEDgVbCqMt2xk2kE7TPrvj";
+
+  private static readonly ConcurrentDictionary<string, TestUser> TestUsers = new();
+
+  private static readonly SemaphoreSlim Semaphore = new(1);
+
+  private static readonly Random Random = new();
+
+  private static readonly SemaphoreSlim InitializerSemaphore = new(1);
+
+  private static readonly SigningCredentials SigningCredentials = new(
+    new SymmetricSecurityKey(Encoding.UTF8.GetBytes(SecretKey)),
+    SecurityAlgorithms.HmacSha256);
+
+  private static readonly JwtSecurityTokenHandler TokenHandler = new();
+
+  private static readonly ConcurrentDictionary<string, string> Tokens = new();
+  private readonly ConsistencyStateMachine consistencyStateMachine;
+  private readonly int waitForCatchUpTimeout;
+
+  internal TestSetup(
+    string url,
+    TestAuth auth,
+    EventStoreClient eventStoreClient,
+    EventModel model,
+    int waitForCatchUpTimeout,
+    ConsistencyStateMachine consistencyStateMachine)
+  {
+    Url = url;
+    this.waitForCatchUpTimeout = waitForCatchUpTimeout;
+    Auth = auth;
+    EventStoreClient = eventStoreClient;
+    Model = model;
+    this.consistencyStateMachine = consistencyStateMachine;
+  }
+
+  public string Url { get; }
+  public TestAuth Auth { get; private set; }
+  public EventStoreClient EventStoreClient { get; }
+  public EventModel Model { get; }
+
+  public async ValueTask DisposeAsync()
+  {
+    await InstanceTracking.Dispose(Model.GetHashCode());
+    GC.SuppressFinalize(this);
+  }
+
+  private static TestUser GetTestUser(string name) =>
+    TestUsers.GetOrAdd(
+      name,
+      n => Guid
+        .NewGuid()
+        .ToString()
+        .Apply(sub => new TestUser(
+          sub,
+          [
+            new Claim(JwtRegisteredClaimNames.Sub, sub),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim(JwtRegisteredClaimNames.Name, n),
+            new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
+          ])));
+
+  public async Task InsertEvents(params EventModelEvent[] evt)
+  {
+    await EventStoreClient.AppendToStreamAsync(
+      evt.GroupBy(e => e.GetStreamName()).Single().Key,
+      StreamState.Any,
+      Emitter.ToEventData(evt, null));
+    consistencyStateMachine.RegisterActivity();
+  }
+
+  /// <summary>
+  ///   Waits for the system to be in a consistent state.
+  /// </summary>
+  /// <param name="type">Type of consistency to wait for.</param>
+  /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
+  public async Task WaitForConsistency(ConsistencyWaitType type = ConsistencyWaitType.Tasks, int? timeoutMs = null) =>
+    await consistencyStateMachine.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, type);
 
   public async Task<CommandAcceptedResult> Upload()
   {
@@ -244,7 +270,7 @@ public record TestSetup(
         multipartContent.AddFile("file", new MemoryStream("banana"u8.ToArray()), "text.txt")
       )
       .ReceiveJson<CommandAcceptedResult>();
-    lastActivityAt = DateTime.UtcNow;
+    consistencyStateMachine.RegisterActivity();
     return result;
   }
 
@@ -255,7 +281,7 @@ public record TestSetup(
         multipartContent.AddFile("file", path)
       )
       .ReceiveJson<CommandAcceptedResult>();
-    lastActivityAt = DateTime.UtcNow;
+    consistencyStateMachine.RegisterActivity();
     return result;
   }
 
@@ -284,7 +310,7 @@ public record TestSetup(
     }
 
     await req.PostStringAsync(body);
-    lastActivityAt = DateTime.UtcNow;
+    consistencyStateMachine.RegisterActivity();
   }
 
   public async Task<CommandAcceptedResult> Command<C>(
@@ -306,7 +332,7 @@ public record TestSetup(
     var response = await req
       .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json"));
     var result = await response.GetJsonAsync<CommandAcceptedResult>();
-    lastActivityAt = DateTime.UtcNow;
+    consistencyStateMachine.RegisterActivity();
     return result;
   }
 
@@ -612,7 +638,7 @@ public record TestSetup(
         FrameworkFeatures.All,
         settings.HydrationParallelism),
       model,
-      ["http://localhost:4200"]);
+      [baseUrl]);
     try
     {
       InitializerSemaphore.Release();
@@ -630,7 +656,8 @@ public record TestSetup(
       eventStoreClient,
       model,
       1,
-      app.Services.GetRequiredService<ILogger<TestSetup>>());
+      app.Services.GetRequiredService<ILogger<TestSetup>>(),
+      new ConsistencyStateMachine(baseUrl));
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)
