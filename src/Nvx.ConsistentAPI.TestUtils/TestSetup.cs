@@ -102,8 +102,6 @@ public record TestSetup(
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
 
   private DateTime lastActivityAt = DateTime.UtcNow.AddSeconds(-1);
-  private DateTime lastIdleAt = DateTime.UtcNow.AddSeconds(-1);
-  private ConsistencyWaitType lastIdleType = ConsistencyWaitType.None;
 
   public async ValueTask DisposeAsync()
   {
@@ -166,9 +164,6 @@ public record TestSetup(
           ? 1_000
           : 150);
 
-    bool WasJustIdle() =>
-      lastIdleType.HasFlag(type) && DateTime.UtcNow - lastIdleAt < TimeSpan.FromMilliseconds(10);
-
     async Task<bool> IsConsistent()
     {
       try
@@ -178,11 +173,6 @@ public record TestSetup(
         if (IsActive())
         {
           return false;
-        }
-
-        if (WasJustIdle())
-        {
-          return true;
         }
 
         var status = await $"{Url}{CatchUp.Route}"
@@ -203,17 +193,6 @@ public record TestSetup(
         {
           lastActivityAt = DateTime.UtcNow;
         }
-
-        lastIdleAt =
-          daemonInsights.AreReadModelsUpToDate
-          || daemonInsights.AreDaemonsIdle
-            ? DateTime.UtcNow
-            : lastIdleAt;
-
-        lastIdleType =
-          (daemonInsights.AreReadModelsUpToDate ? ConsistencyWaitType.ReadModels : ConsistencyWaitType.None)
-          | (daemonInsights.AreDaemonsIdle ? ConsistencyWaitType.Daemons : ConsistencyWaitType.None)
-          | (daemonInsights.IsFullyIdle ? ConsistencyWaitType.Tasks : ConsistencyWaitType.None);
 
         return isConsistent;
       }
