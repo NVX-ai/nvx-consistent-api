@@ -102,6 +102,8 @@ public record TestSetup(
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
 
   private DateTime lastActivityAt = DateTime.UtcNow.AddSeconds(-1);
+  private ConsistencyWaitType lastConsistencyResult = ConsistencyWaitType.None;
+  private DateTime lastConsistencyResultStartedAt = DateTime.UtcNow;
 
   public async ValueTask DisposeAsync()
   {
@@ -140,6 +142,12 @@ public record TestSetup(
   /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
   public async Task WaitForConsistency(ConsistencyWaitType type = ConsistencyWaitType.Tasks, int? timeoutMs = null)
   {
+    if (type == ConsistencyWaitType.None)
+    {
+      return;
+    }
+
+    var startedAt = DateTime.UtcNow;
     var timeout = timeoutMs ?? WaitForCatchUpTimeout;
     var timer = Stopwatch.StartNew();
     // Wait until it's inactive and is seen as inconsistent
@@ -150,7 +158,7 @@ public record TestSetup(
         return;
       }
 
-      await Task.Delay(100);
+      await Task.Delay(Random.Shared.Next(100, 500));
     }
 
     // This will let go, but tests are expected to fail if consistency was not reached.
@@ -164,6 +172,9 @@ public record TestSetup(
           ? 1_000
           : 150);
 
+    bool IsAlreadyConsistent() =>
+      startedAt < lastConsistencyResultStartedAt && lastConsistencyResult.HasFlag(type);
+
     async Task<bool> IsConsistent()
     {
       try
@@ -173,6 +184,11 @@ public record TestSetup(
         if (IsActive())
         {
           return false;
+        }
+
+        if (IsAlreadyConsistent())
+        {
+          return true;
         }
 
         var status = await $"{Url}{CatchUp.Route}"
@@ -193,6 +209,18 @@ public record TestSetup(
         {
           lastActivityAt = DateTime.UtcNow;
         }
+
+        if (!daemonInsights.AreReadModelsUpToDate && !daemonInsights.AreDaemonsIdle)
+        {
+          return isConsistent;
+        }
+
+        lastConsistencyResultStartedAt = startedAt;
+
+        lastConsistencyResult =
+          (daemonInsights.AreReadModelsUpToDate ? ConsistencyWaitType.ReadModels : ConsistencyWaitType.None)
+          | (daemonInsights.AreDaemonsIdle ? ConsistencyWaitType.Daemons : ConsistencyWaitType.None)
+          | (daemonInsights.IsFullyIdle ? ConsistencyWaitType.Tasks : ConsistencyWaitType.None);
 
         return isConsistent;
       }
