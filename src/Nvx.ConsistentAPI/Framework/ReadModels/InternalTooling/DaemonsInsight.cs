@@ -145,6 +145,7 @@ internal static class DaemonsInsight
         isHydrating ? readModels.Length - catchingUpReadModels.Length : 0),
       await readModelDaemon.GetLingeringFailedHydrations(),
       processor.RunningTodoTasks,
+      await processor.AboutToRunTasks(),
       projectionDaemon.Insights(lastEventPosition),
       isHydrating ? await readModelDaemon.Insights(lastEventPosition) : null,
       dynamicConsistencyBoundaryDaemon.Insights(lastEventPosition),
@@ -158,6 +159,7 @@ public record DaemonsInsights(
   ReadModelsInsights ReadModels,
   FailedHydration[] FailedHydrations,
   RunningTodoTaskInsight[] Tasks,
+  RunningTodoTaskInsight[] AboutToRunTasks,
   ProjectorDaemonInsights ProjectorDaemon,
   HydrationDaemonInsights? HydrationDaemonInsights,
   DynamicConsistencyBoundaryDaemonInsights DynamicConsistencyBoundaryDaemonInsights,
@@ -175,7 +177,8 @@ public record DaemonsInsights(
     ProjectorDaemon is { PercentageComplete: 100, CatchUpPercentageComplete: 100, IsProjecting: false }
     && DynamicConsistencyBoundaryDaemonInsights.CurrentPercentageComplete == 100;
 
-  public bool IsFullyIdle => AreDaemonsIdle && AreReadModelsUpToDate && Tasks.Length == 0;
+  public bool IsFullyIdle =>
+    AreDaemonsIdle && AreReadModelsUpToDate && Tasks.Length == 0 && AboutToRunTasks.Length == 0;
 }
 
 public record ReadModelsInsights(int Total, int UpToDate);
