@@ -67,8 +67,8 @@ internal static class InstanceTracking
 
 internal class ConsistencyStateMachine(string url)
 {
-  private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private readonly SemaphoreSlim activitySemaphore = new(1);
+  private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private DateTime lastActivityAt = DateTime.UtcNow.AddSeconds(-1);
   private ConsistencyWaitType lastConsistencyResult = ConsistencyWaitType.None;
   private DateTime lastConsistencyResultStartedAt = DateTime.UtcNow;
@@ -103,7 +103,9 @@ internal class ConsistencyStateMachine(string url)
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() => DateTime.UtcNow - lastActivityAt < TimeSpan.FromMilliseconds(150);
+    bool IsActive() =>
+      DateTime.UtcNow - lastActivityAt
+      < TimeSpan.FromMilliseconds(type.HasFlag(ConsistencyWaitType.Tasks) ? 1_500 : 250);
 
     bool IsAlreadyConsistent() =>
       startedAt < lastConsistencyResultStartedAt && lastConsistencyResult.HasFlag(type);
