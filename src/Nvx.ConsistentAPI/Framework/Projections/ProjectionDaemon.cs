@@ -22,7 +22,6 @@ public class ProjectionDaemon(
   private const string SubscriptionVersion = "1";
   private static readonly SemaphoreSlim CatchUpLock = new(1);
   private string[] catchingUp = [];
-  private bool isDaemonCaughtUp;
   private ulong lastCatchUpProcessedPosition;
   private ulong lastProcessedPosition;
   private int projectedCount;
@@ -278,10 +277,8 @@ public class ProjectionDaemon(
                 lastProcessedPosition = checkpoint.CommitPosition;
                 break;
               case StreamMessage.CaughtUp:
-                isDaemonCaughtUp = true;
                 break;
               case StreamMessage.FellBehind:
-                isDaemonCaughtUp = false;
                 break;
             }
           }
@@ -289,7 +286,6 @@ public class ProjectionDaemon(
         catch (Exception ex)
         {
           logger.LogError(ex, "Error during projection daemon subscription");
-          isDaemonCaughtUp = false;
           await Task.Delay(500);
         }
       }

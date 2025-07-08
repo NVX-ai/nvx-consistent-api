@@ -27,7 +27,6 @@ internal class ReadModelHydrationDaemon(
   private readonly SemaphoreSlim semaphore = new(1);
 
   private readonly CentralHydrationStateMachine stateMachine = new(settings, logger);
-  private bool isCaughtUp;
 
   private bool isInitialized;
   private ulong? lastCheckpoint;
@@ -216,14 +215,12 @@ internal class ReadModelHydrationDaemon(
     {
       hydrationCountTracker?.Dispose();
       hydrationCountTracker = null;
-      isCaughtUp = true;
     }
 
     void StartTracker()
     {
       ClearTracker();
       hydrationCountTracker = new HydrationCountTracker(readModels.Length);
-      isCaughtUp = false;
     }
   }
 
