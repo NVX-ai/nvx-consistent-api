@@ -30,19 +30,27 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public BuildCustomFilter CustomFilterBuilder { get; init; } = (_, _, _) => new CustomFilter(null, [], null);
   public ReadModelDefaulter<Shape> Defaulter { get; init; } = (_, _, _) => None;
   private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false);
+  private bool isProcessing;
 
-  public SingleReadModelInsights Insights(ulong lastEventPosition)
+  public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
   {
+    var effectivePosition = lastEventPosition;
+    var prefixFilter = EventTypeFilter.Prefix(StreamPrefixes);
+    await foreach (var msg in eventStoreClient.ReadAllAsync(Direction.Backwards, Position.End, prefixFilter).Take(1))
+    {
+      effectivePosition = msg.Event.Position.CommitPosition;
+    }
+
     var currentPosition = lastProcessedEventPosition ?? currentCheckpointPosition ?? 0UL;
-    var percentageComplete = lastEventPosition == 0
+    var percentageComplete = effectivePosition == 0
       ? 100m
-      : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(lastEventPosition);
+      : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(effectivePosition);
     return new SingleReadModelInsights(
       DatabaseHandler<Shape>.TableName(typeof(Shape)),
       lastProcessedEventPosition,
       currentCheckpointPosition,
       true,
-      isCaughtUp ? 100 : percentageComplete);
+      isCaughtUp && !isProcessing ? 100 : percentageComplete);
   }
 
   public async Task ApplyTo(
@@ -150,7 +158,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
     TableDetails tableDetails,
     ILogger logger)
   {
-    var syncDelay = new Random().Next(300, 600);
+    var syncDelay = Random.Shared.Next(300, 600);
     var prefixFilter = StreamFilter.Prefix(StreamPrefixes);
     var filterOptions = new SubscriptionFilterOptions(prefixFilter);
     reset = async () =>
@@ -160,7 +168,6 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       return unit;
     };
     var processId = Guid.NewGuid();
-    var random = new Random();
     HydrationCountTracker? hydrationCountTracker = null;
 
     while (true)
@@ -174,7 +181,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       {
         if (!IsIdempotent && !await databaseHandler.TryAcquireLock(processId, SubCancelSource.Token))
         {
-          await Task.Delay(random.Next(500, 2_500), SubCancelSource.Token);
+          await Task.Delay(Random.Shared.Next(500, 2_500), SubCancelSource.Token);
           continue;
         }
 
@@ -201,6 +208,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
               var parsed = parser(evt);
               var relevantAggregators = Aggregators.Where(a => a.Processes(parsed)).ToArray();
               var canBeAggregated = relevantAggregators.Length != 0;
+              isProcessing = true;
               await parsed
                 .Async()
                 .Iter(async e =>
@@ -252,6 +260,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
               {
                 LastPosition = FromAll.After(evt.OriginalEvent.Position), LastSync = DateTime.UtcNow
               };
+              isProcessing = false;
               break;
             }
             case StreamMessage.AllStreamCheckpointReached(var pos):
@@ -264,6 +273,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                 currentCheckpointPosition = pos.CommitPosition;
               }
 
+              isProcessing = false;
               break;
             }
             case StreamMessage.CaughtUp:
@@ -293,6 +303,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       }
       finally
       {
+        isProcessing = false;
         activity?.Dispose();
         ClearTracker();
         await databaseHandler.ReleaseLock(processId);

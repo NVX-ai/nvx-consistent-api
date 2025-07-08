@@ -16,14 +16,13 @@ internal class DynamicConsistencyBoundaryDaemon(
   private ulong? currentSweepPosition;
   private int interestsRegisteredSinceStartup;
   private int interestsRemovedSinceStartup;
-  private bool isCaughtUp;
 
   private bool isSweepCompleted;
 
   public DynamicConsistencyBoundaryDaemonInsights Insights(ulong lastEventPositon) =>
     new(
       currentProcessedPosition ?? lastEventPositon,
-      isCaughtUp
+      lastEventPositon == 0
         ? 100m
         : 100m * Convert.ToDecimal(currentProcessedPosition ?? 0) / Convert.ToDecimal(lastEventPositon),
       currentSweepPosition,
@@ -59,12 +58,6 @@ internal class DynamicConsistencyBoundaryDaemon(
 
                 position = FromAll.After(re.Event.Position);
                 currentProcessedPosition = re.Event.Position.CommitPosition;
-                break;
-              case StreamMessage.CaughtUp:
-                isCaughtUp = true;
-                break;
-              case StreamMessage.FellBehind:
-                isCaughtUp = false;
                 break;
             }
           }

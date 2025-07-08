@@ -122,7 +122,9 @@ public class StandardFlowTest
       new AddProductPicture(productId, new AttachedFile(uploadResult.EntityId.Apply(Guid.Parse), null)));
 
     // Verify the background runners.
-    var readModel = await setup.ReadModel<UserRegistryOfNamedProductsReadModel>(setup.Auth.CandoSub);
+    var readModel = await setup.ReadModel<UserRegistryOfNamedProductsReadModel>(
+      setup.Auth.CandoSub,
+      waitType: ConsistencyWaitType.Tasks);
     Assert.True(100 <= readModel.Count, $"Expecting at least 100 products, got {readModel.Count}");
 
     await setup.FailingCommand(new CreateProduct(productId, productName, null), 409);
@@ -206,7 +208,9 @@ public class StandardFlowTest
     await setup.Ingest<ProductNameIngestor>(
       JsonConvert.SerializeObject(new ProductNameToBeIngested("Blah", ingestedProductId)));
 
-    var ingestedProduct = await setup.ReadModel<ProductStock>(ingestedProductId.ToString());
+    var ingestedProduct = await setup.ReadModel<ProductStock>(
+      ingestedProductId.ToString(),
+      waitType: ConsistencyWaitType.Tasks);
     Assert.Equal("Blah", ingestedProduct.Name);
 
     return;
@@ -264,7 +268,7 @@ public class StandardFlowTest
       await setup.Command(new RenameTenant(tenant1Id, newTenant1Name), true);
       await setup.Command(new RenameTenant(tenant3Id, newTenant3Name), true);
 
-      var canDoAfterRename = await setup.CurrentUser();
+      var canDoAfterRename = await setup.CurrentUser(waitType: ConsistencyWaitType.Tasks);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant3Id && td.TenantName == newTenant3Name);

@@ -45,23 +45,132 @@ internal static class InstanceTracking
         h.Auth,
         h.EventStoreClient,
         h.Model,
-        (settings ?? new TestSettings()).WaitForCatchUpTimeout);
+        (settings ?? new TestSettings()).WaitForCatchUpTimeout,
+        h.ConsistencyStateMachine);
     }
 
     var holder = await TestSetup.InitializeInternal(model, settings ?? new TestSettings());
     holder.Logger.LogInformation("Initialized test setup for {Hash}", hash);
     Holders[hash] = holder;
     Semaphore.Release();
-
     return new TestSetup(
       holder.Url,
       holder.Auth,
       holder.EventStoreClient,
       holder.Model,
-      (settings ?? new TestSettings()).WaitForCatchUpTimeout);
+      (settings ?? new TestSettings()).WaitForCatchUpTimeout,
+      holder.ConsistencyStateMachine);
   }
 
   internal static Task Dispose(int _) => Task.CompletedTask;
+}
+
+internal class ConsistencyStateMachine(string url)
+{
+  private readonly SemaphoreSlim activitySemaphore = new(1);
+  private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
+  private DateTime lastActivityAt = DateTime.UtcNow.AddSeconds(-1);
+  private ConsistencyWaitType lastConsistencyResult = ConsistencyWaitType.None;
+  private DateTime lastConsistencyResultStartedAt = DateTime.UtcNow;
+
+  public void RegisterActivity()
+  {
+    activitySemaphore.Wait();
+    lastActivityAt = DateTime.UtcNow;
+    activitySemaphore.Release();
+  }
+
+  public async Task WaitForConsistency(int timeout, ConsistencyWaitType type = ConsistencyWaitType.Tasks)
+  {
+    if (type == ConsistencyWaitType.None)
+    {
+      return;
+    }
+
+    var startedAt = DateTime.UtcNow;
+    var timer = Stopwatch.StartNew();
+    // Wait until it's inactive and is seen as inconsistent
+    while (timer.ElapsedMilliseconds < timeout)
+    {
+      if (await IsConsistent())
+      {
+        return;
+      }
+
+      await Task.Delay(Random.Shared.Next(100, 500));
+    }
+
+    // This will let go, but tests are expected to fail if consistency was not reached.
+    return;
+
+    bool IsActive() =>
+      DateTime.UtcNow - lastActivityAt
+      < TimeSpan.FromMilliseconds(type.HasFlag(ConsistencyWaitType.Tasks) ? 1_500 : 250);
+
+    bool IsAlreadyConsistent() =>
+      startedAt < lastConsistencyResultStartedAt && lastConsistencyResult.HasFlag(type);
+
+    async Task<bool> IsConsistent()
+    {
+      try
+      {
+        await waitForConsistencySemaphore.WaitAsync();
+
+        if (IsActive())
+        {
+          return false;
+        }
+
+        if (IsAlreadyConsistent())
+        {
+          return true;
+        }
+
+        var status = await $"{url}{CatchUp.Route}"
+          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
+          .GetJsonAsync<HydrationStatus>();
+
+        var daemonInsights = await $"{url}{DaemonsInsight.Route}"
+          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
+          .GetJsonAsync<DaemonsInsights>();
+
+        var isConsistent =
+          status.IsCaughtUp
+          && (!type.HasFlag(ConsistencyWaitType.ReadModels) || daemonInsights.AreReadModelsUpToDate)
+          && (!type.HasFlag(ConsistencyWaitType.Daemons) || daemonInsights.AreDaemonsIdle)
+          && (!type.HasFlag(ConsistencyWaitType.Tasks) || daemonInsights.IsFullyIdle);
+
+        if (!isConsistent)
+        {
+          RegisterActivity();
+        }
+
+        if (!daemonInsights.AreReadModelsUpToDate && !daemonInsights.AreDaemonsIdle)
+        {
+          return isConsistent;
+        }
+
+        lastConsistencyResultStartedAt = startedAt;
+
+        lastConsistencyResult =
+          (daemonInsights.AreReadModelsUpToDate ? ConsistencyWaitType.ReadModels : ConsistencyWaitType.None)
+          | (daemonInsights.AreDaemonsIdle ? ConsistencyWaitType.Daemons : ConsistencyWaitType.None)
+          | (daemonInsights.IsFullyIdle ? ConsistencyWaitType.Tasks : ConsistencyWaitType.None);
+
+        return isConsistent;
+      }
+      catch
+      {
+        lastActivityAt = DateTime.UtcNow;
+        await Task.Delay(5_000);
+        return false;
+      }
+      finally
+      {
+        waitForConsistencySemaphore.Release();
+      }
+    }
+  }
 }
 
 internal record TestSetupHolder(
@@ -70,16 +179,12 @@ internal record TestSetupHolder(
   EventStoreClient EventStoreClient,
   EventModel Model,
   int Count,
-  ILogger Logger);
+  ILogger Logger,
+  ConsistencyStateMachine ConsistencyStateMachine);
 
 internal record TestUser(string Sub, Claim[] Claims);
 
-public record TestSetup(
-  string Url,
-  TestAuth Auth,
-  EventStoreClient EventStoreClient,
-  EventModel Model,
-  int WaitForCatchUpTimeout) : IAsyncDisposable
+public class TestSetup : IAsyncDisposable
 {
   private const string SecretKey = "2EYZvr55gtbEDgVbCqMt2xk2kE7TPrvj";
 
@@ -98,6 +203,29 @@ public record TestSetup(
   private static readonly JwtSecurityTokenHandler TokenHandler = new();
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
+  private readonly ConsistencyStateMachine consistencyStateMachine;
+  private readonly int waitForCatchUpTimeout;
+
+  internal TestSetup(
+    string url,
+    TestAuth auth,
+    EventStoreClient eventStoreClient,
+    EventModel model,
+    int waitForCatchUpTimeout,
+    ConsistencyStateMachine consistencyStateMachine)
+  {
+    Url = url;
+    this.waitForCatchUpTimeout = waitForCatchUpTimeout;
+    Auth = auth;
+    EventStoreClient = eventStoreClient;
+    Model = model;
+    this.consistencyStateMachine = consistencyStateMachine;
+  }
+
+  public string Url { get; }
+  public TestAuth Auth { get; private set; }
+  public EventStoreClient EventStoreClient { get; }
+  public EventModel Model { get; }
 
   public async ValueTask DisposeAsync()
   {
@@ -120,63 +248,44 @@ public record TestSetup(
             new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
           ])));
 
-  public async Task InsertEvents(params EventModelEvent[] evt) =>
+  public async Task InsertEvents(params EventModelEvent[] evt)
+  {
     await EventStoreClient.AppendToStreamAsync(
       evt.GroupBy(e => e.GetStreamName()).Single().Key,
       StreamState.Any,
       Emitter.ToEventData(evt, null));
-
-  /// <summary>
-  ///   Waits for the system to be in a consistent state for three consecutive requests.
-  /// </summary>
-  /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
-  public async Task WaitForConsistency(int? timeoutMs = null)
-  {
-    var consistencyCounter = 0;
-    var timeout = timeoutMs ?? WaitForCatchUpTimeout;
-    var timer = Stopwatch.StartNew();
-    while (timer.ElapsedMilliseconds < timeout)
-    {
-      var wasConsistent = await IsConsistent();
-      consistencyCounter = wasConsistent ? consistencyCounter + 1 : 0;
-      if (consistencyCounter == 3)
-      {
-        return;
-      }
-
-      await Task.Delay(wasConsistent ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(250));
-    }
-
-    // This will let go, but tests are expected to fail if consistency was not reached.
-    return;
-
-    async Task<bool> IsConsistent()
-    {
-      var status = await $"{Url}{CatchUp.Route}"
-        .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-        .GetJsonAsync<HydrationStatus>();
-
-      var daemonInsights = await $"{Url}{DaemonsInsight.Route}"
-        .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-        .GetJsonAsync<DaemonsInsights>();
-
-      return status.IsCaughtUp && daemonInsights.IsFullyIdle;
-    }
+    consistencyStateMachine.RegisterActivity();
   }
 
-  public async Task<CommandAcceptedResult> Upload() =>
-    await $"{Url}/files/upload"
+  /// <summary>
+  ///   Waits for the system to be in a consistent state.
+  /// </summary>
+  /// <param name="type">Type of consistency to wait for.</param>
+  /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
+  public async Task WaitForConsistency(ConsistencyWaitType type = ConsistencyWaitType.Tasks, int? timeoutMs = null) =>
+    await consistencyStateMachine.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, type);
+
+  public async Task<CommandAcceptedResult> Upload()
+  {
+    var result = await $"{Url}/files/upload"
       .PostMultipartAsync(multipartContent =>
         multipartContent.AddFile("file", new MemoryStream("banana"u8.ToArray()), "text.txt")
       )
       .ReceiveJson<CommandAcceptedResult>();
+    consistencyStateMachine.RegisterActivity();
+    return result;
+  }
 
-  public async Task<CommandAcceptedResult> UploadPath(string path) =>
-    await $"{Url}/files/upload"
+  public async Task<CommandAcceptedResult> UploadPath(string path)
+  {
+    var result = await $"{Url}/files/upload"
       .PostMultipartAsync(multipartContent =>
         multipartContent.AddFile("file", path)
       )
       .ReceiveJson<CommandAcceptedResult>();
+    consistencyStateMachine.RegisterActivity();
+    return result;
+  }
 
   public async Task DownloadAndComparePath(Guid fileId, string path)
   {
@@ -203,6 +312,7 @@ public record TestSetup(
     }
 
     await req.PostStringAsync(body);
+    consistencyStateMachine.RegisterActivity();
   }
 
   public async Task<CommandAcceptedResult> Command<C>(
@@ -223,7 +333,9 @@ public record TestSetup(
 
     var response = await req
       .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json"));
-    return await response.GetJsonAsync<CommandAcceptedResult>();
+    var result = await response.GetJsonAsync<CommandAcceptedResult>();
+    consistencyStateMachine.RegisterActivity();
+    return result;
   }
 
   public async Task<ErrorResponse> FailingCommand<C>(
@@ -231,8 +343,10 @@ public record TestSetup(
     int responseCode,
     Guid? tenantId = null,
     bool asAdmin = false,
-    string? asUser = null)
+    string? asUser = null,
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
+    await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var result = await $"{Url}{tenancySegment}/commands/{Naming.ToSpinalCase<C>()}"
       .WithOAuthBearerToken(CreateTestJwt(asAdmin ? "admin" : asUser ?? "cando"))
@@ -259,9 +373,12 @@ public record TestSetup(
         .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json")))
       .StatusCode);
 
-  public async Task<UserSecurity> CurrentUser(bool asAdmin = false, string asUser = "cando")
+  public async Task<UserSecurity> CurrentUser(
+    bool asAdmin = false,
+    string asUser = "cando",
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
-    await WaitForConsistency();
+    await WaitForConsistency(waitType);
     return await $"{Url}/current-user"
       .WithOAuthBearerToken(CreateTestJwt(asAdmin ? "admin" : asUser))
       .GetJsonAsync<UserSecurity>();
@@ -271,9 +388,10 @@ public record TestSetup(
     bool asAdmin = false,
     Guid? tenantId = null,
     Dictionary<string, string[]>? queryParameters = null,
-    string asUser = "cando")
+    string asUser = "cando",
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
-    await WaitForConsistency();
+    await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var result = await (queryParameters ?? new Dictionary<string, string[]>())
       .Aggregate(
@@ -289,9 +407,10 @@ public record TestSetup(
     Dictionary<string, string[]>? queryParameters = null,
     bool asAdmin = false,
     Guid? tenantId = null,
-    string? asUser = null)
+    string? asUser = null,
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
-    await WaitForConsistency();
+    await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var result = await (queryParameters ?? new Dictionary<string, string[]>())
       .Aggregate(
@@ -307,9 +426,14 @@ public record TestSetup(
       .WithOAuthBearerToken(CreateTestJwt("admin"))
       .GetAsync();
 
-  public async Task ReadModelNotFound<Rm>(string id, Guid? tenantId = null, bool asAdmin = false, string? asUser = null)
+  public async Task ReadModelNotFound<Rm>(
+    string id,
+    Guid? tenantId = null,
+    bool asAdmin = false,
+    string? asUser = null,
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
-    await WaitForConsistency();
+    await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var response = await $"{Url}{tenancySegment}/read-models/{Naming.ToSpinalCase<Rm>()}/{id}"
       .WithOAuthBearerToken(CreateTestJwt(asAdmin ? "admin" : asUser ?? "cando"))
@@ -318,9 +442,11 @@ public record TestSetup(
     Assert.Equal(404, response.StatusCode);
   }
 
-  public async Task ForbiddenReadModel<Rm>(Guid? tenantId = null)
+  public async Task ForbiddenReadModel<Rm>(
+    Guid? tenantId = null,
+    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
   {
-    await WaitForConsistency();
+    await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var response = await $"{Url}{tenancySegment}/read-models/{Naming.ToSpinalCase<Rm>()}"
       .WithOAuthBearerToken(CreateTestJwt("nocando"))
@@ -514,7 +640,7 @@ public record TestSetup(
         FrameworkFeatures.All,
         settings.HydrationParallelism),
       model,
-      ["http://localhost:4200"]);
+      [baseUrl]);
     try
     {
       InitializerSemaphore.Release();
@@ -532,7 +658,8 @@ public record TestSetup(
       eventStoreClient,
       model,
       1,
-      app.Services.GetRequiredService<ILogger<TestSetup>>());
+      app.Services.GetRequiredService<ILogger<TestSetup>>(),
+      new ConsistencyStateMachine(baseUrl));
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)
@@ -618,4 +745,13 @@ public class TestSettings
     && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
       ? "mcr.microsoft.com/azure-storage/azurite:3.34.0-arm64"
       : "mcr.microsoft.com/azure-storage/azurite:3.34.0";
+}
+
+[Flags]
+public enum ConsistencyWaitType
+{
+  None = 0,
+  ReadModels = 1,
+  Daemons = 2,
+  Tasks = 7
 }

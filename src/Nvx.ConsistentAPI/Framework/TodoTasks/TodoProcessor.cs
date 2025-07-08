@@ -258,6 +258,10 @@ internal class TodoProcessor
 
       using var _ = new BatchTodoCountTracker(matchedTodos.Length);
       await matchedTodos.Select(ProcessOne).Parallel(10);
+      if (matchedTodos.Length == 0)
+      {
+        await Task.Delay(250);
+      }
     }
     catch (Exception ex)
     {

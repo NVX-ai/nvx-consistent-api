@@ -22,14 +22,14 @@ public class ProjectionDaemon(
   private const string SubscriptionVersion = "1";
   private static readonly SemaphoreSlim CatchUpLock = new(1);
   private string[] catchingUp = [];
-  private bool isDaemonCaughtUp;
   private ulong lastCatchUpProcessedPosition;
   private ulong lastProcessedPosition;
   private int projectedCount;
+  private bool isProjecting;
 
   public ProjectorDaemonInsights Insights(ulong lastEventPosition)
   {
-    var daemonPercentage = lastEventPosition == 0 || isDaemonCaughtUp
+    var daemonPercentage = lastEventPosition == 0
       ? 100m
       : Convert.ToDecimal(lastProcessedPosition) * 100m / Convert.ToDecimal(lastEventPosition);
     var catchUpPercentage = lastEventPosition == 0 || catchingUp.Length == 0
@@ -42,7 +42,8 @@ public class ProjectionDaemon(
       catchingUp,
       lastCatchUpProcessedPosition,
       Math.Min(100m, catchUpPercentage),
-      projectedCount);
+      projectedCount,
+      isProjecting);
   }
 
   public async Task Initialize()
@@ -174,7 +175,6 @@ public class ProjectionDaemon(
                 {
                   continue;
                 }
-
                 await projector.HandleEvent(evt, parser, fetcher, client);
                 Interlocked.Increment(ref projectedCount);
               }
@@ -224,8 +224,7 @@ public class ProjectionDaemon(
 
           await foreach (var message in client.SubscribeToAll(
                              position,
-                             filterOptions: new SubscriptionFilterOptions(
-                               StreamFilter.Prefix(projectors.Select(p => p.SourcePrefix).Distinct().ToArray())))
+                             filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()))
                            .Messages)
           {
             var hasProjected = false;
@@ -241,11 +240,14 @@ public class ProjectionDaemon(
                       continue;
                     }
 
+                    isProjecting = true;
                     await projector.HandleEvent(evt, parser, fetcher, client);
+                    isProjecting = false;
                     hasProjected = true;
                   }
                   catch (Exception ex)
                   {
+                    isProjecting = false;
                     logger.LogError(
                       ex,
                       "Error during projection daemon subscription for event {Event} with projector {Projector}, won't be retried",
@@ -275,10 +277,8 @@ public class ProjectionDaemon(
                 lastProcessedPosition = checkpoint.CommitPosition;
                 break;
               case StreamMessage.CaughtUp:
-                isDaemonCaughtUp = true;
                 break;
               case StreamMessage.FellBehind:
-                isDaemonCaughtUp = false;
                 break;
             }
           }
@@ -286,7 +286,6 @@ public class ProjectionDaemon(
         catch (Exception ex)
         {
           logger.LogError(ex, "Error during projection daemon subscription");
-          isDaemonCaughtUp = false;
           await Task.Delay(500);
         }
       }

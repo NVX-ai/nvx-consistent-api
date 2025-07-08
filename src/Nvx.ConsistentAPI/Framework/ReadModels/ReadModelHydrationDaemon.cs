@@ -27,20 +27,23 @@ internal class ReadModelHydrationDaemon(
   private readonly SemaphoreSlim semaphore = new(1);
 
   private readonly CentralHydrationStateMachine stateMachine = new(settings, logger);
-  private bool isCaughtUp;
 
   private bool isInitialized;
   private ulong? lastCheckpoint;
   private Position? lastPosition;
   internal FailedHydration[] FailedHydrations { get; private set; } = [];
 
-  public HydrationDaemonInsights Insights(ulong lastEventPosition)
+  public async Task<HydrationDaemonInsights> Insights(ulong lastEventPosition)
   {
     var currentPosition = lastPosition?.CommitPosition ?? 0UL;
-    var percentageComplete = lastEventPosition == 0 || isCaughtUp
+    var percentageComplete = lastEventPosition == 0
       ? 100m
       : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(lastEventPosition);
-    return new HydrationDaemonInsights(currentPosition, lastCheckpoint ?? 0, Math.Min(100m, percentageComplete));
+    return new HydrationDaemonInsights(
+      currentPosition,
+      lastCheckpoint ?? 0,
+      Math.Min(100m, percentageComplete),
+      await stateMachine.EventsBeingProcessedCount());
   }
 
   public bool IsUpToDate(Position? position) =>
@@ -212,16 +215,16 @@ internal class ReadModelHydrationDaemon(
     {
       hydrationCountTracker?.Dispose();
       hydrationCountTracker = null;
-      isCaughtUp = true;
     }
 
     void StartTracker()
     {
       ClearTracker();
       hydrationCountTracker = new HydrationCountTracker(readModels.Length);
-      isCaughtUp = false;
     }
   }
+
+  private readonly SemaphoreSlim lastPositionSemaphore = new(1);
 
   private async Task TryProcess(ResolvedEvent evt)
   {
@@ -278,7 +281,9 @@ internal class ReadModelHydrationDaemon(
             });
           await interestedTask;
         });
+      await lastPositionSemaphore.WaitAsync();
       lastPosition = evt.Event.Position > lastPosition ? evt.Event.Position : lastPosition;
+      lastPositionSemaphore.Release();
     }
     catch (Exception ex)
     {

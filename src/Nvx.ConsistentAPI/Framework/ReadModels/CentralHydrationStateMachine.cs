@@ -9,6 +9,19 @@ internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger 
   private readonly SemaphoreSlim hydrationSemaphore = new(settings.ParallelHydration, settings.ParallelHydration);
   private readonly List<(string stream, Task task)> hydrationTasks = [];
 
+  public async Task<int> EventsBeingProcessedCount()
+  {
+    try
+    {
+      await clearanceSemaphore.WaitAsync();
+      return hydrationTasks.Count(t => !t.task.IsCompleted);
+    }
+    finally
+    {
+      clearanceSemaphore.Release();
+    }
+  }
+
   public async Task Queue(ResolvedEvent evt, Func<ResolvedEvent, Task> tryProcess)
   {
     await hydrationSemaphore.WaitAsync();
