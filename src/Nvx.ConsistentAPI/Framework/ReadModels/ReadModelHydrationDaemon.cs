@@ -24,6 +24,8 @@ internal class ReadModelHydrationDaemon(
     new(settings.ReadModelConnectionString, logger);
 
   private readonly InterestFetcher interestFetcher = new(client, parser);
+
+  private readonly SemaphoreSlim lastPositionSemaphore = new(1);
   private readonly SemaphoreSlim semaphore = new(1);
 
   private readonly CentralHydrationStateMachine stateMachine = new(settings, logger);
@@ -139,6 +141,13 @@ internal class ReadModelHydrationDaemon(
       : FromAll.Start;
   }
 
+  private async Task UpdateLasPosition(Position? pos)
+  {
+    await lastPositionSemaphore.WaitAsync();
+    lastPosition = pos > lastPosition || lastPosition is null ? pos : lastPosition;
+    lastPositionSemaphore.Release();
+  }
+
   private async Task Hydrate()
   {
     HydrationCountTracker? hydrationCountTracker = null;
@@ -147,9 +156,10 @@ internal class ReadModelHydrationDaemon(
       try
       {
         var checkpoint = await GetCheckpoint();
-        lastPosition = checkpoint == FromAll.Start
+        Position? lastPositionCandidate = checkpoint == FromAll.Start
           ? null
           : new Position(checkpoint.ToUInt64().commitPosition, checkpoint.ToUInt64().preparePosition);
+        await UpdateLasPosition(lastPositionCandidate);
         lastCheckpoint = lastPosition?.CommitPosition;
         StartTracker();
 
@@ -224,8 +234,6 @@ internal class ReadModelHydrationDaemon(
     }
   }
 
-  private readonly SemaphoreSlim lastPositionSemaphore = new(1);
-
   private async Task TryProcess(ResolvedEvent evt)
   {
     try
@@ -239,12 +247,14 @@ internal class ReadModelHydrationDaemon(
               .GetCachedStreamRevision(@event.GetEntityId())
               .Match(cachedRevision => cachedRevision >= evt.Event.EventNumber.ToInt64(), () => false))
           {
+            await UpdateLasPosition(evt.Event.Position);
             return;
           }
 
           if (IsInterestEvent(@event))
           {
             await TryProcessInterestedEvent(@event);
+            await UpdateLasPosition(evt.Event.Position);
             return;
           }
 
@@ -258,6 +268,7 @@ internal class ReadModelHydrationDaemon(
           if (ableReadModels.Length == 0)
           {
             await interestedTask;
+            await UpdateLasPosition(evt.Event.Position);
             return;
           }
 
@@ -275,15 +286,14 @@ internal class ReadModelHydrationDaemon(
                       @event.GetEntityId(),
                       evt.OriginalEvent.Position.ToString(),
                       logger);
+                    await UpdateLasPosition(evt.Event.Position);
                     return unit;
                   })
                 .Parallel();
             });
           await interestedTask;
+          await UpdateLasPosition(evt.Event.Position);
         });
-      await lastPositionSemaphore.WaitAsync();
-      lastPosition = evt.Event.Position > lastPosition ? evt.Event.Position : lastPosition;
-      lastPositionSemaphore.Release();
     }
     catch (Exception ex)
     {
@@ -411,7 +421,7 @@ internal class ReadModelHydrationDaemon(
         new { Checkpoint = serialized },
         transaction);
       await transaction.CommitAsync();
-      lastPosition = position;
+      await UpdateLasPosition(position);
     }
     catch
     {

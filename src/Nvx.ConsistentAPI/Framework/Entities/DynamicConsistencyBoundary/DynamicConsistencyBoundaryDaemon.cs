@@ -22,16 +22,20 @@ internal class DynamicConsistencyBoundaryDaemon(
   public DynamicConsistencyBoundaryDaemonInsights Insights(ulong lastEventPositon) =>
     new(
       currentProcessedPosition ?? lastEventPositon,
-      lastEventPositon == 0
-        ? 100m
-        : 100m * Convert.ToDecimal(currentProcessedPosition ?? 0) / Convert.ToDecimal(lastEventPositon),
+      Math.Min(
+        100,
+        lastEventPositon == 0
+          ? 100m
+          : 100m * Convert.ToDecimal(currentProcessedPosition ?? 0) / Convert.ToDecimal(lastEventPositon)),
       currentSweepPosition,
       isSweepCompleted,
       interestsRegisteredSinceStartup,
       interestsRemovedSinceStartup,
-      lastEventPositon == 0 || isSweepCompleted
-        ? 100m
-        : 100m * Convert.ToDecimal(currentSweepPosition ?? 0) / Convert.ToDecimal(lastEventPositon));
+      Math.Min(
+        100,
+        lastEventPositon == 0 || isSweepCompleted
+          ? 100m
+          : 100m * Convert.ToDecimal(currentSweepPosition ?? 0) / Convert.ToDecimal(lastEventPositon)));
 
   internal void Initialize()
   {

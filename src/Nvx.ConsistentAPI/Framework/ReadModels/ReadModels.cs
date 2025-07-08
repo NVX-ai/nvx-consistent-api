@@ -66,11 +66,11 @@ public class ReadModelDefinition<Shape, EntityShape> :
         Convert.ToDecimal(lastEventPosition));
     return Task.FromResult(
       new SingleReadModelInsights(
-      DatabaseHandler<Shape>.TableName(typeof(Shape)),
-      lastProcessedEventPosition,
-      lastCheckpointPosition,
-      false,
-      percentageComplete));
+        DatabaseHandler<Shape>.TableName(typeof(Shape)),
+        lastProcessedEventPosition,
+        lastCheckpointPosition,
+        false,
+        Math.Min(100, percentageComplete)));
   }
 
   public async Task ApplyTo(

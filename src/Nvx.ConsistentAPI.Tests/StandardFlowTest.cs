@@ -123,8 +123,7 @@ public class StandardFlowTest
 
     // Verify the background runners.
     var readModel = await setup.ReadModel<UserRegistryOfNamedProductsReadModel>(
-      setup.Auth.CandoSub,
-      waitType: ConsistencyWaitType.Tasks);
+      setup.Auth.CandoSub);
     Assert.True(100 <= readModel.Count, $"Expecting at least 100 products, got {readModel.Count}");
 
     await setup.FailingCommand(new CreateProduct(productId, productName, null), 409);
@@ -209,8 +208,7 @@ public class StandardFlowTest
       JsonConvert.SerializeObject(new ProductNameToBeIngested("Blah", ingestedProductId)));
 
     var ingestedProduct = await setup.ReadModel<ProductStock>(
-      ingestedProductId.ToString(),
-      waitType: ConsistencyWaitType.Tasks);
+      ingestedProductId.ToString());
     Assert.Equal("Blah", ingestedProduct.Name);
 
     return;
@@ -268,7 +266,7 @@ public class StandardFlowTest
       await setup.Command(new RenameTenant(tenant1Id, newTenant1Name), true);
       await setup.Command(new RenameTenant(tenant3Id, newTenant3Name), true);
 
-      var canDoAfterRename = await setup.CurrentUser(waitType: ConsistencyWaitType.Tasks);
+      var canDoAfterRename = await setup.CurrentUser();
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant3Id && td.TenantName == newTenant3Name);
