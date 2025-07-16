@@ -105,12 +105,14 @@ internal class ConsistencyStateMachine(string url)
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-
     bool IsAlreadyConsistent()
     {
       var startedAgo = DateTime.UtcNow - startedAt;
       var hasCheckRunLongEnough = startedAgo > GetMinimumDurationForCheck(type);
-      return startedAt < lastConsistentAt && hasCheckRunLongEnough;
+      var lastConsistentAtAgo = DateTime.UtcNow - lastConsistentAt;
+      var isLastConsistencyOldEnough = lastConsistentAtAgo > GetMinimumDurationForCheck(type);
+      return startedAt < lastConsistentAt
+             && (hasCheckRunLongEnough || isLastConsistencyOldEnough);
     }
 
     async Task<bool> IsConsistent()
