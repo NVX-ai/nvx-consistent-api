@@ -236,17 +236,23 @@ internal class TodoProcessor
 
   internal RunningTodoTaskInsight[] RunningTodoTasks { get; private set; } = [];
 
-  internal async Task<RunningTodoTaskInsight[]> AboutToRunTasks() =>
-    await GetAboutToRunTodos()
+  internal async Task<RunningTodoTaskInsight[]> AboutToRunTasks()
+  {
+    var currentlyRunning = RunningTodoTasks;
+    return await GetAboutToRunTodos()
       .Map(ts => ts
         .Choose(todoReadModel =>
           Tasks
             .FirstOrNone(t => t.Type == todoReadModel.Name)
             .Map(todoTaskDefinition => (todoTaskDefinition, todoReadModel))
         )
+        .Where(t => currentlyRunning.All(rt =>
+          rt.TaskType != t.todoTaskDefinition.Type
+          && rt.RelatedEntityIds.All(id => id != t.todoReadModel.RelatedEntityId)))
         .GroupBy(t => t.todoTaskDefinition.Type)
         .Select(g => new RunningTodoTaskInsight(g.Key, g.Select(t => t.todoReadModel.RelatedEntityId).ToArray()))
         .ToArray());
+  }
 
   internal void Initialize() => RunPeriodically(async () => await Process());
 
