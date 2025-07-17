@@ -1,18 +1,18 @@
 # Event
-In the Consitent API framework, an event is represented as anything that has happened in the system, it always carries enough information to identify its [entity](./entity.md), and the type itself is informative.
+In the Consistent API framework, an event is represented as anything that has happened in the system, it always carries enough information to identify its [entity](./entity.md), and the type itself is informative.
 
 As an example, these two events carry the same fields:
 ```cs
 public record StockAdded(Guid ProductId, int Amount) : EventModelEvent
 {
   public string GetStreamName() => Stock.GetStreamName(ProductId);
-  public string GetEntityId() => ProductId.ToString();
+  public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockRetrieved(Guid ProductId, int Amount) : EventModelEvent
 {
   public string GetStreamName() => Stock.GetStreamName(ProductId);
-  public string GetEntityId() => ProductId.ToString();
+  public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 ```
 
@@ -22,8 +22,10 @@ The interface `EventModelEvent` looks like this:
 ```cs
 public interface EventModelEvent
 {
+  public string EventType => GetType().Apply(Naming.ToSpinalCase);
   string GetStreamName();
-  string GetEntityId();
+  public byte[] ToBytes() => EventSerialization.ToBytes(this);
+  StrongId GetEntityId();
 }
 ```
 
