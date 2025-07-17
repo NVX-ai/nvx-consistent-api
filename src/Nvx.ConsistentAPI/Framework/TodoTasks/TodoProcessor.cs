@@ -534,6 +534,8 @@ internal class TodoProcessor
     try
     {
       const int batchSize = 2_500;
+      var aMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
+      var now = DateTime.UtcNow;
 
       var query = $"""
                       SELECT TOP (@BatchSize)
@@ -549,20 +551,20 @@ internal class TodoProcessor
                           [RetryCount]
                       FROM [{tableName}]
                       WHERE
-                          ([StartsAt] <= DATEADD(MINUTE, 1, GETUTCDATE())) AND
-                          [ExpiresAt] > GETUTCDATE() AND
-                          ([LockedUntil] IS NULL OR [LockedUntil] < DATEADD(MINUTE, 1, GETUTCDATE()))
+                          ([StartsAt] <= @aMinuteAgo) AND
+                          [ExpiresAt] > @now AND
+                          ([LockedUntil] IS NULL OR [LockedUntil] < @aMinuteAgo)
                       ORDER BY [StartsAt] ASC
                    """;
 
       await using var connection = new SqlConnection(Settings.ReadModelConnectionString);
       return await connection.QueryAsync<TodoEventModelReadModel>(
         query,
-        new { BatchSize = batchSize });
+        new { BatchSize = batchSize, aMinuteAgo, now });
     }
     catch (Exception ex)
     {
-      Logger.LogError(ex, "Failed getting available todos");
+      Logger.LogError(ex, "Failed getting about to run todos");
       throw;
     }
   }
@@ -572,6 +574,7 @@ internal class TodoProcessor
     try
     {
       const int batchSize = 2_500;
+      var now = DateTime.UtcNow;
 
       var query = $"""
                               SELECT TOP (@BatchSize)
@@ -587,16 +590,16 @@ internal class TodoProcessor
                                   [RetryCount]
                               FROM [{tableName}]
                               WHERE
-                                  [StartsAt] <= GETUTCDATE() AND
-                                  [ExpiresAt] > GETUTCDATE() AND
-                                  ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
+                                  [StartsAt] <= @now AND
+                                  [ExpiresAt] > @now AND
+                                  ([LockedUntil] IS NULL OR [LockedUntil] < @now)
                               ORDER BY [StartsAt] ASC
                    """;
 
       await using var connection = new SqlConnection(Settings.ReadModelConnectionString);
       return await connection.QueryAsync<TodoEventModelReadModel>(
         query,
-        new { BatchSize = batchSize });
+        new { BatchSize = batchSize, now });
     }
     catch (Exception ex)
     {
