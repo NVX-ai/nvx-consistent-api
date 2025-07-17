@@ -103,3 +103,5 @@ Setting it will enable the framework to trace and log to azure app insights. **B
 Url of an open telemetry service, we use prometheus at the moment.
 ### ToolingEndpointsApiKey
 The framework provides several endpoints with telemetry specific to event sourcing such as read model hydration state or running integrations, said endpoints can be accessed by application admins and via this key.
+### EnabledFeatures
+These flags are self explanatory after the features of the framework are understood, most features can be toggled independently, but Tasks necessitate read models and projections.
