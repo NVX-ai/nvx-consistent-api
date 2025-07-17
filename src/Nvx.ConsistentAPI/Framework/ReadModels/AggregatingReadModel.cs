@@ -17,6 +17,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   private ulong? currentCheckpointPosition;
 
   private bool isCaughtUp;
+  private bool isProcessing;
   private ulong? lastProcessedEventPosition;
   private Func<Task<Unit>> reset = () => unit.ToTask();
   public required ReadModelAggregator[] Aggregators { get; init; }
@@ -30,7 +31,6 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public BuildCustomFilter CustomFilterBuilder { get; init; } = (_, _, _) => new CustomFilter(null, [], null);
   public ReadModelDefaulter<Shape> Defaulter { get; init; } = (_, _, _) => None;
   private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false);
-  private bool isProcessing;
 
   public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
   {
@@ -50,7 +50,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       lastProcessedEventPosition,
       currentCheckpointPosition,
       true,
-      isCaughtUp && !isProcessing ? 100 : percentageComplete);
+      Math.Min(100, isCaughtUp && !isProcessing ? 100 : percentageComplete));
   }
 
   public async Task ApplyTo(

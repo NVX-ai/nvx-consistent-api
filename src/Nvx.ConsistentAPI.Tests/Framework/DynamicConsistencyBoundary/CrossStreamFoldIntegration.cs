@@ -17,8 +17,7 @@ public class CrossStreamFoldIntegration
     await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, tag));
 
     var withTags = await setup.ReadModel<EntityThatDependsReadModel>(
-      entityThatDependsId.ToString(),
-      waitType: ConsistencyWaitType.Tasks);
+      entityThatDependsId.ToString());
     Assert.Single(withTags.DependedOnTags);
     Assert.Contains(withTags.DependedOnTags, t => t == tag);
 
@@ -27,15 +26,13 @@ public class CrossStreamFoldIntegration
     await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
 
     var moreTags = await setup.ReadModel<EntityThatDependsReadModel>(
-      entityThatDependsId.ToString(),
-      waitType: ConsistencyWaitType.Tasks);
+      entityThatDependsId.ToString());
     Assert.Equal(4, moreTags.DependedOnTags.Length);
     Assert.Contains(moreTags.DependedOnTags, t => t == tag);
 
     await setup.InsertEvents(new EntityThatDependsOnRemovedDependency(entityThatDependsId, entityDependedOnId));
     var afterDependencyRemoved = await setup.ReadModel<EntityThatDependsReadModel>(
-      entityThatDependsId.ToString(),
-      waitType: ConsistencyWaitType.Tasks);
+      entityThatDependsId.ToString());
     Assert.Empty(afterDependencyRemoved.DependsOnIds);
     Assert.Empty(afterDependencyRemoved.DependedOnTags);
 
@@ -43,8 +40,7 @@ public class CrossStreamFoldIntegration
 
     var updatedTagsAfterDependencyRemoved =
       await setup.ReadModel<EntityThatDependsReadModel>(
-        entityThatDependsId.ToString(),
-        waitType: ConsistencyWaitType.Tasks);
+        entityThatDependsId.ToString());
     Assert.Empty(updatedTagsAfterDependencyRemoved.DependsOnIds);
     Assert.Empty(updatedTagsAfterDependencyRemoved.DependedOnTags);
   }
@@ -58,8 +54,7 @@ public class CrossStreamFoldIntegration
     await setup.InsertEvents(new EntityDependedOnHeardAboutEntityThatDepends(entityDependedOnId, entityThatDependsId));
 
     var readModel = await setup.ReadModel<EntityThatDependsReadModel>(
-      entityThatDependsId.ToString(),
-      waitType: ConsistencyWaitType.Tasks);
+      entityThatDependsId.ToString());
     Assert.Empty(readModel.DependedOnTags);
     Assert.Contains(readModel.DependsOnIds, t => t == entityDependedOnId);
   }

@@ -35,6 +35,7 @@ internal static class InstanceTracking
   {
     var hash = model.GetHashCode();
     await Semaphore.WaitAsync();
+    var testSettings = settings ?? new TestSettings();
     if (Holders.TryGetValue(hash, out var h))
     {
       Holders[hash] = h with { Count = h.Count + 1 };
@@ -45,11 +46,11 @@ internal static class InstanceTracking
         h.Auth,
         h.EventStoreClient,
         h.Model,
-        (settings ?? new TestSettings()).WaitForCatchUpTimeout,
+        testSettings.WaitForCatchUpTimeout,
         h.ConsistencyStateMachine);
     }
 
-    var holder = await TestSetup.InitializeInternal(model, settings ?? new TestSettings());
+    var holder = await TestSetup.InitializeInternal(model, testSettings);
     holder.Logger.LogInformation("Initialized test setup for {Hash}", hash);
     Holders[hash] = holder;
     Semaphore.Release();
@@ -58,7 +59,7 @@ internal static class InstanceTracking
       holder.Auth,
       holder.EventStoreClient,
       holder.Model,
-      (settings ?? new TestSettings()).WaitForCatchUpTimeout,
+      testSettings.WaitForCatchUpTimeout,
       holder.ConsistencyStateMachine);
   }
 
@@ -67,59 +68,58 @@ internal static class InstanceTracking
 
 internal class ConsistencyStateMachine(string url)
 {
-  private readonly SemaphoreSlim activitySemaphore = new(1);
+  private const int BaseDelayMilliseconds = 250;
+  private const int MaxDelayMilliseconds = 15_000;
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
-  private DateTime lastActivityAt = DateTime.UtcNow.AddSeconds(-1);
-  private ConsistencyWaitType lastConsistencyResult = ConsistencyWaitType.None;
-  private DateTime lastConsistencyResultStartedAt = DateTime.UtcNow;
+  private DateTime lastConsistentAt = DateTime.MinValue;
 
-  public void RegisterActivity()
+  private int testsWaiting;
+
+  private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
-    activitySemaphore.Wait();
-    lastActivityAt = DateTime.UtcNow;
-    activitySemaphore.Release();
+    const int maxSteps = MaxDelayMilliseconds / BaseDelayMilliseconds;
+    var steps = Math.Min(maxSteps, 1 + testsWaiting);
+    var increment = Math.Max(1, steps);
+    var minimumDelayMs = waitType switch
+    {
+      ConsistencyWaitType.Short => BaseDelayMilliseconds,
+      ConsistencyWaitType.Medium => MaxDelayMilliseconds / 2,
+      _ => MaxDelayMilliseconds
+    };
+    var milliseconds = Math.Max(minimumDelayMs, increment * BaseDelayMilliseconds);
+    return TimeSpan.FromMilliseconds(milliseconds);
   }
 
-  public async Task WaitForConsistency(int timeout, ConsistencyWaitType type = ConsistencyWaitType.Tasks)
+  public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
   {
-    if (type == ConsistencyWaitType.None)
-    {
-      return;
-    }
-
     var startedAt = DateTime.UtcNow;
+    Interlocked.Increment(ref testsWaiting);
     var timer = Stopwatch.StartNew();
-    // Wait until it's inactive and is seen as inconsistent
-    while (timer.ElapsedMilliseconds < timeout)
+    while (timer.ElapsedMilliseconds < timeout && !await IsConsistent())
     {
-      if (await IsConsistent())
-      {
-        return;
-      }
-
       await Task.Delay(Random.Shared.Next(100, 500));
     }
+
+    Interlocked.Decrement(ref testsWaiting);
 
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsActive() =>
-      DateTime.UtcNow - lastActivityAt
-      < TimeSpan.FromMilliseconds(type.HasFlag(ConsistencyWaitType.Tasks) ? 1_500 : 250);
-
-    bool IsAlreadyConsistent() =>
-      startedAt < lastConsistencyResultStartedAt && lastConsistencyResult.HasFlag(type);
+    bool IsAlreadyConsistent()
+    {
+      var startedAgo = DateTime.UtcNow - startedAt;
+      var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
+      var lastConsistentAtAgo = DateTime.UtcNow - lastConsistentAt;
+      var isLastConsistencyOldEnough = lastConsistentAtAgo > GetMinimumDelayForCheck(type);
+      return startedAt < lastConsistentAt
+             && (hasCheckRunLongEnough || isLastConsistencyOldEnough);
+    }
 
     async Task<bool> IsConsistent()
     {
       try
       {
         await waitForConsistencySemaphore.WaitAsync();
-
-        if (IsActive())
-        {
-          return false;
-        }
 
         if (IsAlreadyConsistent())
         {
@@ -133,35 +133,25 @@ internal class ConsistencyStateMachine(string url)
         var daemonInsights = await $"{url}{DaemonsInsight.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<DaemonsInsights>();
+        var startedAgo = DateTime.UtcNow - startedAt;
+        var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
+        var lastEventEmittedAgo = DateTime.UtcNow - daemonInsights.LastEventEmittedAt;
+        var isLastEventOldEnough = lastEventEmittedAgo > GetMinimumDelayForCheck(type);
 
         var isConsistent =
           status.IsCaughtUp
-          && (!type.HasFlag(ConsistencyWaitType.ReadModels) || daemonInsights.AreReadModelsUpToDate)
-          && (!type.HasFlag(ConsistencyWaitType.Daemons) || daemonInsights.AreDaemonsIdle)
-          && (!type.HasFlag(ConsistencyWaitType.Tasks) || daemonInsights.IsFullyIdle);
+          && daemonInsights.IsFullyIdle
+          && (hasCheckRunLongEnough || isLastEventOldEnough);
 
-        if (!isConsistent)
+        if (isConsistent)
         {
-          RegisterActivity();
+          lastConsistentAt = daemonInsights.LastEventEmittedAt;
         }
-
-        if (!daemonInsights.AreReadModelsUpToDate && !daemonInsights.AreDaemonsIdle)
-        {
-          return isConsistent;
-        }
-
-        lastConsistencyResultStartedAt = startedAt;
-
-        lastConsistencyResult =
-          (daemonInsights.AreReadModelsUpToDate ? ConsistencyWaitType.ReadModels : ConsistencyWaitType.None)
-          | (daemonInsights.AreDaemonsIdle ? ConsistencyWaitType.Daemons : ConsistencyWaitType.None)
-          | (daemonInsights.IsFullyIdle ? ConsistencyWaitType.Tasks : ConsistencyWaitType.None);
 
         return isConsistent;
       }
       catch
       {
-        lastActivityAt = DateTime.UtcNow;
         await Task.Delay(5_000);
         return false;
       }
@@ -248,22 +238,24 @@ public class TestSetup : IAsyncDisposable
             new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
           ])));
 
-  public async Task InsertEvents(params EventModelEvent[] evt)
-  {
+  public async Task InsertEvents(params EventModelEvent[] evt) =>
     await EventStoreClient.AppendToStreamAsync(
       evt.GroupBy(e => e.GetStreamName()).Single().Key,
       StreamState.Any,
       Emitter.ToEventData(evt, null));
-    consistencyStateMachine.RegisterActivity();
-  }
 
   /// <summary>
   ///   Waits for the system to be in a consistent state.
   /// </summary>
-  /// <param name="type">Type of consistency to wait for.</param>
+  /// <param name="waitType">
+  ///   Type of consistency wait, Short works for most cases, but for multistep workflows, Long is
+  ///   recommended.
+  /// </param>
   /// <param name="timeoutMs">Overload of the settings timeout to wait for consistency.</param>
-  public async Task WaitForConsistency(ConsistencyWaitType type = ConsistencyWaitType.Tasks, int? timeoutMs = null) =>
-    await consistencyStateMachine.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, type);
+  public async Task WaitForConsistency(
+    ConsistencyWaitType waitType = ConsistencyWaitType.Medium,
+    int? timeoutMs = null) =>
+    await consistencyStateMachine.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, waitType);
 
   public async Task<CommandAcceptedResult> Upload()
   {
@@ -272,7 +264,6 @@ public class TestSetup : IAsyncDisposable
         multipartContent.AddFile("file", new MemoryStream("banana"u8.ToArray()), "text.txt")
       )
       .ReceiveJson<CommandAcceptedResult>();
-    consistencyStateMachine.RegisterActivity();
     return result;
   }
 
@@ -283,7 +274,6 @@ public class TestSetup : IAsyncDisposable
         multipartContent.AddFile("file", path)
       )
       .ReceiveJson<CommandAcceptedResult>();
-    consistencyStateMachine.RegisterActivity();
     return result;
   }
 
@@ -312,7 +302,6 @@ public class TestSetup : IAsyncDisposable
     }
 
     await req.PostStringAsync(body);
-    consistencyStateMachine.RegisterActivity();
   }
 
   public async Task<CommandAcceptedResult> Command<C>(
@@ -334,7 +323,6 @@ public class TestSetup : IAsyncDisposable
     var response = await req
       .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json"));
     var result = await response.GetJsonAsync<CommandAcceptedResult>();
-    consistencyStateMachine.RegisterActivity();
     return result;
   }
 
@@ -344,7 +332,7 @@ public class TestSetup : IAsyncDisposable
     Guid? tenantId = null,
     bool asAdmin = false,
     string? asUser = null,
-    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
+    ConsistencyWaitType waitType = ConsistencyWaitType.Short)
   {
     await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
@@ -376,7 +364,7 @@ public class TestSetup : IAsyncDisposable
   public async Task<UserSecurity> CurrentUser(
     bool asAdmin = false,
     string asUser = "cando",
-    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
+    ConsistencyWaitType waitType = ConsistencyWaitType.Short)
   {
     await WaitForConsistency(waitType);
     return await $"{Url}/current-user"
@@ -389,7 +377,7 @@ public class TestSetup : IAsyncDisposable
     Guid? tenantId = null,
     Dictionary<string, string[]>? queryParameters = null,
     string asUser = "cando",
-    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
+    ConsistencyWaitType waitType = ConsistencyWaitType.Short)
   {
     await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
@@ -408,7 +396,7 @@ public class TestSetup : IAsyncDisposable
     bool asAdmin = false,
     Guid? tenantId = null,
     string? asUser = null,
-    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
+    ConsistencyWaitType waitType = ConsistencyWaitType.Short)
   {
     await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
@@ -431,7 +419,7 @@ public class TestSetup : IAsyncDisposable
     Guid? tenantId = null,
     bool asAdmin = false,
     string? asUser = null,
-    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
+    ConsistencyWaitType waitType = ConsistencyWaitType.Short)
   {
     await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
@@ -444,7 +432,7 @@ public class TestSetup : IAsyncDisposable
 
   public async Task ForbiddenReadModel<Rm>(
     Guid? tenantId = null,
-    ConsistencyWaitType waitType = ConsistencyWaitType.ReadModels)
+    ConsistencyWaitType waitType = ConsistencyWaitType.Short)
   {
     await WaitForConsistency(waitType);
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
@@ -747,11 +735,9 @@ public class TestSettings
       : "mcr.microsoft.com/azure-storage/azurite:3.34.0";
 }
 
-[Flags]
 public enum ConsistencyWaitType
 {
-  None = 0,
-  ReadModels = 1,
-  Daemons = 2,
-  Tasks = 7
+  Short,
+  Medium,
+  Long
 }

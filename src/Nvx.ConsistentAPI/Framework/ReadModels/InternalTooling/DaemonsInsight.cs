@@ -145,6 +145,7 @@ internal static class DaemonsInsight
         isHydrating ? readModels.Length - catchingUpReadModels.Length : 0),
       await readModelDaemon.GetLingeringFailedHydrations(),
       processor.RunningTodoTasks,
+      await processor.AboutToRunTasks(),
       projectionDaemon.Insights(lastEventPosition),
       isHydrating ? await readModelDaemon.Insights(lastEventPosition) : null,
       dynamicConsistencyBoundaryDaemon.Insights(lastEventPosition),
@@ -158,6 +159,7 @@ public record DaemonsInsights(
   ReadModelsInsights ReadModels,
   FailedHydration[] FailedHydrations,
   RunningTodoTaskInsight[] Tasks,
+  RunningTodoTaskInsight[] AboutToRunTasks,
   ProjectorDaemonInsights ProjectorDaemon,
   HydrationDaemonInsights? HydrationDaemonInsights,
   DynamicConsistencyBoundaryDaemonInsights DynamicConsistencyBoundaryDaemonInsights,
@@ -165,17 +167,18 @@ public record DaemonsInsights(
   ulong LastEventPosition)
 {
   public bool AreReadModelsUpToDate =>
-    CatchingUpReadModels.All(rm => rm.PercentageComplete == 100)
+    CatchingUpReadModels.All(rm => rm.PercentageComplete >= 100)
     && ReadModels.Total == ReadModels.UpToDate
     && FailedHydrations.Length == 0
     && (HydrationDaemonInsights is null
-        || (HydrationDaemonInsights.PercentageComplete == 100 && HydrationDaemonInsights.EventsBeingProcessed == 0));
+        || (HydrationDaemonInsights.PercentageComplete >= 100 && HydrationDaemonInsights.EventsBeingProcessed == 0));
 
   public bool AreDaemonsIdle =>
-    ProjectorDaemon is { PercentageComplete: 100, CatchUpPercentageComplete: 100, IsProjecting: false }
-    && DynamicConsistencyBoundaryDaemonInsights.CurrentPercentageComplete == 100;
+    ProjectorDaemon is { PercentageComplete: >= 100, CatchUpPercentageComplete: >= 100, IsProjecting: false }
+    && DynamicConsistencyBoundaryDaemonInsights.CurrentPercentageComplete >= 100;
 
-  public bool IsFullyIdle => AreDaemonsIdle && AreReadModelsUpToDate && Tasks.Length == 0;
+  public bool IsFullyIdle =>
+    AreDaemonsIdle && AreReadModelsUpToDate && Tasks.Length == 0 && AboutToRunTasks.Length == 0;
 }
 
 public record ReadModelsInsights(int Total, int UpToDate);

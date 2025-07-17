@@ -38,8 +38,7 @@ public class RolesIntegration
     await setup.Command(new AssignTenantRole(userSub, roleId), true, tenantId);
     var user = await setup.ReadModel<UserSecurityReadModel>(
       userSub,
-      asAdmin: true,
-      waitType: ConsistencyWaitType.Tasks);
+      asAdmin: true);
     Assert.Contains(user.TenantPermissions[tenantId], p => p == ActUponPermissionsAndRolesEntity.Permission);
   }
 
@@ -55,8 +54,7 @@ public class RolesIntegration
     await setup.Command(new AddPermissionToRole(roleId, anotherPermission), true, tenantId);
     var user = await setup.ReadModel<UserSecurityReadModel>(
       userSub,
-      asAdmin: true,
-      waitType: ConsistencyWaitType.Tasks);
+      asAdmin: true);
     Assert.Contains(user.TenantPermissions[tenantId], p => p == ActUponPermissionsAndRolesEntity.Permission);
     Assert.Contains(user.TenantPermissions[tenantId], p => p == newPermission);
     Assert.Contains(user.TenantPermissions[tenantId], p => p == anotherPermission);
