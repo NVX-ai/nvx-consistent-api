@@ -46,7 +46,7 @@ Event Modeling is a twist over Event Sourcing that aims to streamline most line 
 Events are grouped together when they interact with the same concept of our application (known as an "aggregate" in Domain Driven Design), all events relating to a product's stock, would go into the stock lane, while event relating to purchases, would go into the order lane.
 
 ### Audiences
-A system is consumed by a user, which can be a person, but also an application calling our API, in any case, those interactions will be grouped by one or more audiences. Customer support will not interact with our webshop in the same way as the marketing team or the buyers.
+A system is consumed by a user, which can be a person, but also an application calling our API, in any case, those interactions will be grouped by one or more audiences. Customer support will not interact with our web shop in the same way as the marketing team or the buyers.
 
 ### Todo Tasks
 A concept to abstract integrations. Any time our system needs to reach to the outside, a task is defined for every step of the integration, this removes the need for complex concepts like sagas.

@@ -25,8 +25,51 @@ public record GeneratorSettings(
   string? AzureSignalRConnectionString,
   Option<Action<WebApplicationBuilder>> BuilderCustomizations,
   Option<Action<SwaggerGenOptions>> SwaggerCustomizations,
-  Option<Action<WebApplication>> AppCustomizations);
+  Option<Action<WebApplication>> AppCustomizations,
+  LoggingSettings LoggingSettings,
+  string ToolingEndpointsApiKey,
+  FrameworkFeatures EnabledFeatures = FrameworkFeatures.All,
+  int ParallelHydration = 25);
 ```
+
+```cs
+public class LoggingSettings
+{
+  public string? LogsFolder { get; init; }
+  public string? AzureInstrumentationKey { get; init; }
+  public LogLevel LogLevel { get; init; } = LogLevel.Trace;
+  public bool UseConsoleLogger { get; init; } = true;
+  public string? TracingOpenTelemetryEndpoint { get; init; }
+  public LogFileRollInterval LogFileRollInterval { get; init; } = LogFileRollInterval.Hour;
+  public int LogDaysToKeep { get; init; } = 7;
+  public bool AddMetricsAndTracingToConsole { get; init; } = false;
+}
+```
+
+```cs
+public enum FrameworkFeatures
+{
+  None = 0,
+  ReadModelHydration = 1 << 0,
+  ReadModelEndpoints = 1 << 1,
+  StaticEndpoints = 1 << 2,
+  SystemEndpoints = 1 << 3,
+  Commands = 1 << 4,
+  Projections = 1 << 5,
+  Tasks = 1 << 6,
+  Ingestors = 1 << 7,
+
+  All = ReadModelHydration
+        | ReadModelEndpoints
+        | StaticEndpoints
+        | SystemEndpoints
+        | Commands
+        | Projections
+        | Tasks
+        | Ingestors
+}
+```
+
 
 ## Port
 An optional startup port, it is currently used for testing purposes.
@@ -51,3 +94,12 @@ Customizations to the web application builder.
 Customizations to the swagger generator.
 ### AppCustomizations
 Customizations to the web application.
+### LoggingSettings
+#### LogFolder
+Setting this value will direct serilog to store activity logs in the indicated folder.
+#### AzureInstrumentationKey
+Setting it will enable the framework to trace and log to azure app insights. **By default the framework is properly chatty, watch out for storage costs**.
+#### TracingOpenTelemetryEndpoint
+Url of an open telemetry service, we use prometheus at the moment.
+### ToolingEndpointsApiKey
+The framework provides several endpoints with telemetry specific to event sourcing such as read model hydration state or running integrations, said endpoints can be accessed by application admins and via this key.
