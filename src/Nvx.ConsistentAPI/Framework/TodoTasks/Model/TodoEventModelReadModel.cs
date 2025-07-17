@@ -1,4 +1,5 @@
-﻿using EventStore.Client;
+﻿using System.ComponentModel.DataAnnotations;
+using EventStore.Client;
 
 namespace Nvx.ConsistentAPI;
 
@@ -7,9 +8,11 @@ public record TodoEventModelReadModel(
   string RelatedEntityId,
   DateTime StartsAt,
   DateTime ExpiresAt,
+  [MaxLength(int.MaxValue)]
   string JsonData,
   string Name,
   DateTime? LockedUntil,
+  [MaxLength(int.MaxValue)]
   string? SerializedRelatedEntityId,
   Position? EventPosition,
   int RetryCount) : EventModelReadModel

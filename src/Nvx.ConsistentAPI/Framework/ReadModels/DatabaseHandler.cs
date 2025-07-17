@@ -1,4 +1,5 @@
-﻿using System.Data;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Data;
 using System.Reflection;
 using System.Text;
 using Dapper;
@@ -76,6 +77,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
   private readonly bool isUserBound;
   private readonly ILogger logger;
   private readonly Type shapeType;
+  private readonly (PropertyInfo pi, int maxLength)[] stringProperties;
   private readonly string tableName;
 
   public DatabaseHandler(string connectionString, ILogger logger)
@@ -103,6 +105,11 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     isMultiTenant = shapeType
       .GetInterfaces()
       .Any(i => i.Name == nameof(MultiTenantReadModel) && i.Namespace == typeof(MultiTenantReadModel).Namespace);
+    stringProperties = shapeType
+      .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+      .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) == typeof(string))
+      .Select(p => (p, GetStringMaxLength(p.PropertyType, p.Name)))
+      .ToArray();
   }
 
   public string TraceableUpsertSql { get; }
@@ -251,11 +258,9 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     sb.AppendLine("BEGIN");
     sb.AppendLine($"CREATE TABLE {tableName} (");
 
-    var properties = shapeType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-
-    foreach (var prop in properties)
+    foreach (var prop in shapeType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
     {
-      var sqlType = MapToSqlType(prop.PropertyType, prop.Name, shapeType);
+      var sqlType = MapToSqlType(prop.PropertyType, prop.Name);
       if (sqlType == "OBJECT")
       {
         sb.AppendLine($"    [{prop.Name}] NVARCHAR(MAX) {Nullability(prop)},");
@@ -291,7 +296,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
 
   private static string Nullability(PropertyInfo prop) => prop.IsNullable() ? "NULL" : "NOT NULL";
 
-  internal static string MapToSqlType(Type columnType, string columnName, Type? shapeType = null)
+  internal static string MapToSqlType(Type columnType, string columnName)
   {
     var underlyingType = Nullable.GetUnderlyingType(columnType) ?? columnType;
 
@@ -302,13 +307,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       _ when underlyingType == typeof(float) => "REAL",
       _ when underlyingType == typeof(double) => "FLOAT",
       _ when underlyingType == typeof(bool) => "BIT",
-      _ when underlyingType == typeof(string) =>
-        columnName switch
-        {
-          "Id" => "NVARCHAR(256)",
-          "JsonData" when shapeType == typeof(TodoEventModelReadModel) => "NVARCHAR(MAX)",
-          _ => "NVARCHAR(1024)"
-        },
+      _ when underlyingType == typeof(string) => $"NVARCHAR({StringMaxLength()})",
       _ when underlyingType == typeof(char) => "NCHAR(1)",
       _ when underlyingType == typeof(DateTime) => "DATETIME2",
       _ when underlyingType == typeof(DateOnly) => "DATETIME2",
@@ -317,7 +316,29 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       _ when underlyingType == typeof(decimal) => "DECIMAL(18, 2)",
       _ => "OBJECT"
     };
+
+    string StringMaxLength() =>
+      GetStringMaxLength(columnType, columnName) switch
+      {
+        int.MaxValue => "MAX",
+        var l => l.ToString()
+      };
   }
+
+  private static int GetStringMaxLength(Type columnType, string columnName) =>
+    columnType.GetCustomAttribute<MaxLengthAttribute>() switch
+    {
+      { } a => a.Length,
+      _ => columnType.GetCustomAttribute<StringLengthAttribute>() switch
+      {
+        { } a => a.MaximumLength,
+        _ => columnName switch
+        {
+          "Id" => 256,
+          _ => 1024
+        }
+      }
+    };
 
   public static string TableName(Type type) =>
     $"{type.Name}{TypeHasher.ComputeTypeHash(type)}{DatabaseHandler.VersionSuffix}";
@@ -565,6 +586,18 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     {
       var parameters = new DynamicParameters(rm);
       parameters.AddDynamicParams(traceabilityFields);
+      foreach (var prop in stringProperties)
+      {
+        var strValue = prop.pi.GetValue(rm) as string;
+        if (string.IsNullOrEmpty(strValue))
+        {
+          parameters.Add(prop.pi.Name, strValue);
+          continue;
+        }
+
+        parameters.Add(prop.pi.Name, strValue.Length > prop.maxLength ? strValue[..prop.maxLength] : strValue);
+      }
+
       await connection.ExecuteAsync(TraceableUpsertSql, parameters);
       foreach (var prop in arrayProperties)
       {
@@ -842,6 +875,23 @@ public class DateTimeTypeHandler : SqlMapper.ITypeHandler
 
     return value;
   }
+}
+
+public class StringClampingHandler(int maxLength) : SqlMapper.ITypeHandler
+{
+  public void SetValue(IDbDataParameter parameter, object value)
+  {
+    var strValue = value as string;
+    if (string.IsNullOrEmpty(strValue))
+    {
+      parameter.Value = strValue;
+      return;
+    }
+
+    parameter.Value = strValue.Length > maxLength ? strValue[..maxLength] : strValue;
+  }
+
+  public object? Parse(Type destinationType, object value) => value;
 }
 
 public class DateOnlyTypeHandler : SqlMapper.TypeHandler<DateOnly>

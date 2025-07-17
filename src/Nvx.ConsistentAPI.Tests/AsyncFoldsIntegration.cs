@@ -17,5 +17,10 @@ public class AsyncFoldsIntegration
     Assert.Equal("Renamed Child 1", parentReadModel.Children.Single(c => c.PersonId == child1Id).Name);
     Assert.Equal("Child 2", parentReadModel.Children.Single(c => c.PersonId == child2Id).Name);
     Assert.Equal("Renamed Child 1", child1ReadModel.Name);
+
+    var longName = string.Join(string.Empty, Enumerable.Range(0, 2000).Select(n => (n % 10).ToString()));
+    await setup.Command(new RenamePerson(child1Id, longName));
+    var renamedChild1ReadModel = await setup.ReadModel<PersonReadModel>(child1Id.ToString());
+    Assert.Equal(longName[..1024], renamedChild1ReadModel.Name);
   }
 }

@@ -467,13 +467,7 @@ public class CommandDefinition<Shape, Entity> : EventModelingCommandArtifact
   private Result<Shape, ApiError> Validate(Shape command) =>
     command
       .Validate()
-      .Apply(err => err
-        .Concat(
-          from sp in stringProperties
-          let value = (string?)sp.GetValue(command)
-          where (value?.Length ?? 0) > 1024
-          select $"{sp.Name} lenght must be less than 1024 characters")
-        .ToArray())
+      .ToArray()
       .Apply<string[], Result<Shape, ApiError>>(err => err.Length == 0 ? command : new ValidationError(err));
 
   public override int GetHashCode() => routeSegment.GetHashCode();
