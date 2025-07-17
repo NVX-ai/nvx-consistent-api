@@ -14,3 +14,6 @@ Event Modelling Framework, built and maintained by NVX.ai.
     1. Fetcher.
     2. Database handler.
 1. Expose those utilities via the test framework.
+
+# Documentation
+[Head here to access the documentation](./docs/README.md).
