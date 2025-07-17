@@ -141,7 +141,7 @@ internal class ReadModelHydrationDaemon(
       : FromAll.Start;
   }
 
-  private async Task UpdateLasPosition(Position? pos)
+  private async Task UpdateLastPosition(Position? pos)
   {
     await lastPositionSemaphore.WaitAsync();
     lastPosition = pos > lastPosition || lastPosition is null ? pos : lastPosition;
@@ -159,7 +159,7 @@ internal class ReadModelHydrationDaemon(
         Position? lastPositionCandidate = checkpoint == FromAll.Start
           ? null
           : new Position(checkpoint.ToUInt64().commitPosition, checkpoint.ToUInt64().preparePosition);
-        await UpdateLasPosition(lastPositionCandidate);
+        await UpdateLastPosition(lastPositionCandidate);
         lastCheckpoint = lastPosition?.CommitPosition;
         StartTracker();
 
@@ -247,14 +247,14 @@ internal class ReadModelHydrationDaemon(
               .GetCachedStreamRevision(@event.GetEntityId())
               .Match(cachedRevision => cachedRevision >= evt.Event.EventNumber.ToInt64(), () => false))
           {
-            await UpdateLasPosition(evt.Event.Position);
+            await UpdateLastPosition(evt.Event.Position);
             return;
           }
 
           if (IsInterestEvent(@event))
           {
             await TryProcessInterestedEvent(@event);
-            await UpdateLasPosition(evt.Event.Position);
+            await UpdateLastPosition(evt.Event.Position);
             return;
           }
 
@@ -268,7 +268,7 @@ internal class ReadModelHydrationDaemon(
           if (ableReadModels.Length == 0)
           {
             await interestedTask;
-            await UpdateLasPosition(evt.Event.Position);
+            await UpdateLastPosition(evt.Event.Position);
             return;
           }
 
@@ -286,13 +286,13 @@ internal class ReadModelHydrationDaemon(
                       @event.GetEntityId(),
                       evt.OriginalEvent.Position.ToString(),
                       logger);
-                    await UpdateLasPosition(evt.Event.Position);
+                    await UpdateLastPosition(evt.Event.Position);
                     return unit;
                   })
                 .Parallel();
             });
           await interestedTask;
-          await UpdateLasPosition(evt.Event.Position);
+          await UpdateLastPosition(evt.Event.Position);
         });
     }
     catch (Exception ex)
@@ -421,7 +421,7 @@ internal class ReadModelHydrationDaemon(
         new { Checkpoint = serialized },
         transaction);
       await transaction.CommitAsync();
-      await UpdateLasPosition(position);
+      await UpdateLastPosition(position);
     }
     catch
     {
