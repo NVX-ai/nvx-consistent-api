@@ -68,25 +68,25 @@ internal static class InstanceTracking
 
 internal class ConsistencyStateMachine(string url)
 {
-  private const int BaseDurationMilliseconds = 250;
-  private const int MaxDurationMilliseconds = 15_000;
+  private const int BaseDelayMilliseconds = 250;
+  private const int MaxDelayMilliseconds = 15_000;
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private DateTime lastConsistentAt = DateTime.MinValue;
 
   private int testsWaiting;
 
-  private TimeSpan GetMinimumDurationForCheck(ConsistencyWaitType waitType)
+  private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
-    const int maxSteps = MaxDurationMilliseconds / BaseDurationMilliseconds;
+    const int maxSteps = MaxDelayMilliseconds / BaseDelayMilliseconds;
     var steps = Math.Min(maxSteps, 1 + testsWaiting);
     var increment = Math.Max(1, steps);
-    var minimumDurationMs = waitType switch
+    var minimumDelayMs = waitType switch
     {
-      ConsistencyWaitType.Short => BaseDurationMilliseconds,
-      ConsistencyWaitType.Medium => MaxDurationMilliseconds / 2,
-      _ => MaxDurationMilliseconds
+      ConsistencyWaitType.Short => BaseDelayMilliseconds,
+      ConsistencyWaitType.Medium => MaxDelayMilliseconds / 2,
+      _ => MaxDelayMilliseconds
     };
-    var milliseconds = Math.Max(minimumDurationMs, increment * BaseDurationMilliseconds);
+    var milliseconds = Math.Max(minimumDelayMs, increment * BaseDelayMilliseconds);
     return TimeSpan.FromMilliseconds(milliseconds);
   }
 
@@ -108,9 +108,9 @@ internal class ConsistencyStateMachine(string url)
     bool IsAlreadyConsistent()
     {
       var startedAgo = DateTime.UtcNow - startedAt;
-      var hasCheckRunLongEnough = startedAgo > GetMinimumDurationForCheck(type);
+      var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
       var lastConsistentAtAgo = DateTime.UtcNow - lastConsistentAt;
-      var isLastConsistencyOldEnough = lastConsistentAtAgo > GetMinimumDurationForCheck(type);
+      var isLastConsistencyOldEnough = lastConsistentAtAgo > GetMinimumDelayForCheck(type);
       return startedAt < lastConsistentAt
              && (hasCheckRunLongEnough || isLastConsistencyOldEnough);
     }
@@ -134,9 +134,9 @@ internal class ConsistencyStateMachine(string url)
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<DaemonsInsights>();
         var startedAgo = DateTime.UtcNow - startedAt;
-        var hasCheckRunLongEnough = startedAgo > GetMinimumDurationForCheck(type);
+        var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
         var lastEventEmittedAgo = DateTime.UtcNow - daemonInsights.LastEventEmittedAt;
-        var isLastEventOldEnough = lastEventEmittedAgo > GetMinimumDurationForCheck(type);
+        var isLastEventOldEnough = lastEventEmittedAgo > GetMinimumDelayForCheck(type);
 
         var isConsistent =
           status.IsCaughtUp
