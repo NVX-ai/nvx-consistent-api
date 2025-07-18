@@ -4,9 +4,13 @@ A command represents an intent to perform an action in the system, it is always 
 ```cs
 public record RetrieveStock(Guid ProductId, int Amount) : EventModelCommand<Stock>
 {
-  public Option<string> TryGetEntityId() => ProductId.ToString();
+  public Option<StrongId> TryGetEntityId(Option<UserSecurity> user) => new StrongGuid(ProductId);
 
-  public Result<EventInsertion, ApiError> Decide(Option<Stock> entity, Option<UserSecurity> user) =>
+  public Result<EventInsertion, ApiError> Decide(
+    Option<Stock> entity,
+    Option<UserSecurity> user,
+    FileUpload[] files
+  ) =>
     Amount <= entity.Map(e => e.Amount).DefaultValue(0)
       ? new ExistingStream(new StockRetrieved(ProductId, Amount))
       : new ConflictError("There was not enough stock");
@@ -23,12 +27,12 @@ public record RetrieveStock(Guid ProductId, int Amount) : EventModelCommand<Stoc
 new CommandDefinition<RetrieveStock, Stock>
 {
   Description = "Reduces the stock of a product, will be rejected if the amount greater than the available stock.",
-  Auth = new RoleRequired("inventory-management"),
+  Auth = new PermissionRequired("inventory-management"),
   UsesValidationRules = false
 }
 ```
 
-## Shape inteface
+## Shape interface
 ### TryGetEntityId
 This method returns the id of the entity related to the command if it's possible to know it from the command. Often, commands create a new entity, so this method returns `None` if it's not possible to know the id. In such cases, one often generate a random ID from a Guid, or the entity might be calculated from some information from the user.
 
@@ -52,9 +56,9 @@ There are a series of functions to reduce boilerplate when implementing the `Dec
 public record RetrieveStock(Guid ProductId, int Amount) : EventModelCommand<Stock>
 {
   public Result<EventInsertion, ApiError> Decide(Option<Stock> entity, Option<UserSecurity> user) =>
-    this.Require(entity, e => 
-      Amount <= e.Amount 
-        ? new ExistingStream(new StockRetrieved(ProductId, Amount)) 
+    this.Require(entity, e =>
+      Amount <= e.Amount
+        ? new ExistingStream(new StockRetrieved(ProductId, Amount))
         : new ConflictError("There was not enough stock")
     );
 }
@@ -110,10 +114,10 @@ This property is used to describe the command, it's usually a one-line descripti
 This property is used to define the authentication requirements for the command, it can be one of the following types:
 
 - `Everyone` means that any user can execute the command even if they are not authenticated.
-- `EveryoneAuthenticated` means that any authenticated user can execute the command, regardless of roles.
-- `RoleRequired` means that the user must have the specified role to execute the command.
-- `AllRolesRequired` means that the user must have **all** the specified roles to execute the command.
-- `OneRoleRequired` means that the user must have **at least one** of the specified roles to execute the command.
+- `EveryoneAuthenticated` means that any authenticated user can execute the command, regardless of permissions.
+- `PermissionRequired` means that the user must have the specified permission to execute the command.
+- `AllPermissionsRequired` means that the user must have **all** the specified permissions to execute the command.
+- `OnePermissionRequired` means that the user must have **at least one** of the specified permissions to execute the command.
 
 > This property is optional, if it is not set, the framework will use the `Everyone` authentication.
 ### UsesValidationRules
