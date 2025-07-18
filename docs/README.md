@@ -57,6 +57,7 @@ With the concepts introduced, we can now see how the framework allows us to impl
 - [Getting started](./framework/getting-started.md).
 - [Functional programming concepts](./framework/functional-programming-concepts.md).
 - [The event](./framework/event.md).
+- [The strong id](./framework/strong-id.md).
 - [The entity](./framework/entity.md), the framework's representation of the swim lane.
 - [The command](./framework/command.md).
 - [The read model](./framework/read-model.md).
