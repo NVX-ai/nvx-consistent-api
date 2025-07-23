@@ -55,7 +55,7 @@ var app = await Generator.GetWebApp(
 app.Run();
 return;
 
-async Task<string> GetAdminSubjectId()
+async Task<string> GetAdminSubjectId(long secondsElapsed = 0)
 {
   var credentials = new PasswordGrantFlow
   {
@@ -68,7 +68,7 @@ async Task<string> GetAdminSubjectId()
   using var scopesApi = ApiClientFactory.Create<ClientScopesApi>(httpClient);
   using var scopeMappingApi = ApiClientFactory.Create<ProtocolMappersApi>(httpClient);
   var stopWatch = Stopwatch.StartNew();
-  while (stopWatch.Elapsed.TotalSeconds < 45)
+  while (stopWatch.Elapsed.TotalSeconds < 45 - secondsElapsed)
   {
     try
     {
@@ -89,7 +89,7 @@ async Task<string> GetAdminSubjectId()
         return administrator.Id;
       }
 
-      return await GetAdminSubjectId();
+      return await GetAdminSubjectId(secondsElapsed + stopWatch.ElapsedMilliseconds / 1_000);
     }
     catch
     {
