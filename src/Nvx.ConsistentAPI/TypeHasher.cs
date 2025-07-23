@@ -50,9 +50,9 @@ public static class TypeHasher
       var isString = underlyingType == typeof(string);
       var hasMaxLenght = property.HasAttribute<MaxLengthAttribute>();
       var hasStringLength = property.HasAttribute<StringLengthAttribute>();
-      var isLenghtConstrainedString = isString && (hasMaxLenght || hasStringLength);
+      var isLengthConstrainedString = isString && (hasMaxLenght || hasStringLength);
 
-      if (isLenghtConstrainedString)
+      if (isLengthConstrainedString)
       {
         var maxLength = DatabaseHandler.GetStringMaxLength(property);
         var lengthBytes = Encoding.UTF8.GetBytes($"maxLength-{maxLength}");
