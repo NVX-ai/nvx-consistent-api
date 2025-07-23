@@ -8,11 +8,11 @@ public record TodoEventModelReadModel(
   string RelatedEntityId,
   DateTime StartsAt,
   DateTime ExpiresAt,
-  [MaxLength(int.MaxValue)]
+  [property: MaxLength(int.MaxValue)]
   string JsonData,
   string Name,
   DateTime? LockedUntil,
-  [MaxLength(int.MaxValue)]
+  [property: MaxLength(int.MaxValue)]
   string? SerializedRelatedEntityId,
   Position? EventPosition,
   int RetryCount) : EventModelReadModel
