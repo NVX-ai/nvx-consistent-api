@@ -606,7 +606,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
 
         var clampedValue = strValue.Length > prop.maxLength
           ? new StringInfo(strValue).SubstringByTextElements(0, prop.maxLength)
-            : strValue;
+          : strValue;
         parameters.Add(prop.pi.Name, clampedValue);
       }
 
