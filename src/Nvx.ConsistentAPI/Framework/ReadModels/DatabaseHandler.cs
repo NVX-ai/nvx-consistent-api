@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Data;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using Dapper;
@@ -603,8 +604,8 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
           continue;
         }
 
-        var clampedValue = strValue.Length > prop.maxLength 
-            ? new StringInfo(strValue).SubstringByTextElements(0, prop.maxLength) 
+        var clampedValue = strValue.Length > prop.maxLength
+          ? new StringInfo(strValue).SubstringByTextElements(0, prop.maxLength)
             : strValue;
         parameters.Add(prop.pi.Name, clampedValue);
       }
