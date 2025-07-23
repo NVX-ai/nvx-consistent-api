@@ -6,7 +6,7 @@ namespace Nvx.ConsistentAPI;
 public record UserNotificationReadModel(
   string Id,
   string UserSub,
-  [property: MaxLength(StringSizes.Message)]
+  [property: MaxLength(StringSizes.Maximum)]
   string Message,
   string MessageType,
   string? RelatedEntityId,
@@ -46,7 +46,7 @@ public record UserNotificationReadModel(
 public record UserNotificationDeletedReadModel(
   string Id,
   string UserSub,
-  [property: MaxLength(StringSizes.Message)]
+  [property: MaxLength(StringSizes.Maximum)]
   string Message,
   string MessageType,
   string? RelatedEntityId,

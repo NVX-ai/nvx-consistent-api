@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Nvx.ConsistentAPI.Framework;
 
 namespace Nvx.ConsistentAPI;
 
@@ -35,17 +36,24 @@ public interface DatabaseHandler
   }
 
   internal static int GetStringMaxLength(PropertyInfo propertyInfo) =>
+    TryGetComponentModelMaxLength(propertyInfo) switch
+    {
+      { } a => a,
+      _ => propertyInfo.Name switch
+      {
+        "Id" => StringSizes.InlinedId,
+        _ => StringSizes.Default
+      }
+    };
+
+  private static int? TryGetComponentModelMaxLength(PropertyInfo propertyInfo) =>
     propertyInfo.GetCustomAttribute<MaxLengthAttribute>() switch
     {
       { } a => a.Length,
       _ => propertyInfo.GetCustomAttribute<StringLengthAttribute>() switch
       {
         { } a => a.MaximumLength,
-        _ => propertyInfo.Name switch
-        {
-          "Id" => 256,
-          _ => 1024
-        }
+        _ => null
       }
     };
 }
