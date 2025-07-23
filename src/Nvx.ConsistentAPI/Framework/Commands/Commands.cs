@@ -10,16 +10,6 @@ using Nvx.ConsistentAPI.Framework;
 
 namespace Nvx.ConsistentAPI;
 
-using JsonSerializer = JsonSerializer;
-
-public record JsonLogicValidationResult(string[] Errors)
-{
-  public Result<Unit, ApiError> ToResult() =>
-    Errors.Length != 0
-      ? new ValidationError(Errors)
-      : unit;
-}
-
 public class CommandDefinition<Shape, Entity> : EventModelingCommandArtifact
   where Entity : EventModelEntity<Entity>
   where Shape : EventModelCommand
@@ -45,9 +35,6 @@ public class CommandDefinition<Shape, Entity> : EventModelingCommandArtifact
 
   private readonly string[] invalidIdempotencyKeys = ["undefined", "", "null", "nan", "nil", "none", "empty"];
   private readonly string routeSegment = Naming.ToSpinalCase<Shape>();
-
-  private readonly PropertyInfo[] stringProperties =
-    typeof(Shape).GetProperties().Where(p => p.PropertyType == typeof(string)).ToArray();
 
   public Option<string> Description { private get; init; } = None;
   public CustomAuthorization<Entity, Shape>? CustomAuthorization { private get; init; }
