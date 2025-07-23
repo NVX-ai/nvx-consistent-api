@@ -33,6 +33,21 @@ public interface DatabaseHandler
     var shorterTableName = $"{tableName[..^toRemove].Replace("ReadModel", string.Empty)}{VersionSuffix}";
     return $"{shorterTableName}{columnName}";
   }
+
+  internal static int GetStringMaxLength(PropertyInfo propertyInfo) =>
+    propertyInfo.GetCustomAttribute<MaxLengthAttribute>() switch
+    {
+      { } a => a.Length,
+      _ => propertyInfo.GetCustomAttribute<StringLengthAttribute>() switch
+      {
+        { } a => a.MaximumLength,
+        _ => propertyInfo.Name switch
+        {
+          "Id" => 256,
+          _ => 1024
+        }
+      }
+    };
 }
 
 public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
@@ -108,7 +123,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     stringProperties = shapeType
       .GetProperties(BindingFlags.Public | BindingFlags.Instance)
       .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) == typeof(string))
-      .Select(p => (p, GetStringMaxLength(p.PropertyType, p.Name)))
+      .Select(p => (p, DatabaseHandler.GetStringMaxLength(p)))
       .ToArray();
   }
 
@@ -235,7 +250,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     foreach (var prop in arrayProperties)
     {
       var propTableName = DatabaseHandler.GetArrayPropTableName(prop.Name, tableName);
-      var sqlType = MapToSqlType(prop.PropertyType.GetElementType()!, prop.Name);
+      var sqlType = MapToSqlType(prop, true);
       var sb = new StringBuilder();
       sb.AppendLine($"IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '{propTableName}')");
       sb.AppendLine("BEGIN");
@@ -260,7 +275,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
 
     foreach (var prop in shapeType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
     {
-      var sqlType = MapToSqlType(prop.PropertyType, prop.Name);
+      var sqlType = MapToSqlType(prop);
       if (sqlType == "OBJECT")
       {
         sb.AppendLine($"    [{prop.Name}] NVARCHAR(MAX) {Nullability(prop)},");
@@ -296,9 +311,10 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
 
   private static string Nullability(PropertyInfo prop) => prop.IsNullable() ? "NULL" : "NOT NULL";
 
-  internal static string MapToSqlType(Type columnType, string columnName)
+  internal static string MapToSqlType(PropertyInfo propertyInfo, bool isArray = false)
   {
-    var underlyingType = Nullable.GetUnderlyingType(columnType) ?? columnType;
+    var type = isArray ? propertyInfo.PropertyType.GetElementType()! : propertyInfo.PropertyType;
+    var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
 
     return underlyingType switch
     {
@@ -318,27 +334,12 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     };
 
     string StringMaxLength() =>
-      GetStringMaxLength(columnType, columnName) switch
+      DatabaseHandler.GetStringMaxLength(propertyInfo) switch
       {
         int.MaxValue => "MAX",
         var l => l.ToString()
       };
   }
-
-  private static int GetStringMaxLength(Type columnType, string columnName) =>
-    columnType.GetCustomAttribute<MaxLengthAttribute>() switch
-    {
-      { } a => a.Length,
-      _ => columnType.GetCustomAttribute<StringLengthAttribute>() switch
-      {
-        { } a => a.MaximumLength,
-        _ => columnName switch
-        {
-          "Id" => 256,
-          _ => 1024
-        }
-      }
-    };
 
   public static string TableName(Type type) =>
     $"{type.Name}{TypeHasher.ComputeTypeHash(type)}{DatabaseHandler.VersionSuffix}";

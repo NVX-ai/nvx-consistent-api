@@ -275,7 +275,7 @@ public static class ReadModelRouteBuilder
     {
       foreach (var prop in typeof(Shape).GetProperties(BindingFlags.Public | BindingFlags.Instance))
       {
-        if (DatabaseHandler<Shape>.MapToSqlType(prop.PropertyType, prop.Name) == "OBJECT")
+        if (DatabaseHandler<Shape>.MapToSqlType(prop) == "OBJECT")
         {
           continue;
         }

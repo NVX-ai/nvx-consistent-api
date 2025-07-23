@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Security.Cryptography;
 using System.Text;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
@@ -45,7 +46,20 @@ public static class TypeHasher
           );
       }
 
-      if (propertyType.IsPrimitive || propertyType == typeof(string))
+      var underlyingType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+      var isString = underlyingType == typeof(string);
+      var hasMaxLenght = property.HasAttribute<MaxLengthAttribute>();
+      var hasStringLength = property.HasAttribute<StringLengthAttribute>();
+      var isLenghtConstrainedString = isString && (hasMaxLenght || hasStringLength);
+
+      if (isLenghtConstrainedString)
+      {
+        var maxLength = DatabaseHandler.GetStringMaxLength(property);
+        var lengthBytes = Encoding.UTF8.GetBytes($"maxLength-{maxLength}");
+        hashBytes = Combine(hashBytes, lengthBytes);
+      }
+
+      if (propertyType.IsPrimitive || underlyingType == typeof(string))
       {
         continue;
       }
