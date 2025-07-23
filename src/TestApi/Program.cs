@@ -89,7 +89,7 @@ async Task<string> GetAdminSubjectId(long secondsElapsed = 0)
         return administrator.Id;
       }
 
-      return await GetAdminSubjectId(secondsElapsed + stopWatch.Elapsed.TotalSeconds);
+      return await GetAdminSubjectId(secondsElapsed + stopWatch.Elapsed.Seconds);
     }
     catch
     {
