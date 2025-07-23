@@ -592,7 +592,6 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
         var strValue = prop.pi.GetValue(rm) as string;
         if (string.IsNullOrEmpty(strValue))
         {
-          parameters.Add(prop.pi.Name, strValue);
           continue;
         }
 
