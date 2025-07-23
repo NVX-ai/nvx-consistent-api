@@ -878,23 +878,6 @@ public class DateTimeTypeHandler : SqlMapper.ITypeHandler
   }
 }
 
-public class StringClampingHandler(int maxLength) : SqlMapper.ITypeHandler
-{
-  public void SetValue(IDbDataParameter parameter, object value)
-  {
-    var strValue = value as string;
-    if (string.IsNullOrEmpty(strValue))
-    {
-      parameter.Value = strValue;
-      return;
-    }
-
-    parameter.Value = strValue.Length > maxLength ? strValue[..maxLength] : strValue;
-  }
-
-  public object? Parse(Type destinationType, object value) => value;
-}
-
 public class DateOnlyTypeHandler : SqlMapper.TypeHandler<DateOnly>
 {
   public override void SetValue(IDbDataParameter parameter, DateOnly date) =>
