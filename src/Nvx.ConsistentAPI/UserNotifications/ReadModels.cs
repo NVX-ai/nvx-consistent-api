@@ -1,8 +1,12 @@
-﻿namespace Nvx.ConsistentAPI;
+﻿using System.ComponentModel.DataAnnotations;
+using Nvx.ConsistentAPI.Framework;
+
+namespace Nvx.ConsistentAPI;
 
 public record UserNotificationReadModel(
   string Id,
   string UserSub,
+  [property: MaxLength(StringSizes.Message)]
   string Message,
   string MessageType,
   string? RelatedEntityId,
@@ -42,6 +46,7 @@ public record UserNotificationReadModel(
 public record UserNotificationDeletedReadModel(
   string Id,
   string UserSub,
+  [property: MaxLength(StringSizes.Message)]
   string Message,
   string MessageType,
   string? RelatedEntityId,
