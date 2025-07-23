@@ -595,7 +595,8 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
           continue;
         }
 
-        parameters.Add(prop.pi.Name, strValue.Length > prop.maxLength ? strValue[..prop.maxLength] : strValue);
+        var clampedValue = strValue.Length > prop.maxLength ? strValue[..prop.maxLength] : strValue;
+        parameters.Add(prop.pi.Name, clampedValue);
       }
 
       await connection.ExecuteAsync(TraceableUpsertSql, parameters);
