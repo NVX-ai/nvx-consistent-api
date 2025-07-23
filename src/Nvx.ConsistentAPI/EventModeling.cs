@@ -9,16 +9,33 @@ using HashCode = System.HashCode;
 
 namespace Nvx.ConsistentAPI;
 
-public interface EventModelingCommandArtifact
+public interface Endpoint
 {
+  /// <summary>
+  ///   Authentication options:
+  ///   - Everyone: Everyone is allowed, for tenant bound commands, it overriden by `EveryoneAuthenticated`.
+  ///   - EveryoneAuthenticated: Every authenticated user is allowed, still applies tenancy constraints.
+  ///   - PermissionsRequireAll: Only users with all permissions referenced in the constructor are allowed.
+  ///   - PermissionsRequireOne: Users with at least one of the permissions referenced in the constructor are allowed.
+  /// </summary>
   AuthOptions Auth { get; }
+}
 
+public interface EventModelingCommandArtifact : Endpoint
+{
+  /// <summary>
+  ///   Called by the framework to wire up the command.
+  /// </summary>
+  /// <param name="app">The web app that will expose the API.</param>
+  /// <param name="fetcher">Entity fetcher.</param>
+  /// <param name="emitter">Event emitter.</param>
+  /// <param name="settings">Framework settings.</param>
+  /// <param name="logger">Logger instance.</param>
   void ApplyTo(WebApplication app, Fetcher fetcher, Emitter emitter, GeneratorSettings settings, ILogger logger);
 }
 
-public interface EventModelingReadModelArtifact
+public interface EventModelingReadModelArtifact : Endpoint
 {
-  AuthOptions Auth { get; }
   Type ShapeType { get; }
   Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClien);
 
