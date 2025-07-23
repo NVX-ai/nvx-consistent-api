@@ -7,12 +7,6 @@ public interface Folds<Evt, Ent> where Evt : EventModelEvent where Ent : EventMo
   ValueTask<Ent> Fold(Evt evt, EventMetadata metadata, RevisionFetcher fetcher);
 }
 
-public abstract record StrongId
-{
-  public abstract string StreamId();
-  public abstract override string ToString();
-}
-
 public record StrongString(string Value) : StrongId
 {
   public override string StreamId() => Value;

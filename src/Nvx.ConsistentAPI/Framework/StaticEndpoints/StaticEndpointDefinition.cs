@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.OpenApi.Models;
+using Nvx.ConsistentAPI.EventStore.Events;
 
 namespace Nvx.ConsistentAPI.Framework.StaticEndpoints;
 

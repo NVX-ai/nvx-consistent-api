@@ -1,5 +1,5 @@
 using EventStore.Client;
-using Nvx.ConsistentAPI.Framework;
+using Nvx.ConsistentAPI.EventStore.Events;
 
 namespace Nvx.ConsistentAPI;
 
@@ -29,16 +29,6 @@ public record EventMetadata(
 }
 
 public interface EventModelSnapshotEvent : EventModelEvent;
-
-public interface EventModelEvent
-{
-  public string EventType => GetType().Apply(Naming.ToSpinalCase);
-  string GetStreamName();
-
-  public byte[] ToBytes() => EventSerialization.ToBytes(this);
-
-  StrongId GetEntityId();
-}
 
 public interface EventInsertion
 {

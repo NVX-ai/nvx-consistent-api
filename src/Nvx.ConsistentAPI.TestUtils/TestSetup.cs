@@ -14,6 +14,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using Nvx.ConsistentAPI.EventStore.Events;
 using Nvx.ConsistentAPI.Framework;
 using Nvx.ConsistentAPI.InternalTooling;
 using Testcontainers.Azurite;

@@ -15,6 +15,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.TestUtils
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.Analyzers", "Nvx.ConsistentAPI.Analyzers\Nvx.ConsistentAPI.Analyzers.csproj", "{D1B125B4-C4FA-40F5-941D-841CC3F5A149}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.EventStore", "Nvx.ConsistentAPI.EventStore\Nvx.ConsistentAPI.EventStore.csproj", "{BAB40BE2-725B-456F-9106-B1154BCDD18C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.EventStore.EventStoreDB", "Nvx.ConsistentAPI.EventStore.EventStoreDB\Nvx.ConsistentAPI.EventStore.EventStoreDB.csproj", "{63E81236-9BA4-4CF5-81C8-EF78B40D21AC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -52,5 +56,13 @@ Global
 		{D1B125B4-C4FA-40F5-941D-841CC3F5A149}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D1B125B4-C4FA-40F5-941D-841CC3F5A149}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D1B125B4-C4FA-40F5-941D-841CC3F5A149}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BAB40BE2-725B-456F-9106-B1154BCDD18C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BAB40BE2-725B-456F-9106-B1154BCDD18C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BAB40BE2-725B-456F-9106-B1154BCDD18C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BAB40BE2-725B-456F-9106-B1154BCDD18C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{63E81236-9BA4-4CF5-81C8-EF78B40D21AC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{63E81236-9BA4-4CF5-81C8-EF78B40D21AC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{63E81236-9BA4-4CF5-81C8-EF78B40D21AC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{63E81236-9BA4-4CF5-81C8-EF78B40D21AC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

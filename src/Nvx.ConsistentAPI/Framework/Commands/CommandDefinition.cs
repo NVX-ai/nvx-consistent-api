@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
+using Nvx.ConsistentAPI.EventStore.Events;
 using Nvx.ConsistentAPI.Framework;
 
 namespace Nvx.ConsistentAPI;

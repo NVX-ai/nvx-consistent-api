@@ -2,6 +2,7 @@ using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
+using Nvx.ConsistentAPI.EventStore.Events;
 using Nvx.ConsistentAPI.InternalTooling;
 
 namespace Nvx.ConsistentAPI;

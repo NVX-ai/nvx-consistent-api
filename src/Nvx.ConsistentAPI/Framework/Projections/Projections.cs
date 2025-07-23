@@ -1,6 +1,7 @@
 // ReSharper disable ParameterTypeCanBeEnumerable.Local
 
 using EventStore.Client;
+using Nvx.ConsistentAPI.EventStore.Events;
 
 namespace Nvx.ConsistentAPI;
 
