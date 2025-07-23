@@ -48,9 +48,9 @@ public static class TypeHasher
 
       var underlyingType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
       var isString = underlyingType == typeof(string);
-      var hasMaxLenght = property.HasAttribute<MaxLengthAttribute>();
+      var hasMaxLength = property.HasAttribute<MaxLengthAttribute>();
       var hasStringLength = property.HasAttribute<StringLengthAttribute>();
-      var isLengthConstrainedString = isString && (hasMaxLenght || hasStringLength);
+      var isLengthConstrainedString = isString && (hasMaxLength || hasStringLength);
 
       if (isLengthConstrainedString)
       {
