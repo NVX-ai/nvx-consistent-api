@@ -26,7 +26,7 @@ public class NotificationMarkAsFavoriteShould
           null,
           DateTime.UtcNow,
           null),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
     Assert.False(entity.IsFavorite);
     var decision = new NotificationMarkAsFavorite(notificationId).Decide(entity, user, []);
@@ -63,7 +63,7 @@ public class NotificationMarkAsFavoriteShould
           null,
           DateTime.UtcNow,
           null),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
     Assert.False(entity.IsFavorite);
     var decision = new NotificationMarkAsUnfavorite(notificationId).Decide(entity, user, []);
@@ -100,7 +100,7 @@ public class NotificationMarkAsFavoriteShould
           null,
           DateTime.UtcNow,
           null),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
     var command = new NotificationMarkAsFavorite(notificationId);
     Assert.Equal(new StrongString(notificationId), command.TryGetEntityId(user));

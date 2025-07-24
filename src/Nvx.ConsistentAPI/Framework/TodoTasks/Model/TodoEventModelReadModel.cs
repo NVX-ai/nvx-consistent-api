@@ -1,5 +1,4 @@
 ﻿using System.ComponentModel.DataAnnotations;
-using EventStore.Client;
 using Nvx.ConsistentAPI.Framework;
 
 namespace Nvx.ConsistentAPI;
@@ -15,7 +14,7 @@ public record TodoEventModelReadModel(
   DateTime? LockedUntil,
   [property: MaxLength(StringSizes.Unlimited)]
   string? SerializedRelatedEntityId,
-  Position? EventPosition,
+  string? EventPosition,
   int RetryCount) : EventModelReadModel
 {
   public StrongId GetStrongId() => new StrongGuid(Guid.Parse(Id));

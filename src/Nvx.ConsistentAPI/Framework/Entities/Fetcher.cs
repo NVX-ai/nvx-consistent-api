@@ -245,7 +245,11 @@ public class Fetcher<Entity> : EntityFetcher
             hadEvents = true;
             revisions[re.Event.EventStreamId] = re.Event.EventNumber.ToInt64();
 
-            var metadata = EventMetadata.TryParse(re);
+            var metadata = EventMetadata.TryParse(
+              re.Event.Metadata.ToArray(),
+              re.Event.Created,
+              re.Event.Position.CommitPosition,
+              re.Event.EventNumber.ToUInt64());
             var firstEventAt = seed.fe ?? metadata.CreatedAt;
             var lastEventAt = metadata.CreatedAt;
             var firstUserSubFound = seed.fu ?? metadata.RelatedUserSub;
@@ -336,7 +340,11 @@ public class Fetcher<Entity> : EntityFetcher
                   string? lu)>>(
                   async evt =>
                   {
-                    var metadata = EventMetadata.TryParse(@event);
+                    var metadata = EventMetadata.TryParse(
+                      @event.Event.Metadata.ToArray(),
+                      @event.Event.Created,
+                      @event.Event.Position.CommitPosition,
+                      @event.Event.EventNumber.ToUInt64());
                     var firstEventAt = r.fe ?? metadata.CreatedAt;
                     var lastEventAt = metadata.CreatedAt;
                     var firstUserSubFound = r.fu ?? metadata.RelatedUserSub;
@@ -355,7 +363,11 @@ public class Fetcher<Entity> : EntityFetcher
                   },
                   () =>
                   {
-                    var (createdAt, _, _, relatedUserSub, _) = EventMetadata.TryParse(@event);
+                    var (createdAt, _, _, relatedUserSub, _, _) = EventMetadata.TryParse(
+                      @event.Event.Metadata.ToArray(),
+                      @event.Event.Created,
+                      @event.Event.Position.CommitPosition,
+                      @event.Event.EventNumber.ToUInt64());
                     DateTime? firstEventAt = r.fe ?? createdAt;
                     DateTime? lastEventAt = createdAt;
                     var firstUserSubFound = r.fu ?? relatedUserSub;

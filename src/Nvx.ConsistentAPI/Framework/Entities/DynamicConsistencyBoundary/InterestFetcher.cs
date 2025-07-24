@@ -24,7 +24,11 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
     {
       foreach (var parsed in parser(resolvedEvent))
       {
-        var metadata = EventMetadata.TryParse(resolvedEvent);
+        var metadata = EventMetadata.TryParse(
+          resolvedEvent.Event.Metadata.ToArray(),
+          resolvedEvent.Event.Created,
+          resolvedEvent.Event.Position.CommitPosition,
+          resolvedEvent.Event.EventNumber.ToUInt64());
         entity = new InterestCacheElement<ConcernedEntityEntity>(
           await entity.Entity.Fold(parsed, metadata, null!),
           resolvedEvent.Event.EventNumber.ToInt64());
@@ -61,7 +65,11 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
     {
       foreach (var parsed in parser(resolvedEvent))
       {
-        var metadata = EventMetadata.TryParse(resolvedEvent);
+        var metadata = EventMetadata.TryParse(
+          resolvedEvent.Event.Metadata.ToArray(),
+          resolvedEvent.Event.Created,
+          resolvedEvent.Event.Position.CommitPosition,
+          resolvedEvent.Event.EventNumber.ToUInt64());
         entity = new InterestCacheElement<InterestedEntityEntity>(
           await entity.Entity.Fold(parsed, metadata, null!),
           resolvedEvent.Event.EventNumber.ToInt64());

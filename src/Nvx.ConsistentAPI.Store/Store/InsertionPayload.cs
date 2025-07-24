@@ -23,8 +23,8 @@ public record InsertionPayload<EventInterface>(
     StrongId StreamId,
     InsertionType insertionType,
     string? emittedBy,
-    Guid? correlationId,
-    Guid? causationId,
+    string? correlationId,
+    string? causationId,
     Insertion<EventInterface>[] insertions) : this(
     swimlane,
     StreamId,
@@ -34,7 +34,7 @@ public record InsertionPayload<EventInterface>(
         new EventInsertionMetadataPayload(
           ins.Id,
           emittedBy,
-          correlationId ?? Guid.NewGuid(),
+          correlationId ?? Guid.NewGuid().ToString(),
           causationId,
           DateTime.UtcNow)))
       .ToArray()
@@ -45,8 +45,8 @@ public record InsertionPayload<EventInterface>(
     StrongId StreamId,
     InsertionType insertionType,
     string? emittedBy,
-    Guid? correlationId,
-    Guid? causationId,
+    string? correlationId,
+    string? causationId,
     EventInterface[] events) : this(
     swimlane,
     StreamId,

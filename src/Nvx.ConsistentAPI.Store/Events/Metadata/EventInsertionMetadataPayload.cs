@@ -2,7 +2,7 @@
 
 public record EventInsertionMetadataPayload(
   Guid EventId,
-  string? EmittedBy,
-  Guid CorrelationId,
-  Guid? CausationId,
-  DateTime EmittedAt);
+  string? RelatedUserSub,
+  string? CorrelationId,
+  string? CausationId,
+  DateTime CreatedAt);

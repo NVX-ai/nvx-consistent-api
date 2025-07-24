@@ -13,7 +13,7 @@ public class TenantUserValidation
       .Defaulted(TenantId)
       .Fold(
         new UserWasAddedToTenant(TenantId.Value, userId.ToString()),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
 
     Assert.Equal(

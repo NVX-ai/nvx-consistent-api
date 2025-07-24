@@ -29,6 +29,7 @@ public class Emitter(EventStoreClient client, ILogger logger)
             context?.CorrelationId,
             context?.CausationId,
             context?.RelatedUserSub,
+            null,
             null)
           .ToBytes()
       ));

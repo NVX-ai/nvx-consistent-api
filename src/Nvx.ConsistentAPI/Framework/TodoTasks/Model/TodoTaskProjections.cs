@@ -25,7 +25,7 @@ public class TodoProcessorCompletedToSnapshot
       e.JsonData,
       e.Type,
       e.SerializedRelatedEntityId,
-      e.EventPosition);
+      e.EventPosition is { } pos ? new Position(pos, pos) : null);
 
   public override IEnumerable<StrongGuid> GetProjectionIds(
     TodoCompleted sourceEvent,

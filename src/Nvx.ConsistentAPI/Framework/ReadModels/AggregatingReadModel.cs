@@ -219,7 +219,11 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                   await using var transaction = await connection.BeginTransactionAsync(SubCancelSource.Token);
                   try
                   {
-                    var metadata = EventMetadata.TryParse(evt);
+                    var metadata = EventMetadata.TryParse(
+                      evt.Event.Metadata.ToArray(),
+                      evt.Event.Created,
+                      evt.Event.Position.CommitPosition,
+                      evt.Event.EventNumber.ToUInt64());
                     var aggregatedEvent =
                       new EventWithMetadata<EventModelEvent>(e, evt.Event.Position, evt.Event.EventId, metadata);
 

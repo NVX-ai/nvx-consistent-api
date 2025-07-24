@@ -287,6 +287,9 @@ internal class TodoProcessor
     }
   }
 
+  private static Position? TryParsePosition(string? val) =>
+    ulong.TryParse(val, out var pos) ? new Position(pos, pos) : null;
+
   private Func<Task<Unit>> ProcessOne((TodoTaskDefinition definition, TodoEventModelReadModel todo) t) =>
     async () =>
     {
@@ -295,8 +298,11 @@ internal class TodoProcessor
       try
       {
         // Await for all relevant read models to be up-to-date.
-        if (t.definition.DependingReadModels.All(_ => ReadModels.All(rm => rm.IsUpToDate(t.todo.EventPosition)))
-            && HydrationDaemon.IsUpToDate(t.todo.EventPosition))
+        if (t.definition.DependingReadModels.All(drm =>
+              ReadModels.Any(rm => drm == rm.ShapeType
+                                   && TryParsePosition(t.todo.EventPosition)
+                                     .Apply(pos => rm.IsUpToDate(pos)
+                                                   && HydrationDaemon.IsUpToDate(pos)))))
         {
           return await TryFetch()
             .Option

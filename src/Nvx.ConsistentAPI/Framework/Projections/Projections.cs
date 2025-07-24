@@ -32,7 +32,14 @@ public abstract class
       .Match(
         async me => await (me switch
         {
-          SourceEvent se => Handle(se, evt.Event.EventId, EventMetadata.TryParse(evt)),
+          SourceEvent se => Handle(
+            se,
+            evt.Event.EventId,
+            EventMetadata.TryParse(
+              evt.Event.Metadata.ToArray(),
+              evt.Event.Created,
+              evt.Event.Position.CommitPosition,
+              evt.Event.EventNumber.ToUInt64())),
           _ => Task.CompletedTask
         }),
         () => Task.CompletedTask);
@@ -116,7 +123,13 @@ public abstract class
             @event.ToBytes(),
             (metadata is not null
               ? metadata with { CreatedAt = DateTime.UtcNow, CausationId = sourceEventUuid.ToString() }
-              : new EventMetadata(DateTime.UtcNow, Guid.NewGuid().ToString(), sourceEventUuid.ToString(), null, null)
+              : new EventMetadata(
+                DateTime.UtcNow,
+                Guid.NewGuid().ToString(),
+                sourceEventUuid.ToString(),
+                null,
+                null,
+                null)
             ).ToBytes()
           )
         });

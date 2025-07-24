@@ -237,6 +237,7 @@ internal class DynamicConsistencyBoundaryDaemon(
               null,
               null,
               null,
+              null,
               null)
             .ToBytes())
       ]);

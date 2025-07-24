@@ -26,7 +26,7 @@ public class NotificationArchiveShould
           sender.Sub,
           DateTime.UtcNow,
           null),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
     Assert.False(entity.IsRead);
     var decision = new NotificationArchive(notificationId).Decide(entity, recipient, []);
@@ -63,7 +63,7 @@ public class NotificationArchiveShould
           null,
           DateTime.UtcNow,
           null),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
     var command = new NotificationArchive(notificationId);
     Assert.Equal(new StrongString(notificationId), command.TryGetEntityId(recipient));

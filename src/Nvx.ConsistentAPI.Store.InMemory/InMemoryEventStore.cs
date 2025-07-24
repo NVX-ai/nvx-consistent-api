@@ -45,10 +45,10 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
         evt,
         new StoredEventMetadata(
           md.EventId,
-          md.EmittedBy,
+          md.RelatedUserSub,
           md.CorrelationId,
           md.CausationId,
-          md.EmittedAt,
+          md.CreatedAt,
           latestGlobalPosition + index + 1,
           latestStreamPosition + index + 1)));
 

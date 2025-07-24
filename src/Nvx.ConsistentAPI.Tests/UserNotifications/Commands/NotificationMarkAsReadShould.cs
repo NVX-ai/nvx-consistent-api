@@ -26,7 +26,7 @@ public class NotificationMarkAsReadShould
           null,
           DateTime.UtcNow,
           null),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
     Assert.False(entity.IsRead);
     var decision = new NotificationMarkAsRead(notificationId).Decide(entity, user, []);
@@ -63,7 +63,7 @@ public class NotificationMarkAsReadShould
           null,
           DateTime.UtcNow,
           null),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
     Assert.False(entity.IsRead);
     var decision = new NotificationMarkAsUnread(notificationId).Decide(entity, user, []);
@@ -100,7 +100,7 @@ public class NotificationMarkAsReadShould
           null,
           DateTime.UtcNow,
           null),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
     var command = new NotificationMarkAsRead(notificationId);
     Assert.Equal(new StrongString(notificationId), command.TryGetEntityId(user));

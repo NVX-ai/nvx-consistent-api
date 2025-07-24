@@ -10,8 +10,38 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
 
   public Task Initialize(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-  public AsyncResult<InsertionSuccess, InsertionFailure> Insert(InsertionPayload<EventModelEvent> payload) =>
-    throw new NotImplementedException();
+  public AsyncResult<InsertionSuccess, InsertionFailure> Insert(InsertionPayload<EventModelEvent> payload)
+  {
+    return Go();
+
+    async Task<Result<InsertionSuccess, InsertionFailure>> Go()
+    {
+      try
+      {
+        var streamName = $"{payload.Swimlane}{payload.StreamId.StreamId()}";
+        throw new NotImplementedException();
+      }
+      catch
+      {
+        return new InsertionFailure.InsertionFailed();
+      }
+    }
+  }
+
+  // internal static IEnumerable<EventData> ToEventData(IEnumerable<EventModelEvent> events, EventContext? context) =>
+  //   events.Select(e =>
+  //     new EventData(
+  //       Uuid.NewUuid(),
+  //       e.EventType,
+  //       e.ToBytes(),
+  //       new EventMetadata(
+  //           DateTime.UtcNow,
+  //           context?.CorrelationId,
+  //           context?.CausationId,
+  //           context?.RelatedUserSub,
+  //           null)
+  //         .ToBytes()
+  //     ));
 
   public IAsyncEnumerable<ReadAllMessage> Read(
     ReadAllRequest request = default,
