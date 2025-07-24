@@ -244,25 +244,25 @@ public record StockPictureAdded(Guid ProductId, Guid PictureId) : EventModelEven
 
 public record OrganizationBuildingRegistered(string Name, Guid TenantId) : EventModelEvent
 {
-  public string GetStreamName() => OrganizationBuilding.GetStreamName(Name);
+  public string SwimLane => OrganizationBuilding.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Name);
 }
 
 public record UserSelectedFavoriteFood(string Sub, string Name) : EventModelEvent
 {
-  public string GetStreamName() => UserFavoriteFood.GetStreamName(Sub);
+  public string SwimLane => UserFavoriteFood.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record StoreReceivedProduct(Guid StoreId, Guid ProductId) : EventModelEvent
 {
-  public string GetStreamName() => StoreFrontProduct.GetStreamName(new StoreFrontProductId(StoreId, ProductId));
+  public string SwimLane => StoreFrontProduct.StreamPrefix;
   public StrongId GetEntityId() => new StoreFrontProductId(StoreId, ProductId);
 }
 
 public record UserNamedOneProduct(string UserSub, Guid ProductId, string Name) : EventModelEvent
 {
-  public string GetStreamName() => UserRegistryOfNamedProducts.GetStreamName(UserSub);
+  public string SwimLane => UserRegistryOfNamedProducts.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(UserSub);
 }
 
