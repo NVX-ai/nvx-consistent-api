@@ -35,9 +35,12 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     }
   }
 
-  public IAsyncEnumerable<ReadAllMessage> Read(
+  public async IAsyncEnumerable<ReadAllMessage> Read(
     ReadAllRequest request = default,
-    CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    CancellationToken cancellationToken = default)
+  {
+    await foreach (var msg in)
+  }
 
   public IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> Read(
     ReadStreamRequest request,
