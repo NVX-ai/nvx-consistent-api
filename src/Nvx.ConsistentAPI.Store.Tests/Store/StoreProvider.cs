@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nvx.ConsistentAPI.Store.EventStoreDB;
-using Nvx.ConsistentAPI.Store.Store;
 using Testcontainers.EventStoreDb;
 
 namespace Nvx.ConsistentAPI.Store.Tests;
@@ -51,12 +50,12 @@ public static class StoreProvider
 
 public record MyEventId(Guid Value) : StrongId
 {
-  public override string SwimLane => "MyTestSwimLane";
   public override string StreamId() => Value.ToString();
   public override string ToString() => StreamId();
 }
 
 public record MyEvent(Guid Id) : EventModelEvent
 {
+  public string SwimLane => "MyTestSwimLane";
   public StrongId GetEntityId() => new MyEventId(Id);
 }

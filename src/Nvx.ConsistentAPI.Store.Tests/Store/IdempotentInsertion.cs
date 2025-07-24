@@ -14,7 +14,7 @@ public class IdempotentInsertion
 
     var events = Enumerable
       .Range(0, StoreProvider.EventCount)
-      .Select(Event (_) => new MyEvent(streamId.Value))
+      .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
       .ToArray();
 
     var insertionPayload = new InsertionPayload<EventModelEvent>(swimlane, streamId, events);

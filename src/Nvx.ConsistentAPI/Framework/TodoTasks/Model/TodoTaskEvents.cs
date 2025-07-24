@@ -11,36 +11,32 @@ public record TodoCreated(
   string RelatedEntityId,
   string? SerializedRelatedEntityId) : EventModelEvent
 {
-  public string GetStreamName() => ProcessorEntity.GetStreamName(Id);
-
+  public string SwimLane => ProcessorEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record TodoLockRequested(Guid Id, DateTime RequestedAt, TimeSpan Length) : EventModelEvent
 {
-  public string GetStreamName() => ProcessorEntity.GetStreamName(Id);
-
+  public string SwimLane => ProcessorEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record TodoLockReleased(Guid Id) : EventModelEvent
 {
-  public string GetStreamName() => ProcessorEntity.GetStreamName(Id);
-
+  public string SwimLane => ProcessorEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record TodoCompleted(Guid Id, DateTime CompletedAt) : EventModelEvent
 {
-  public string GetStreamName() => ProcessorEntity.GetStreamName(Id);
+  public string SwimLane => ProcessorEntity.StreamPrefix;
 
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record TodoHadDependingReadModelBehind(Guid Id) : EventModelEvent
 {
-  public string GetStreamName() => ProcessorEntity.GetStreamName(Id);
-
+  public string SwimLane => ProcessorEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
@@ -56,7 +52,7 @@ public record TodoModelSnapshot(
   string? SerializedRelatedEntityId,
   Position? EventPosition) : EventModelSnapshotEvent
 {
-  public string GetStreamName() => ProcessorEntity.GetStreamName(Id);
+  public string SwimLane => ProcessorEntity.StreamPrefix;
 
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
