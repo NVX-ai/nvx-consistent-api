@@ -88,7 +88,7 @@ public record PizzaCreated(Guid Id, Guid[] IngredientIds, Guid TenantId) : Event
 
 public record ExternalPizzaCreated(Guid Id, Guid PizzaId, Guid TenantId) : EventModelEvent
 {
-  public string SwimLane => PizzaEntity.StreamPrefix;
+  public string SwimLane => ExternalPizzaEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
