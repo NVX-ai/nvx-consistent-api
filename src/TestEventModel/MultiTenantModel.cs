@@ -45,8 +45,7 @@ public partial record MultiTenantEntity(Guid Id, Guid[] Tenants) : EventModelEnt
 
 public record MultiTenantEntityReceivedTenant(Guid Id, Guid TenantId) : EventModelEvent
 {
-  public string GetStreamName() => MultiTenantEntity.GetStreamName(Id);
-
+  public string SwimLane => MultiTenantEntity.StreamPrefix;
   public StrongId GetEntityId() => new MultiTenantId(Id);
 }
 
