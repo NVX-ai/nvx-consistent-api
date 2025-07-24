@@ -13,17 +13,20 @@ public class SubscribeToAllFromNowOn
     var swimlane = Guid.NewGuid().ToString();
     var otherSwimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
-    var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
+    var events = Enumerable
+      .Range(0, StoreProvider.EventCount)
+      .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
+      .ToArray();
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
     var insertion = await eventStore
       .Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, events))
       .ShouldBeOk();
     var eventsReceivedByAllSubscription = 0;
-    long swimLaneStreamPosition = StoreProvider.EventCount;
-    long otherSwimLaneStreamPosition = StoreProvider.EventCount;
+    ulong swimLaneStreamPosition = StoreProvider.EventCount;
+    ulong otherSwimLaneStreamPosition = StoreProvider.EventCount;
 
-    List<(long, long)> skippedSwimlaneStreamPositions = [];
-    List<(long, long)> skippedOtherSwimlaneStreamPositions = [];
+    List<(ulong, ulong)> skippedSwimlaneStreamPositions = [];
+    List<(ulong, ulong)> skippedOtherSwimlaneStreamPositions = [];
 
     List<ReadAllMessage.ToxicAllEvent> toxicEvents = [];
 

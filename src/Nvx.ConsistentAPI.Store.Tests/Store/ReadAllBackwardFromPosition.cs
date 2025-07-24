@@ -11,14 +11,17 @@ public class ReadAllBackwardFromPosition
     var swimlane = Guid.NewGuid().ToString();
     var otherSwimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
-    var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
+    var events = Enumerable
+      .Range(0, StoreProvider.EventCount)
+      .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
+      .ToArray();
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, events)).ShouldBeOk();
     var insertion = await eventStore
       .Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events))
       .ShouldBeOk();
     var eventsBefore = insertion.GlobalPosition;
     var readFromAll = 0;
-    var position = long.MaxValue;
+    var position = ulong.MaxValue;
     await foreach (var msg in eventStore.Read(ReadAllRequest.Before(eventsBefore, [swimlane])))
     {
       switch (msg)

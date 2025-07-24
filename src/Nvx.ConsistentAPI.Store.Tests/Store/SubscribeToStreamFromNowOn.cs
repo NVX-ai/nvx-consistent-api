@@ -12,7 +12,10 @@ public class SubscribeToStreamFromNowOn
   {
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
-    var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
+    var events = Enumerable
+      .Range(0, StoreProvider.EventCount)
+      .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
+      .ToArray();
 
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
@@ -38,14 +41,14 @@ public class SubscribeToStreamFromNowOn
   private static async Task SubscribeToStream(
     EventStore<EventModelEvent> eventStore,
     SubscribeStreamRequest request,
-    Action<ReadStreamMessage<Event>> onMessage)
+    Action<ReadStreamMessage<EventModelEvent>> onMessage)
   {
     var hasStarted = false;
     _ = Task.Run(async () =>
     {
       await foreach (var message in eventStore.Subscribe(request))
       {
-        if (message is ReadStreamMessage<Event>.ReadingStarted)
+        if (message is ReadStreamMessage<EventModelEvent>.ReadingStarted)
         {
           hasStarted = true;
           continue;

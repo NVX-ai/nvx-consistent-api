@@ -12,7 +12,10 @@ public class IdempotentInsertion
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
 
-    var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
+    var events = Enumerable
+      .Range(0, StoreProvider.EventCount)
+      .Select(Event (_) => new MyEvent(streamId.Value))
+      .ToArray();
 
     var insertionPayload = new InsertionPayload<EventModelEvent>(swimlane, streamId, events);
     await eventStore.Insert(insertionPayload).ShouldBeOk();
@@ -23,7 +26,7 @@ public class IdempotentInsertion
     {
       readFromStream = msg switch
       {
-        ReadStreamMessage<Event>.SolvedEvent => readFromStream + 1,
+        ReadStreamMessage<EventModelEvent>.SolvedEvent => readFromStream + 1,
         _ => readFromStream
       };
     }

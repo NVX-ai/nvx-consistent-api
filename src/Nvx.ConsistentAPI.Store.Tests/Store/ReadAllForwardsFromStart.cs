@@ -11,13 +11,16 @@ public class ReadAllForwardsFromStart
     var swimlane = Guid.NewGuid().ToString();
     var otherSwimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
-    var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
+    var events = Enumerable
+      .Range(0, StoreProvider.EventCount)
+      .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
+      .ToArray();
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, events)).ShouldBeOk();
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
     var messages = eventStore.Read(ReadAllRequest.Start());
     var readFromAll = 0;
-    var position = long.MinValue;
+    var position = ulong.MinValue;
     var readFromStream = 0;
     await foreach (var msg in messages)
     {

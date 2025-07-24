@@ -12,7 +12,10 @@ public class SubscribeToStreamFromStart
   {
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
-    var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
+    var events = Enumerable
+      .Range(0, StoreProvider.EventCount)
+      .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
+      .ToArray();
     var eventsReceivedBySubscription = 0;
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
@@ -23,7 +26,7 @@ public class SubscribeToStreamFromStart
       {
         switch (message)
         {
-          case ReadStreamMessage<Event>.SolvedEvent(var sl, var sid, _, _):
+          case ReadStreamMessage<EventModelEvent>.SolvedEvent(var sl, var sid, _, _):
             Assert.Equal(swimlane, sl);
             Assert.Equal(streamId, sid);
             Interlocked.Increment(ref eventsReceivedBySubscription);
@@ -45,14 +48,14 @@ public class SubscribeToStreamFromStart
   private static async Task SubscribeToStream(
     EventStore<EventModelEvent> eventStore,
     SubscribeStreamRequest request,
-    Action<ReadStreamMessage<Event>> onMessage)
+    Action<ReadStreamMessage<EventModelEvent>> onMessage)
   {
     var hasStarted = false;
     _ = Task.Run(async () =>
     {
       await foreach (var message in eventStore.Subscribe(request))
       {
-        if (message is ReadStreamMessage<Event>.ReadingStarted)
+        if (message is ReadStreamMessage<EventModelEvent>.ReadingStarted)
         {
           hasStarted = true;
           continue;

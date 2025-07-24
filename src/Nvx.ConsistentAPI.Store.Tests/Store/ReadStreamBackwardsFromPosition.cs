@@ -10,17 +10,20 @@ public class ReadStreamBackwardsFromPosition
   {
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
-    var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
+    var events = Enumerable
+      .Range(0, StoreProvider.EventCount)
+      .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
+      .ToArray();
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
     var messages = eventStore.Read(ReadStreamRequest.Before(swimlane, streamId, StoreProvider.EventCount / 2 + 1));
     var readFromStream = 0;
-    var position = long.MaxValue;
+    var position = ulong.MaxValue;
     await foreach (var msg in messages)
     {
       switch (msg)
       {
-        case ReadStreamMessage<Event>.SolvedEvent(var sl, _, _, var md):
+        case ReadStreamMessage<EventModelEvent>.SolvedEvent(var sl, _, _, var md):
           readFromStream += 1;
           Assert.True(position > md.GlobalPosition);
           position = md.GlobalPosition;
