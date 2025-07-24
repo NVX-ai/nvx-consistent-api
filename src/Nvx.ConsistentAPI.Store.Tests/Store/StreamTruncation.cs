@@ -24,7 +24,7 @@ public class StreamTruncation
     {
       switch (msg)
       {
-        case ReadStreamMessage<EventModelEvent>.SolvedEvent(var sl, _, _, var md):
+        case ReadStreamMessage<EventModelEvent>.SolvedEvent:
           readAfterTruncate += 1;
           break;
       }
