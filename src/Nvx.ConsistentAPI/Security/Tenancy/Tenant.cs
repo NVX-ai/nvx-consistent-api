@@ -61,25 +61,25 @@ public record DisableTenant(Guid Id) : EventModelCommand<Tenant>
 
 public record TenantCreated(Guid Id, string Name) : EventModelEvent
 {
-  public string GetStreamName() => Tenant.GetStreamName(Id);
+  public string SwimLane => Tenant.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record TenantRenamed(Guid Id, string NewName) : EventModelEvent
 {
-  public string GetStreamName() => Tenant.GetStreamName(Id);
+  public string SwimLane => Tenant.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record TenantEnabled(Guid Id) : EventModelEvent
 {
-  public string GetStreamName() => Tenant.GetStreamName(Id);
+  public string SwimLane => Tenant.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record TenantDisabled(Guid Id) : EventModelEvent
 {
-  public string GetStreamName() => Tenant.GetStreamName(Id);
+  public string SwimLane => Tenant.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
