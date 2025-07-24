@@ -105,25 +105,25 @@ public record PermissionAssignedToUserProjection(string Sub, string Name, string
   : EventModelEvent
 {
   public StrongId GetEntityId() => new UserWithPermissionId(Sub, Permission);
-  public string GetStreamName() => $"{UserWithPermissionProjection.StreamPrefix}{GetEntityId()}";
+  public string SwimLane => UserWithPermissionProjection.StreamPrefix;
 }
 
 public record PermissionRemovedFromUserProjection(string Sub, string Permission) : EventModelEvent
 {
+  public string SwimLane => UserWithPermissionProjection.StreamPrefix;
   public StrongId GetEntityId() => new UserWithPermissionId(Sub, Permission);
-  public string GetStreamName() => $"{UserWithPermissionProjection.StreamPrefix}{GetEntityId()}";
 }
 
 public record NameReceivedForUserProjection(string Sub, string Permission, string Name) : EventModelEvent
 {
   public StrongId GetEntityId() => new UserWithPermissionId(Sub, Permission);
-  public string GetStreamName() => $"{UserWithPermissionProjection.StreamPrefix}{GetEntityId()}";
+  public string SwimLane => UserWithPermissionProjection.StreamPrefix;
 }
 
 public record EmailReceivedForUserProjection(string Sub, string Permission, string Email) : EventModelEvent
 {
   public StrongId GetEntityId() => new UserWithPermissionId(Sub, Permission);
-  public string GetStreamName() => $"{UserWithPermissionProjection.StreamPrefix}{GetEntityId()}";
+  public string SwimLane => UserWithPermissionProjection.StreamPrefix;
 }
 
 internal class PermissionAssignedProjector :
