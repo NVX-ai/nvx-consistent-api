@@ -24,7 +24,15 @@ public class ConsistencyCheckTest
     var incorrectPosition = result.StreamPosition - 5;
 
     await eventStore
-      .Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, incorrectPosition, null, null, null, events))
+      .Insert(
+        new InsertionPayload<EventModelEvent>(
+          swimlane,
+          streamId,
+          new InsertAfter(incorrectPosition),
+          null,
+          null,
+          null,
+          events))
       .ShouldBeError(err =>
       {
         Assert.IsType<InsertionFailure.ConsistencyCheckFailed>(err);
@@ -33,7 +41,14 @@ public class ConsistencyCheckTest
 
     await eventStore
       .Insert(
-        new InsertionPayload<EventModelEvent>(swimlane, streamId, result.StreamPosition, null, null, null, events))
+        new InsertionPayload<EventModelEvent>(
+          swimlane,
+          streamId,
+          new InsertAfter(result.StreamPosition),
+          null,
+          null,
+          null,
+          events))
       .ShouldBeOk();
   }
 }

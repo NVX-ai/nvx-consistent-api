@@ -21,7 +21,9 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       .Select(se => se.Metadata.StreamPosition)
       .LastOrDefault();
 
-    if (payload.InsertAfter.HasValue && payload.InsertAfter != latestStreamPosition)
+    if ((payload.InsertionType is StreamCreation && latestStreamPosition != 0)
+        || (payload.InsertionType is ExistingStream && latestStreamPosition == 0)
+        || (payload.InsertionType is InsertAfter(var after) && after != latestStreamPosition))
     {
       semaphore.Release();
       return new InsertionFailure.ConsistencyCheckFailed();

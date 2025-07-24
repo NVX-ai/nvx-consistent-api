@@ -1,10 +1,13 @@
 ﻿using DeFuncto;
+using EventStore.Client;
 using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI.Store.EventStoreDB;
 
 public class EventStoreDbStore(string connectionString) : EventStore<EventModelEvent>
 {
+  private readonly EventStoreClient client = new(EventStoreClientSettings.Create(connectionString));
+
   public Task Initialize(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
   public AsyncResult<InsertionSuccess, InsertionFailure> Insert(InsertionPayload<EventModelEvent> payload) =>
