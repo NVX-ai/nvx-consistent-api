@@ -216,5 +216,3 @@ public class Emitter(EventStoreClient client, ILogger logger)
       .MapError(du => du.Match(Id, Id))
       .ToTask();
 }
-
-public record EventContext(string? CorrelationId, string? CausationId, string? RelatedUserSub);
