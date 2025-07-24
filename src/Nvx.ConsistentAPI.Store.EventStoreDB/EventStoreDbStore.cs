@@ -20,8 +20,13 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       {
         var streamName = $"{payload.Swimlane}{payload.StreamId.StreamId()}";
         var eventData = ToEventData(payload.Insertions);
-
-        throw new NotImplementedException();
+        return payload.InsertionType switch
+        {
+          StreamCreation => await CreateStream(eventData, streamName),
+          InsertAfter(var pos) => await InsertAfter(eventData, streamName, pos),
+          ExistingStream => await InExistingStream(eventData, streamName),
+          _ => await AnyState(eventData, streamName)
+        };
       }
       catch
       {
@@ -47,6 +52,83 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
   public Task TruncateStream(StrongId id, ulong truncateBefore) => throw new NotImplementedException();
+
+  private async Task<Result<InsertionSuccess, InsertionFailure>> AnyState(
+    IEnumerable<EventData> eventData,
+    string streamName)
+  {
+    try
+    {
+      var result = await client.AppendToStreamAsync(streamName, StreamState.Any, eventData);
+      // NextExpectedStreamRevision is the position of the last inserted event.
+      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision);
+    }
+    catch
+    {
+      return new InsertionFailure.InsertionFailed();
+    }
+  }
+
+  private async Task<Result<InsertionSuccess, InsertionFailure>> InsertAfter(
+    IEnumerable<EventData> eventData,
+    string streamName,
+    ulong position)
+  {
+    try
+    {
+      var result = await client.AppendToStreamAsync(streamName, StreamRevision.FromInt64((long)position), eventData);
+      // NextExpectedStreamRevision is the position of the last inserted event.
+      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision);
+    }
+    catch (WrongExpectedVersionException)
+    {
+      return new InsertionFailure.ConsistencyCheckFailed();
+    }
+    catch
+    {
+      return new InsertionFailure.InsertionFailed();
+    }
+  }
+
+  private async Task<Result<InsertionSuccess, InsertionFailure>> CreateStream(
+    IEnumerable<EventData> eventData,
+    string streamName)
+  {
+    try
+    {
+      var result = await client.AppendToStreamAsync(streamName, StreamState.NoStream, eventData);
+      // NextExpectedStreamRevision is the position of the last inserted event.
+      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision);
+    }
+    catch (WrongExpectedVersionException)
+    {
+      return new InsertionFailure.ConsistencyCheckFailed();
+    }
+    catch
+    {
+      return new InsertionFailure.InsertionFailed();
+    }
+  }
+
+  private async Task<Result<InsertionSuccess, InsertionFailure>> InExistingStream(
+    IEnumerable<EventData> eventData,
+    string streamName)
+  {
+    try
+    {
+      var result = await client.AppendToStreamAsync(streamName, StreamState.StreamExists, eventData);
+      // NextExpectedStreamRevision is the position of the last inserted event.
+      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision);
+    }
+    catch (WrongExpectedVersionException)
+    {
+      return new InsertionFailure.ConsistencyCheckFailed();
+    }
+    catch
+    {
+      return new InsertionFailure.InsertionFailed();
+    }
+  }
 
   internal static IEnumerable<EventData> ToEventData(
     (EventModelEvent Event, EventInsertionMetadataPayload Metadata)[] insertions) =>
