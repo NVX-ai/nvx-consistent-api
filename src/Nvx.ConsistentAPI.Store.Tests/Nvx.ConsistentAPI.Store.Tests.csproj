@@ -9,13 +9,21 @@
 
     <ItemGroup>
         <PackageReference Include="coverlet.collector" Version="6.0.2"/>
+        <PackageReference Include="DeFuncto.Assertions" Version="1.1.2"/>
+        <PackageReference Include="DeFuncto.Core" Version="1.1.2"/>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0"/>
+        <PackageReference Include="Testcontainers.EventStoreDb" Version="4.6.0"/>
         <PackageReference Include="xunit" Version="2.9.2"/>
         <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2"/>
     </ItemGroup>
 
     <ItemGroup>
         <Using Include="Xunit"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Nvx.ConsistentAPI.Store.EventStoreDB\Nvx.ConsistentAPI.Store.EventStoreDB.csproj"/>
+        <ProjectReference Include="..\Nvx.ConsistentAPI.Store\Nvx.ConsistentAPI.Store.csproj"/>
     </ItemGroup>
 
 </Project>

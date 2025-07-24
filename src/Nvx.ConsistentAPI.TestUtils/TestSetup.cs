@@ -698,14 +698,14 @@ public class TestSettings
 
   public string EsDbImage
   {
-    get => esDbImage ?? EventStoreDefaultConnectionString;
+    get => esDbImage ?? EventStoreDefaultImage;
     // ReSharper disable once UnusedMember.Global
     init => esDbImage = value;
   }
 
   public string MsSqlDbImage
   {
-    get => msSqlDbImage ?? MsSqlDefaultConnectionString;
+    get => msSqlDbImage ?? MsSqlDefaultImage;
     // ReSharper disable once UnusedMember.Global
     init => msSqlDbImage = value;
   }
@@ -717,13 +717,13 @@ public class TestSettings
     init => azuriteImage = value;
   }
 
-  private static string EventStoreDefaultConnectionString =>
+  private static string EventStoreDefaultImage =>
     RuntimeInformation.ProcessArchitecture == Architecture.Arm64
     && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
       ? "eventstore/eventstore:23.10.0-alpha-arm64v8"
       : "eventstore/eventstore:23.10.0-jammy";
 
-  private static string MsSqlDefaultConnectionString =>
+  private static string MsSqlDefaultImage =>
     RuntimeInformation.ProcessArchitecture == Architecture.Arm64
     && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
       ? "mcr.microsoft.com/mssql/server:2019-CU28-ubuntu-20.04"
