@@ -19,6 +19,8 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       try
       {
         var streamName = $"{payload.Swimlane}{payload.StreamId.StreamId()}";
+        var eventData = ToEventData(payload.Insertions);
+
         throw new NotImplementedException();
       }
       catch
@@ -27,21 +29,6 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       }
     }
   }
-
-  // internal static IEnumerable<EventData> ToEventData(IEnumerable<EventModelEvent> events, EventContext? context) =>
-  //   events.Select(e =>
-  //     new EventData(
-  //       Uuid.NewUuid(),
-  //       e.EventType,
-  //       e.ToBytes(),
-  //       new EventMetadata(
-  //           DateTime.UtcNow,
-  //           context?.CorrelationId,
-  //           context?.CausationId,
-  //           context?.RelatedUserSub,
-  //           null)
-  //         .ToBytes()
-  //     ));
 
   public IAsyncEnumerable<ReadAllMessage> Read(
     ReadAllRequest request = default,
@@ -60,4 +47,21 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
   public Task TruncateStream(StrongId id, ulong truncateBefore) => throw new NotImplementedException();
+
+  internal static IEnumerable<EventData> ToEventData(
+    (EventModelEvent Event, EventInsertionMetadataPayload Metadata)[] insertions) =>
+    insertions.Select(i =>
+      new EventData(
+        Uuid.FromGuid(i.Metadata.EventId),
+        i.Event.EventType,
+        i.Event.ToBytes(),
+        new EventMetadata(
+            i.Metadata.CreatedAt,
+            i.Metadata.CorrelationId,
+            i.Metadata.CausationId,
+            i.Metadata.RelatedUserSub,
+            null,
+            null)
+          .ToBytes()
+      ));
 }
