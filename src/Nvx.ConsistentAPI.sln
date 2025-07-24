@@ -15,9 +15,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.TestUtils
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.Analyzers", "Nvx.ConsistentAPI.Analyzers\Nvx.ConsistentAPI.Analyzers.csproj", "{D1B125B4-C4FA-40F5-941D-841CC3F5A149}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.EventStore", "Nvx.ConsistentAPI.EventStore\Nvx.ConsistentAPI.EventStore.csproj", "{BAB40BE2-725B-456F-9106-B1154BCDD18C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.Store", "Nvx.ConsistentAPI.Store\Nvx.ConsistentAPI.Store.csproj", "{BAB40BE2-725B-456F-9106-B1154BCDD18C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.EventStore.EventStoreDB", "Nvx.ConsistentAPI.EventStore.EventStoreDB\Nvx.ConsistentAPI.EventStore.EventStoreDB.csproj", "{63E81236-9BA4-4CF5-81C8-EF78B40D21AC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.Store.EventStoreDB", "Nvx.ConsistentAPI.Store.EventStoreDB\Nvx.ConsistentAPI.Store.EventStoreDB.csproj", "{63E81236-9BA4-4CF5-81C8-EF78B40D21AC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

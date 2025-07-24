@@ -1,7 +1,7 @@
 ﻿using DeFuncto;
-using Nvx.ConsistentAPI.EventStore.Store;
+using Nvx.ConsistentAPI.Store.Store;
 
-namespace Nvx.ConsistentAPI.EventStore.EventStoreDB;
+namespace Nvx.ConsistentAPI.Store.EventStoreDB;
 
 public class EventStoreDbStore : EventStore<EventModelEvent>
 {

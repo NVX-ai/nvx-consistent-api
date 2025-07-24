@@ -1,4 +1,4 @@
-﻿namespace Nvx.ConsistentAPI.EventStore.Store;
+﻿namespace Nvx.ConsistentAPI.Store.Store;
 
 public abstract record ReadStreamMessage<EventInterface>
 {

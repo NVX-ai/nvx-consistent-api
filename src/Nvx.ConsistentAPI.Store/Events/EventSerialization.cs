@@ -1,7 +1,7 @@
 ﻿using System.Text;
 using Newtonsoft.Json;
 
-namespace Nvx.ConsistentAPI.EventStore.Events;
+namespace Nvx.ConsistentAPI.Store.Events;
 
 public static class EventSerialization
 {

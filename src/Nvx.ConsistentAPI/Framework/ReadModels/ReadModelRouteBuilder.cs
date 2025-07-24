@@ -7,8 +7,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
-using Nvx.ConsistentAPI.EventStore.Events;
 using Nvx.ConsistentAPI.Framework;
+using Nvx.ConsistentAPI.Store.Events;
 
 namespace Nvx.ConsistentAPI;
 

@@ -7,7 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Nvx.ConsistentAPI.EventStore\Nvx.ConsistentAPI.EventStore.csproj"/>
+        <ProjectReference Include="..\Nvx.ConsistentAPI.Store\Nvx.ConsistentAPI.Store.csproj"/>
     </ItemGroup>
 
 </Project>

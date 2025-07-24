@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.OpenApi.Models;
-using Nvx.ConsistentAPI.EventStore.Events;
+using Nvx.ConsistentAPI.Store.Events;
 
 namespace Nvx.ConsistentAPI;
 

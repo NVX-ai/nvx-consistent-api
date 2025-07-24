@@ -1,4 +1,4 @@
-using Nvx.ConsistentAPI.EventStore.Events;
+using Nvx.ConsistentAPI.Store.Events;
 
 namespace Nvx.ConsistentAPI.Tests;
 
