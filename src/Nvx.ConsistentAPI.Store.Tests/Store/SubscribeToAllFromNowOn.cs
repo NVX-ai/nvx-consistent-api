@@ -1,21 +1,23 @@
 ﻿using System.Diagnostics;
 
-namespace Eventively.Tests;
+namespace Nvx.ConsistentAPI.Store.Tests;
 
 public class SubscribeToAllFromNowOn
 {
-  public static TheoryData<EventStore<Event>> Stores => StoreProvider.Stores;
+  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
 
   [Theory(DisplayName = "subscribe to all from now on")]
   [MemberData(nameof(Stores))]
-  public async Task Test12(EventStore<Event> eventStore)
+  public async Task Test12(EventStore<EventModelEvent> eventStore)
   {
     var swimlane = Guid.NewGuid().ToString();
     var otherSwimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
-    await eventStore.Insert(new InsertionPayload<Event>(swimlane, streamId, events)).ShouldBeOk();
-    var insertion = await eventStore.Insert(new InsertionPayload<Event>(otherSwimlane, streamId, events)).ShouldBeOk();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
+    var insertion = await eventStore
+      .Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, events))
+      .ShouldBeOk();
     var eventsReceivedByAllSubscription = 0;
     long swimLaneStreamPosition = StoreProvider.EventCount;
     long otherSwimLaneStreamPosition = StoreProvider.EventCount;
@@ -65,8 +67,8 @@ public class SubscribeToAllFromNowOn
       },
       SubscribeAllRequest.FromNowOn());
 
-    await eventStore.Insert(new InsertionPayload<Event>(swimlane, streamId, events)).ShouldBeOk();
-    await eventStore.Insert(new InsertionPayload<Event>(otherSwimlane, streamId, events)).ShouldBeOk();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, events)).ShouldBeOk();
 
     var stopwatch = Stopwatch.StartNew();
     while (stopwatch.Elapsed < StoreProvider.SubscriptionTimeout
@@ -106,7 +108,7 @@ public class SubscribeToAllFromNowOn
   }
 
   private static async Task SubscribeToAll(
-    EventStore<Event> eventStore,
+    EventStore<EventModelEvent> eventStore,
     Action<ReadAllMessage> onMessage,
     SubscribeAllRequest request = default)
   {

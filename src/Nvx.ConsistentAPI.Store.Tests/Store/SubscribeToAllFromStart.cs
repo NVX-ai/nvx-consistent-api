@@ -1,21 +1,21 @@
 ﻿using System.Diagnostics;
 
-namespace Eventively.Tests;
+namespace Nvx.ConsistentAPI.Store.Tests;
 
 public class SubscribeToAllFromStart
 {
-  public static TheoryData<EventStore<Event>> Stores => StoreProvider.Stores;
+  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
 
   [Theory(DisplayName = "subscribe to all")]
   [MemberData(nameof(Stores))]
-  public async Task Test11(EventStore<Event> eventStore)
+  public async Task Test11(EventStore<EventModelEvent> eventStore)
   {
     var swimlane = Guid.NewGuid().ToString();
     var otherSwimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
     var eventsReceivedByAllSubscription = 0;
-    await eventStore.Insert(new InsertionPayload<Event>(swimlane, streamId, events)).ShouldBeOk();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
     var swimLaneStreamPosition = 0L;
     var otherSwimLaneStreamPosition = 0L;
@@ -65,7 +65,7 @@ public class SubscribeToAllFromStart
       },
       SubscribeAllRequest.Start());
 
-    await eventStore.Insert(new InsertionPayload<Event>(otherSwimlane, streamId, events)).ShouldBeOk();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, events)).ShouldBeOk();
     var stopwatch = Stopwatch.StartNew();
     while (stopwatch.Elapsed < StoreProvider.SubscriptionTimeout
            && eventsReceivedByAllSubscription < StoreProvider.EventCount * 2)
@@ -102,7 +102,7 @@ public class SubscribeToAllFromStart
   }
 
   private static async Task SubscribeToAll(
-    EventStore<Event> eventStore,
+    EventStore<EventModelEvent> eventStore,
     Action<ReadAllMessage> onMessage,
     SubscribeAllRequest request = default)
   {

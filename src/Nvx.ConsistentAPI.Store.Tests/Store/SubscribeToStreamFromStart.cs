@@ -1,20 +1,20 @@
 ﻿using System.Diagnostics;
 
-namespace Eventively.Tests;
+namespace Nvx.ConsistentAPI.Store.Tests;
 
 public class SubscribeToStreamFromStart
 {
-  public static TheoryData<EventStore<Event>> Stores => StoreProvider.Stores;
+  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
 
   [Theory(DisplayName = "subscribe to stream from start")]
   [MemberData(nameof(Stores))]
-  public async Task Test14(EventStore<Event> eventStore)
+  public async Task Test14(EventStore<EventModelEvent> eventStore)
   {
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
     var eventsReceivedBySubscription = 0;
-    await eventStore.Insert(new InsertionPayload<Event>(swimlane, streamId, events)).ShouldBeOk();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
     await SubscribeToStream(
       eventStore,
@@ -43,7 +43,7 @@ public class SubscribeToStreamFromStart
   }
 
   private static async Task SubscribeToStream(
-    EventStore<Event> eventStore,
+    EventStore<EventModelEvent> eventStore,
     SubscribeStreamRequest request,
     Action<ReadStreamMessage<Event>> onMessage)
   {

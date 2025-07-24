@@ -1,21 +1,22 @@
 ﻿using System.Diagnostics;
 
-namespace Eventively.Tests;
+namespace Nvx.ConsistentAPI.Store.Tests;
 
 public class SubscribeToAllFromPosition
 {
-  public static TheoryData<EventStore<Event>> Stores => StoreProvider.Stores;
+  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
 
   [Theory(DisplayName = "subscribe to all from specific position")]
   [MemberData(nameof(Stores))]
-  public async Task Test13(EventStore<Event> eventStore)
+  public async Task Test13(EventStore<EventModelEvent> eventStore)
   {
     var swimlane = Guid.NewGuid().ToString();
     var otherSwimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
 
-    var firstInsertion = await eventStore.Insert(new InsertionPayload<Event>(swimlane, streamId, events)).ShouldBeOk();
+    var firstInsertion =
+      await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
     var positionAfterFirstBatch = firstInsertion.GlobalPosition;
     var eventsReceivedBySubscription = 0;
@@ -69,9 +70,9 @@ public class SubscribeToAllFromPosition
       },
       SubscribeAllRequest.After(positionAfterFirstBatch));
 
-    await eventStore.Insert(new InsertionPayload<Event>(otherSwimlane, streamId, events)).ShouldBeOk();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, events)).ShouldBeOk();
 
-    await eventStore.Insert(new InsertionPayload<Event>(swimlane, streamId, events)).ShouldBeOk();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
     var stopwatch = Stopwatch.StartNew();
     while (stopwatch.Elapsed < StoreProvider.SubscriptionTimeout
@@ -110,7 +111,7 @@ public class SubscribeToAllFromPosition
   }
 
   private static async Task SubscribeToAll(
-    EventStore<Event> eventStore,
+    EventStore<EventModelEvent> eventStore,
     Action<ReadAllMessage> onMessage,
     SubscribeAllRequest request = default)
   {

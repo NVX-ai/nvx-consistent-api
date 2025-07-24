@@ -1,20 +1,20 @@
-﻿namespace Eventively.Tests;
+﻿namespace Nvx.ConsistentAPI.Store.Tests;
 
 public class IdempotentInsertion
 {
-  public static TheoryData<EventStore<Event>> Stores => StoreProvider.Stores;
+  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
 
 
   [Theory(DisplayName = "insertion is idempotent by event id")]
   [MemberData(nameof(Stores))]
-  public async Task Test18(EventStore<Event> eventStore)
+  public async Task Test18(EventStore<EventModelEvent> eventStore)
   {
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
 
     var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
 
-    var insertionPayload = new InsertionPayload<Event>(swimlane, streamId, events);
+    var insertionPayload = new InsertionPayload<EventModelEvent>(swimlane, streamId, events);
     await eventStore.Insert(insertionPayload).ShouldBeOk();
     await eventStore.Insert(insertionPayload).ShouldBeOk();
 

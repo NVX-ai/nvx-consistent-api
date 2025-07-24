@@ -18,14 +18,14 @@ public static class StoreProvider
 
   public static readonly TimeSpan SubscriptionTimeout = TimeSpan.FromSeconds(10);
 
-  private static readonly Lazy<EventStore<EventModelEvent>> EsDBStore = new(() =>
+  private static readonly Lazy<EventStore<EventModelEvent>> EsDbStore = new(() =>
   {
     var container = new EventStoreDbBuilder()
       .WithImage(EventStoreDefaultImage)
       .WithEnvironment("EVENTSTORE_MEM_DB", "True")
       .Build();
     container.StartAsync().Wait();
-    var store = new EventStoreDbStore();
+    var store = new EventStoreDbStore(container.GetConnectionString());
     var stopwatch = Stopwatch.StartNew();
     while (stopwatch.Elapsed < TimeSpan.FromMinutes(1))
     {
@@ -40,24 +40,23 @@ public static class StoreProvider
       }
     }
 
-    throw new TimeoutException("Failed to initialize MsSqlEventStore within 1 minute.");
+    throw new TimeoutException("Failed to initialize EventStoreDbEventStore within 1 minute.");
   });
 
   public static TheoryData<EventStore<EventModelEvent>> Stores =>
   [
-    EsDBStore.Value
+    EsDbStore.Value
   ];
 }
 
 public record MyEventId(Guid Value) : StrongId
 {
-  public const string Swimlane = "MyEvent";
-  public string Inlined => Value.ToString();
-  public override string StreamId() => $"{Swimlane}{Value}";
+  public override string SwimLane => "MyTestSwimLane";
+  public override string StreamId() => Value.ToString();
   public override string ToString() => StreamId();
 }
 
-public record MyEvent(MyEventId StreamId) : Event<MyEventId>
+public record MyEvent(Guid Id) : EventModelEvent
 {
-  public MyEventId Id => StreamId;
+  public StrongId GetEntityId() => new MyEventId(Id);
 }

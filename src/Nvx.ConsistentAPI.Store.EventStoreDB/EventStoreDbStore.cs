@@ -3,7 +3,7 @@ using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI.Store.EventStoreDB;
 
-public class EventStoreDbStore : EventStore<EventModelEvent>
+public class EventStoreDbStore(string connectionString) : EventStore<EventModelEvent>
 {
   public Task Initialize(CancellationToken cancellationToken = default) => throw new NotImplementedException();
 

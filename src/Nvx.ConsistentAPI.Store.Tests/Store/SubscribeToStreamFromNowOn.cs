@@ -1,20 +1,20 @@
 ﻿using System.Diagnostics;
 
-namespace Eventively.Tests;
+namespace Nvx.ConsistentAPI.Store.Tests;
 
 public class SubscribeToStreamFromNowOn
 {
-  public static TheoryData<EventStore<Event>> Stores => StoreProvider.Stores;
+  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
 
   [Theory(DisplayName = "subscribe to stream from now on")]
   [MemberData(nameof(Stores))]
-  public async Task Test16(EventStore<Event> eventStore)
+  public async Task Test16(EventStore<EventModelEvent> eventStore)
   {
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable.Range(0, StoreProvider.EventCount).Select(Event (_) => new MyEvent(streamId)).ToArray();
 
-    await eventStore.Insert(new InsertionPayload<Event>(swimlane, streamId, events)).ShouldBeOk();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
     var eventsReceivedBySubscription = 0;
 
@@ -23,7 +23,7 @@ public class SubscribeToStreamFromNowOn
       SubscribeStreamRequest.FromNowOn(swimlane, streamId),
       _ => Interlocked.Increment(ref eventsReceivedBySubscription));
 
-    await eventStore.Insert(new InsertionPayload<Event>(swimlane, streamId, events)).ShouldBeOk();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
     var stopwatch = Stopwatch.StartNew();
     while (stopwatch.Elapsed < StoreProvider.SubscriptionTimeout
@@ -36,7 +36,7 @@ public class SubscribeToStreamFromNowOn
   }
 
   private static async Task SubscribeToStream(
-    EventStore<Event> eventStore,
+    EventStore<EventModelEvent> eventStore,
     SubscribeStreamRequest request,
     Action<ReadStreamMessage<Event>> onMessage)
   {
