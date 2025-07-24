@@ -196,53 +196,50 @@ public record SendNotificationToUser(string Message, string RecipientSub) : Even
 // Events
 public record StockAdded(Guid ProductId, int Amount) : EventModelEvent
 {
-  public string GetStreamName() => Stock.GetStreamName(ProductId);
+  public string SwimLane => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockRetrieved(Guid ProductId, int Amount) : EventModelEvent
 {
-  public string GetStreamName() => Stock.GetStreamName(ProductId);
+  public string SwimLane => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockNamed(Guid ProductId, string Name) : EventModelEvent
 {
-  public string GetStreamName() => Stock.GetStreamName(ProductId);
+  public string SwimLane => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record ProductCreated(Guid ProductId, string Name) : EventModelEvent
 {
-  public string GetStreamName() => GetStreamName(ProductId);
+  public string SwimLane => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
-  private static string GetStreamName(Guid id) => Product.GetStreamName(id);
 }
 
 public record ProductPictureAdded(Guid ProductId, Guid PictureId) : EventModelEvent
 {
-  public string GetStreamName() => GetStreamName(ProductId);
+  public string SwimLane => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
-  private static string GetStreamName(Guid id) => Product.GetStreamName(id);
 }
 
 public record AggregatingProductHidden(Guid ProductId) : EventModelEvent
 {
-  public string GetStreamName() => Product.GetStreamName(ProductId);
+  public string SwimLane => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record AggregatingProductShown(Guid ProductId) : EventModelEvent
 {
-  public string GetStreamName() => Product.GetStreamName(ProductId);
+  public string SwimLane => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockPictureAdded(Guid ProductId, Guid PictureId) : EventModelEvent
 {
-  public string GetStreamName() => GetStreamName(ProductId);
+  public string SwimLane => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
-  private static string GetStreamName(Guid id) => Stock.GetStreamName(id);
 }
 
 public record OrganizationBuildingRegistered(string Name, Guid TenantId) : EventModelEvent
