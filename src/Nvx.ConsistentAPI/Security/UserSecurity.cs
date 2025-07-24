@@ -101,55 +101,55 @@ public record RemoveFromTenant(string Sub) : TenantEventModelCommand<UserSecurit
 
 public record AddedToTenant(string Sub, Guid TenantId) : EventModelEvent
 {
-  public string GetStreamName() => UserSecurity.GetStreamName(Sub);
+  public string SwimLane => UserSecurity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record RemovedFromTenant(string Sub, Guid TenantId) : EventModelEvent
 {
-  public string GetStreamName() => UserSecurity.GetStreamName(Sub);
+  public string SwimLane => UserSecurity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record ApplicationPermissionAssigned(string Sub, string Permission) : EventModelEvent
 {
-  public string GetStreamName() => UserSecurity.GetStreamName(Sub);
+  public string SwimLane => UserSecurity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record ApplicationPermissionRevoked(string Sub, string Permission) : EventModelEvent
 {
-  public string GetStreamName() => UserSecurity.GetStreamName(Sub);
+  public string SwimLane => UserSecurity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record TenantPermissionAssigned(string Sub, string Permission, Guid TenantId) : EventModelEvent
 {
-  public string GetStreamName() => UserSecurity.GetStreamName(Sub);
+  public string SwimLane => UserSecurity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record TenantPermissionRevoked(string Sub, string Permission, Guid TenantId) : EventModelEvent
 {
-  public string GetStreamName() => UserSecurity.GetStreamName(Sub);
+  public string SwimLane => UserSecurity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record UserNameReceived(string Sub, string FullName) : EventModelEvent
 {
-  public string GetStreamName() => UserSecurity.GetStreamName(Sub);
+  public string SwimLane => UserSecurity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record UserEmailReceived(string Sub, string Email) : EventModelEvent
 {
-  public string GetStreamName() => UserSecurity.GetStreamName(Sub);
+  public string SwimLane => UserSecurity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record TenantDetailsReceived(string Sub, Guid TenantId, string TenantName) : EventModelEvent
 {
-  public string GetStreamName() => UserSecurity.GetStreamName(Sub);
+  public string SwimLane => UserSecurity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
@@ -157,13 +157,13 @@ public record TenantDetails(Guid TenantId, string TenantName);
 
 public record TenantRoleAssigned(string Sub, Guid RoleId, Guid TenantId) : EventModelEvent
 {
-  public string GetStreamName() => UserSecurity.GetStreamName(Sub);
+  public string SwimLane => UserSecurity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record TenantRoleRevoked(string Sub, Guid RoleId, Guid TenantId) : EventModelEvent
 {
-  public string GetStreamName() => UserSecurity.GetStreamName(Sub);
+  public string SwimLane => UserSecurity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
@@ -270,7 +270,7 @@ public partial record UserSecurity(
         new InitiatesInterest<TenantRoleAssigned>(evt =>
         [
           new EntityInterestManifest(
-            evt.GetStreamName(),
+            (evt as EventModelEvent).GetStreamName(),
             evt.GetEntityId(),
             RoleEntity.GetStreamName(new RoleId(evt.RoleId, evt.TenantId)),
             new RoleId(evt.RoleId, evt.TenantId))
@@ -278,7 +278,7 @@ public partial record UserSecurity(
         new StopsInterest<TenantRoleRevoked>(evt =>
         [
           new EntityInterestManifest(
-            evt.GetStreamName(),
+            (evt as EventModelEvent).GetStreamName(),
             evt.GetEntityId(),
             RoleEntity.GetStreamName(new RoleId(evt.RoleId, evt.TenantId)),
             new RoleId(evt.RoleId, evt.TenantId))
