@@ -2,12 +2,13 @@
 
 public class ReadStreamForwardsFromTheStart
 {
-  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
+  public static TheoryData<StoreBackend> Stores => StoreProvider.Stores;
 
   [Theory(DisplayName = "read stream forwards from the start")]
   [MemberData(nameof(Stores))]
-  public async Task Test8(EventStore<EventModelEvent> eventStore)
+  public async Task Test8(StoreBackend backend)
   {
+    var eventStore = await StoreProvider.GetStore(backend);
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable

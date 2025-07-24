@@ -4,12 +4,13 @@ namespace Nvx.ConsistentAPI.Store.Tests;
 
 public class SubscribeToAllFromPosition
 {
-  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
+  public static TheoryData<StoreBackend> Stores => StoreProvider.Stores;
 
   [Theory(DisplayName = "subscribe to all from specific position")]
   [MemberData(nameof(Stores))]
-  public async Task Test13(EventStore<EventModelEvent> eventStore)
+  public async Task Test13(StoreBackend backend)
   {
+    var eventStore = await StoreProvider.GetStore(backend);
     var swimlane = Guid.NewGuid().ToString();
     var otherSwimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());

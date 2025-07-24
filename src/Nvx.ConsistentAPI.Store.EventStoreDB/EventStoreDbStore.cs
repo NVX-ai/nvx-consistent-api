@@ -5,7 +5,7 @@ namespace Nvx.ConsistentAPI.Store.EventStoreDB;
 
 public class EventStoreDbStore(string connectionString) : EventStore<EventModelEvent>
 {
-  public Task Initialize(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+  public Task Initialize(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
   public AsyncResult<InsertionSuccess, InsertionFailure> Insert(InsertionPayload<EventModelEvent> payload) =>
     throw new NotImplementedException();

@@ -2,7 +2,7 @@
 
 public class IdempotentInsertion
 {
-  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
+  public static TheoryData<StoreBackend> Stores => StoreProvider.Stores;
 
 
   [Theory(DisplayName = "insertion is idempotent by event id")]

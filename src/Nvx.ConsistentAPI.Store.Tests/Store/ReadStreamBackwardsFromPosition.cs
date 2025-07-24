@@ -2,12 +2,13 @@
 
 public class ReadStreamBackwardsFromPosition
 {
-  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
+  public static TheoryData<StoreBackend> Stores => StoreProvider.Stores;
 
   [Theory(DisplayName = "read stream backwards from a specific position")]
   [MemberData(nameof(Stores))]
-  public async Task Test10(EventStore<EventModelEvent> eventStore)
+  public async Task Test10(StoreBackend backend)
   {
+    var eventStore = await StoreProvider.GetStore(backend);
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable

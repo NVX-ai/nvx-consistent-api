@@ -4,20 +4,20 @@ public record Insertion<EventInterface>(EventInterface Evt, Guid Id);
 
 public record InsertionPayload<EventInterface>(
   string Swimlane,
-  StrongId StrongId,
+  StrongId StreamId,
   ulong? InsertAfter,
   (EventInterface Event, EventInsertionMetadataPayload Metadata)[] Insertions)
 {
   public InsertionPayload(
     string swimlane,
-    StrongId StrongId,
+    StrongId StreamId,
     ulong? insertAfter,
     string? emittedBy,
     Guid? correlationId,
     Guid? causationId,
     Insertion<EventInterface>[] insertions) : this(
     swimlane,
-    StrongId,
+    StreamId,
     insertAfter,
     insertions
       .Select(ins => (ins.Evt,
@@ -32,20 +32,20 @@ public record InsertionPayload<EventInterface>(
 
   public InsertionPayload(
     string swimlane,
-    StrongId StrongId,
+    StrongId StreamId,
     ulong? insertAfter,
     string? emittedBy,
     Guid? correlationId,
     Guid? causationId,
     EventInterface[] events) : this(
     swimlane,
-    StrongId,
+    StreamId,
     insertAfter,
     emittedBy,
     correlationId,
     causationId,
     events.Select(e => new Insertion<EventInterface>(e, Guid.NewGuid())).ToArray()) { }
 
-  public InsertionPayload(string swimlane, StrongId StrongId, EventInterface[] events)
-    : this(swimlane, StrongId, null, null, null, null, events) { }
+  public InsertionPayload(string swimlane, StrongId StreamId, EventInterface[] events)
+    : this(swimlane, StreamId, null, null, null, null, events) { }
 }

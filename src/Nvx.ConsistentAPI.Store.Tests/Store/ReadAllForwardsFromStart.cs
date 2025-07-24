@@ -2,12 +2,13 @@ namespace Nvx.ConsistentAPI.Store.Tests;
 
 public class ReadAllForwardsFromStart
 {
-  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
+  public static TheoryData<StoreBackend> Stores => StoreProvider.Stores;
 
   [Theory(DisplayName = "read all forwards from the start")]
   [MemberData(nameof(Stores))]
-  public async Task Test0(EventStore<EventModelEvent> eventStore)
+  public async Task Test0(StoreBackend backend)
   {
+    var eventStore = await StoreProvider.GetStore(backend);
     var swimlane = Guid.NewGuid().ToString();
     var otherSwimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());

@@ -1,17 +1,15 @@
-using DeFuncto.Assertions;
-using Nvx.ConsistentAPI.Store.Store;
-
 namespace Nvx.ConsistentAPI.Store.Tests;
 
 public class ConsistencyCheckTest
 {
-  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
+  public static TheoryData<StoreBackend> Stores => StoreProvider.Stores;
 
 
   [Theory(DisplayName = "insertion gives consistency error when stream position is not up to date")]
   [MemberData(nameof(Stores))]
-  public async Task Test17(EventStore<EventModelEvent> eventStore)
+  public async Task Test17(StoreBackend backend)
   {
+    var eventStore = await StoreProvider.GetStore(backend);
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable

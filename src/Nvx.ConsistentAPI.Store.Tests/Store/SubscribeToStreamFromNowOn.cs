@@ -4,12 +4,13 @@ namespace Nvx.ConsistentAPI.Store.Tests;
 
 public class SubscribeToStreamFromNowOn
 {
-  public static TheoryData<EventStore<EventModelEvent>> Stores => StoreProvider.Stores;
+  public static TheoryData<StoreBackend> Stores => StoreProvider.Stores;
 
   [Theory(DisplayName = "subscribe to stream from now on")]
   [MemberData(nameof(Stores))]
-  public async Task Test16(EventStore<EventModelEvent> eventStore)
+  public async Task Test16(StoreBackend backend)
   {
+    var eventStore = await StoreProvider.GetStore(backend);
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable
