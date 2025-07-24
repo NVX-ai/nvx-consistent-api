@@ -30,37 +30,6 @@ o2kQ+X5xK9cipRgEKwIDAQAB
 -----END PUBLIC KEY-----
 */
 
-async Task<string> GetAdminSubjectId()
-{
-  var credentials = new PasswordGrantFlow
-  {
-    KeycloakUrl = keycloakBaseUrl,
-    UserName = "admin",
-    Password = "admin"
-  };
-  using var httpClient = AuthenticationHttpClientFactory.Create(credentials);
-  using var usersApi = ApiClientFactory.Create<UsersApi>(httpClient);
-  var stopWatch = Stopwatch.StartNew();
-  while (stopWatch.Elapsed.TotalSeconds < 45)
-  {
-    try
-    {
-      var users = await usersApi.GetUsersAsync("master");
-      if (users.Any())
-      {
-        return users.Single(u => u.Username == "admin").Id;
-      }
-    }
-    catch
-    {
-      // If failed to get the users, wait for a while and retry.
-      await Task.Delay(100);
-    }
-  }
-
-  throw new TimeoutException("Failed to get admin user id from Keycloak within 45 seconds.");
-}
-
 var app = await Generator.GetWebApp(
   null,
   new GeneratorSettings(
@@ -85,6 +54,52 @@ var app = await Generator.GetWebApp(
 
 app.Run();
 return;
+
+async Task<string> GetAdminSubjectId(long secondsElapsed = 0)
+{
+  var credentials = new PasswordGrantFlow
+  {
+    KeycloakUrl = keycloakBaseUrl,
+    UserName = "admin",
+    Password = "admin"
+  };
+  using var httpClient = AuthenticationHttpClientFactory.Create(credentials);
+  using var usersApi = ApiClientFactory.Create<UsersApi>(httpClient);
+  using var scopesApi = ApiClientFactory.Create<ClientScopesApi>(httpClient);
+  using var scopeMappingApi = ApiClientFactory.Create<ProtocolMappersApi>(httpClient);
+  var stopWatch = Stopwatch.StartNew();
+  while (stopWatch.Elapsed.TotalSeconds < 45 - secondsElapsed)
+  {
+    try
+    {
+      var scopes = await scopesApi.GetClientScopesAsync("master");
+      var basicScope = scopes.Single(s => s.Name == "basic");
+      var subMapper = basicScope.ProtocolMappers.Single(m => m.Name == "sub");
+      subMapper.Config["lightweight.claim"] = "true";
+      await scopeMappingApi.PutClientScopesProtocolMappersModelsByClientScopeIdAndIdAsync(
+        "master",
+        basicScope.Id,
+        subMapper.Id,
+        subMapper);
+      var users = await usersApi.GetUsersAsync("master");
+      var administrator = users.SingleOrDefault(u => u.Username == "admin");
+
+      if (administrator is not null)
+      {
+        return administrator.Id;
+      }
+
+      return await GetAdminSubjectId(secondsElapsed + (int)stopWatch.Elapsed.TotalSeconds);
+    }
+    catch
+    {
+      // If failed to get the users, wait for a while and retry.
+      await Task.Delay(100);
+    }
+  }
+
+  throw new TimeoutException("Failed to get admin user id from Keycloak within 45 seconds.");
+}
 
 async Task<SecurityKey[]> GetPublicKeysAsync()
 {

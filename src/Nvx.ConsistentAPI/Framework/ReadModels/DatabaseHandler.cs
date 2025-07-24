@@ -1,4 +1,6 @@
-﻿using System.Data;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Data;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using Dapper;
@@ -7,6 +9,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Nvx.ConsistentAPI.Framework;
 
 namespace Nvx.ConsistentAPI;
 
@@ -32,6 +35,28 @@ public interface DatabaseHandler
     var shorterTableName = $"{tableName[..^toRemove].Replace("ReadModel", string.Empty)}{VersionSuffix}";
     return $"{shorterTableName}{columnName}";
   }
+
+  internal static int GetStringMaxLength(PropertyInfo propertyInfo) =>
+    TryGetComponentModelMaxLength(propertyInfo) switch
+    {
+      { } a => a,
+      _ => propertyInfo.Name switch
+      {
+        "Id" => StringSizes.InlinedId,
+        _ => StringSizes.Default
+      }
+    };
+
+  private static int? TryGetComponentModelMaxLength(PropertyInfo propertyInfo) =>
+    propertyInfo.GetCustomAttribute<MaxLengthAttribute>() switch
+    {
+      { } a => a.Length,
+      _ => propertyInfo.GetCustomAttribute<StringLengthAttribute>() switch
+      {
+        { } a => a.MaximumLength,
+        _ => null
+      }
+    };
 }
 
 public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
@@ -76,6 +101,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
   private readonly bool isUserBound;
   private readonly ILogger logger;
   private readonly Type shapeType;
+  private readonly (PropertyInfo pi, int maxLength)[] stringProperties;
   private readonly string tableName;
 
   public DatabaseHandler(string connectionString, ILogger logger)
@@ -103,6 +129,11 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     isMultiTenant = shapeType
       .GetInterfaces()
       .Any(i => i.Name == nameof(MultiTenantReadModel) && i.Namespace == typeof(MultiTenantReadModel).Namespace);
+    stringProperties = shapeType
+      .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+      .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) == typeof(string))
+      .Select(p => (p, DatabaseHandler.GetStringMaxLength(p)))
+      .ToArray();
   }
 
   public string TraceableUpsertSql { get; }
@@ -228,7 +259,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     foreach (var prop in arrayProperties)
     {
       var propTableName = DatabaseHandler.GetArrayPropTableName(prop.Name, tableName);
-      var sqlType = MapToSqlType(prop.PropertyType.GetElementType()!, prop.Name);
+      var sqlType = MapToSqlType(prop, true);
       var sb = new StringBuilder();
       sb.AppendLine($"IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '{propTableName}')");
       sb.AppendLine("BEGIN");
@@ -251,11 +282,9 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     sb.AppendLine("BEGIN");
     sb.AppendLine($"CREATE TABLE {tableName} (");
 
-    var properties = shapeType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-
-    foreach (var prop in properties)
+    foreach (var prop in shapeType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
     {
-      var sqlType = MapToSqlType(prop.PropertyType, prop.Name, shapeType);
+      var sqlType = MapToSqlType(prop);
       if (sqlType == "OBJECT")
       {
         sb.AppendLine($"    [{prop.Name}] NVARCHAR(MAX) {Nullability(prop)},");
@@ -291,9 +320,10 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
 
   private static string Nullability(PropertyInfo prop) => prop.IsNullable() ? "NULL" : "NOT NULL";
 
-  internal static string MapToSqlType(Type columnType, string columnName, Type? shapeType = null)
+  internal static string MapToSqlType(PropertyInfo propertyInfo, bool isArray = false)
   {
-    var underlyingType = Nullable.GetUnderlyingType(columnType) ?? columnType;
+    var type = isArray ? propertyInfo.PropertyType.GetElementType()! : propertyInfo.PropertyType;
+    var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
 
     return underlyingType switch
     {
@@ -302,13 +332,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       _ when underlyingType == typeof(float) => "REAL",
       _ when underlyingType == typeof(double) => "FLOAT",
       _ when underlyingType == typeof(bool) => "BIT",
-      _ when underlyingType == typeof(string) =>
-        columnName switch
-        {
-          "Id" => "NVARCHAR(256)",
-          "JsonData" when shapeType == typeof(TodoEventModelReadModel) => "NVARCHAR(MAX)",
-          _ => "NVARCHAR(1024)"
-        },
+      _ when underlyingType == typeof(string) => $"NVARCHAR({StringMaxLength()})",
       _ when underlyingType == typeof(char) => "NCHAR(1)",
       _ when underlyingType == typeof(DateTime) => "DATETIME2",
       _ when underlyingType == typeof(DateOnly) => "DATETIME2",
@@ -317,6 +341,13 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       _ when underlyingType == typeof(decimal) => "DECIMAL(18, 2)",
       _ => "OBJECT"
     };
+
+    string StringMaxLength() =>
+      DatabaseHandler.GetStringMaxLength(propertyInfo) switch
+      {
+        int.MaxValue => "MAX",
+        var l => l.ToString()
+      };
   }
 
   public static string TableName(Type type) =>
@@ -565,6 +596,20 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     {
       var parameters = new DynamicParameters(rm);
       parameters.AddDynamicParams(traceabilityFields);
+      foreach (var prop in stringProperties)
+      {
+        var strValue = prop.pi.GetValue(rm) as string;
+        if (string.IsNullOrEmpty(strValue))
+        {
+          continue;
+        }
+
+        var clampedValue = strValue.Length > prop.maxLength
+          ? new StringInfo(strValue).SubstringByTextElements(0, prop.maxLength)
+          : strValue;
+        parameters.Add(prop.pi.Name, clampedValue);
+      }
+
       await connection.ExecuteAsync(TraceableUpsertSql, parameters);
       foreach (var prop in arrayProperties)
       {

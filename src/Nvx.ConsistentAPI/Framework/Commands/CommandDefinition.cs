@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Json.Logic;
@@ -10,16 +10,12 @@ using Nvx.ConsistentAPI.Framework;
 
 namespace Nvx.ConsistentAPI;
 
-using JsonSerializer = JsonSerializer;
-
-public record JsonLogicValidationResult(string[] Errors)
-{
-  public Result<Unit, ApiError> ToResult() =>
-    Errors.Length != 0
-      ? new ValidationError(Errors)
-      : unit;
-}
-
+/// <summary>
+///   Command artifact, includes the metadata needed for the framework to wire the endpoint
+///   and execute validations and additional checks.
+/// </summary>
+/// <typeparam name="Shape">Command contract.</typeparam>
+/// <typeparam name="Entity">Type of the entity the command makes a decision about</typeparam>
 public class CommandDefinition<Shape, Entity> : EventModelingCommandArtifact
   where Entity : EventModelEntity<Entity>
   where Shape : EventModelCommand
@@ -46,14 +42,34 @@ public class CommandDefinition<Shape, Entity> : EventModelingCommandArtifact
   private readonly string[] invalidIdempotencyKeys = ["undefined", "", "null", "nan", "nil", "none", "empty"];
   private readonly string routeSegment = Naming.ToSpinalCase<Shape>();
 
-  private readonly PropertyInfo[] stringProperties =
-    typeof(Shape).GetProperties().Where(p => p.PropertyType == typeof(string)).ToArray();
-
+  /// <summary>
+  ///   Description to be shown in the API specification.
+  /// </summary>
   public Option<string> Description { private get; init; } = None;
+
+  /// <summary>
+  ///   Special authorization logic for this command, it is recommended to document them in the
+  ///   <see cref="Description" /> property.
+  /// </summary>
   public CustomAuthorization<Entity, Shape>? CustomAuthorization { private get; init; }
+
+  /// <summary>
+  ///   Interceptor of the OpenApi specification builder for the operation, use with care,
+  ///   as the framework does not introspect actions performed by it.
+  /// </summary>
   public Action<OpenApiOperation> OpenApiCustomizer { private get; init; } = _ => { };
+
+  /// <summary>
+  ///   Used to group endpoints in the API, it's expected to be the name of the business capability
+  ///   the endpoint belongs to, so definitions belonging to different entities
+  /// </summary>
   public required string AreaTag { private get; init; }
 
+  /// <summary>
+  ///   Whether it would use the JsonLogic validation rules.
+  ///   This is not documented by the framework automatically, so it is recommended to document it in the
+  ///   <see cref="Description" /> property.
+  /// </summary>
   public bool UsesValidationRules { get; init; }
 
   public AuthOptions Auth { get; init; } = new Everyone();
@@ -467,56 +483,8 @@ public class CommandDefinition<Shape, Entity> : EventModelingCommandArtifact
   private Result<Shape, ApiError> Validate(Shape command) =>
     command
       .Validate()
-      .Apply(err => err
-        .Concat(
-          from sp in stringProperties
-          let value = (string?)sp.GetValue(command)
-          where (value?.Length ?? 0) > 1024
-          select $"{sp.Name} lenght must be less than 1024 characters")
-        .ToArray())
+      .ToArray()
       .Apply<string[], Result<Shape, ApiError>>(err => err.Length == 0 ? command : new ValidationError(err));
 
   public override int GetHashCode() => routeSegment.GetHashCode();
 }
-
-public interface EventModelCommand<Entity> : EventModelCommand where Entity : EventModelEntity<Entity>
-{
-  Result<EventInsertion, ApiError> Decide(Option<Entity> entity, Option<UserSecurity> user, FileUpload[] files);
-  Option<StrongId> TryGetEntityId(Option<UserSecurity> user);
-}
-
-public interface TenantEventModelCommand<Entity> : EventModelCommand where Entity : EventModelEntity<Entity>
-{
-  Result<EventInsertion, ApiError> Decide(Guid tenantId, Option<Entity> entity, UserSecurity user, FileUpload[] files);
-  Option<StrongId> TryGetEntityId(UserSecurity user, Guid tenantId);
-}
-
-public interface EventModelCommand
-{
-  public Result<EventInsertion, ApiError> Decide<Entity>(
-    Option<Entity> entity,
-    UserSecurity? user,
-    FileUpload[] files,
-    Guid? tenantId = null
-  ) where Entity : EventModelEntity<Entity> =>
-    this switch
-    {
-      TenantEventModelCommand<Entity> tc => tenantId.HasValue && user != null
-        ? tc.Decide(tenantId.Value, entity, user, files)
-        : new DisasterError("A tenancy command requires a tenant ID and an authenticated user"),
-      EventModelCommand<Entity> c => c.Decide(entity, Optional(user), files),
-      _ => new DisasterError("This command definition is incomplete.")
-    };
-
-  public IEnumerable<string> Validate() => [];
-}
-
-public record CommandAcceptedResult(string EntityId);
-
-public record CacheLockedResult;
-
-public record SuccessCachedResult(CommandAcceptedResult Value);
-
-public record ErrorCacheResult(ApiError Value);
-
-public record CacheLockAvailableResult(long Revision);

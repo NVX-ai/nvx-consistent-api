@@ -49,14 +49,6 @@ public class StandardFlowTest
     await setup.Command(new RemoveValidationRule("create-product", "[\"error 3\"]"), true);
     await setup.Command(new CreateProduct(Guid.NewGuid(), "banana", null));
 
-    // Max length validation
-    await setup.FailingCommand(
-      new CreateProduct(
-        Guid.NewGuid(),
-        string.Join("", Enumerable.Range(0, 1025).Select(_ => "a")),
-        null),
-      400);
-
     // Basic command handling and entity projection.
     await setup.ReadModelNotFound<ProductStock>(productId.ToString());
     await Enumerable
