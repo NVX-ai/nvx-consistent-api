@@ -90,7 +90,7 @@ public partial record Tenant(Guid Id, string Name, bool Enabled) :
   Folds<TenantEnabled, Tenant>,
   Folds<TenantDisabled, Tenant>
 {
-  public const string StreamPrefix = "framework-tenant-";
+  public const string StreamPrefix = "framework-tenant--";
 
   public static readonly EventModel Get =
     new()
@@ -141,7 +141,7 @@ public partial record Tenant(Guid Id, string Name, bool Enabled) :
   public ValueTask<Tenant> Fold(TenantRenamed tr, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { Name = tr.NewName });
 
-  public static string GetStreamName(Guid id) => $"{StreamPrefix}-{id}";
+  public static string GetStreamName(Guid id) => $"{StreamPrefix}{id}";
 
   public static Tenant Defaulted(StrongGuid id) => new(id.Value, string.Empty, false);
 }
