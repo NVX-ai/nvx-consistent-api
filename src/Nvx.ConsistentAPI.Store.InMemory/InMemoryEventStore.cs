@@ -223,7 +223,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       var nextEvent = events
         .Where(se => se.StreamId == request.Id)
         .Where(se => se.Swimlane == request.Swimlane)
-        .Where(se => se.Metadata.StreamPosition > currentStreamPosition)
+        .Where(se => se.Metadata.StreamPosition > currentStreamPosition || currentStreamPosition == null)
         .Select(se => new ReadStreamMessage<EventInterface>.SolvedEvent(
           se.Swimlane,
           se.StreamId,

@@ -7,8 +7,9 @@ public class IdempotentInsertion
 
   [Theory(DisplayName = "insertion is idempotent by event id")]
   [MemberData(nameof(Stores))]
-  public async Task Test18(EventStore<EventModelEvent> eventStore)
+  public async Task Test18(StoreBackend backend)
   {
+    var eventStore = await StoreProvider.GetStore(backend);
     var swimlane = Guid.NewGuid().ToString();
     var streamId = new MyEventId(Guid.NewGuid());
 
