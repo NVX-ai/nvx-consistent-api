@@ -234,6 +234,7 @@ internal class TodoProcessor
   public required ReadModelHydrationDaemon HydrationDaemon { private get; init; }
   internal required EventModelingReadModelArtifact[] ReadModels { get; init; }
 
+  // TODO: This is likely causing a handle leak, fix.
   internal RunningTodoTaskInsight[] RunningTodoTasks { get; private set; } = [];
 
   internal async Task<RunningTodoTaskInsight[]> AboutToRunTasks()
