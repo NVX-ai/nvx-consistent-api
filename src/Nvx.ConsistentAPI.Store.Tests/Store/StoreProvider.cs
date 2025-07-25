@@ -16,12 +16,7 @@ public static class StoreProvider
 {
   public const int EventCount = 418;
 
-  public static async Task<EventStore<EventModelEvent>> GetStore(StoreBackend backend) =>
-    backend switch
-    {
-      StoreBackend.EventStoreDb => await EsDbStore(),
-      _ => new InMemoryEventStore<EventModelEvent>()
-    };
+  public static readonly TimeSpan SubscriptionTimeout = TimeSpan.FromSeconds(10);
 
 
   private static string EventStoreDefaultImage =>
@@ -30,7 +25,14 @@ public static class StoreProvider
       ? "eventstore/eventstore:23.10.0-alpha-arm64v8"
       : "eventstore/eventstore:23.10.0-jammy";
 
-  public static readonly TimeSpan SubscriptionTimeout = TimeSpan.FromSeconds(10);
+  public static TheoryData<StoreBackend> Stores => [..Enum.GetValues<StoreBackend>()];
+
+  public static async Task<EventStore<EventModelEvent>> GetStore(StoreBackend backend) =>
+    backend switch
+    {
+      StoreBackend.EventStoreDb => await EsDbStore(),
+      _ => new InMemoryEventStore<EventModelEvent>()
+    };
 
   private static async Task<EventStore<EventModelEvent>> EsDbStore()
   {
@@ -39,7 +41,7 @@ public static class StoreProvider
       .WithEnvironment("EVENTSTORE_MEM_DB", "True")
       .Build();
     await container.StartAsync();
-    var store = new EventStoreDbStore(container.GetConnectionString());
+    var store = new EventStoreDbStore(container.GetConnectionString(), ParserBuilder.Build(typeof(MyEvent)).Item2);
     var stopwatch = Stopwatch.StartNew();
     while (stopwatch.Elapsed < TimeSpan.FromMinutes(1))
     {
@@ -56,8 +58,6 @@ public static class StoreProvider
 
     throw new TimeoutException("Failed to initialize EventStoreDbEventStore within 1 minute.");
   }
-
-  public static TheoryData<StoreBackend> Stores => [..Enum.GetValues<StoreBackend>()];
 }
 
 public record MyEventId(Guid Value) : StrongId
