@@ -95,11 +95,16 @@ public class EventStoreDbStore(string connectionString, Func<ResolvedEvent, Opti
         }
       };
 
+      var swimlanes = request.Swimlanes ?? [];
+      var filter = swimlanes.Length > 0
+        ? StreamFilter.Prefix(swimlanes)
+        : EventTypeFilter.ExcludeSystemEvents();
+
       await foreach (var msg in client
                        .ReadAllAsync(
                          direction,
                          position,
-                         EventTypeFilter.ExcludeSystemEvents(),
+                         filter,
                          cancellationToken: cancellationToken)
                        .Messages
                        .WithCancellation(cancellationToken))
