@@ -26,8 +26,8 @@ public class ReadAllBackwardFromPosition
       .ShouldBeOk();
     var eventsBefore = insertion.GlobalPosition;
     var readFromAll = 0;
-    var position = ulong.MaxValue;
-    await foreach (var msg in eventStore.Read(ReadAllRequest.Before(eventsBefore, [swimlane])))
+    var position = eventsBefore;
+    await foreach (var msg in eventStore.Read(ReadAllRequest.FromAndBefore(eventsBefore, [swimlane])))
     {
       switch (msg)
       {

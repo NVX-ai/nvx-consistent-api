@@ -39,7 +39,7 @@ public class ReadAllForwardsFromPosition
     var readFromAll = 0;
     var position = ulong.MinValue;
 
-    await foreach (var msg in eventStore.Read(ReadAllRequest.After(tenthEventPosition, [swimlane])))
+    await foreach (var msg in eventStore.Read(ReadAllRequest.FromAndAfter(tenthEventPosition, [swimlane])))
     {
       switch (msg)
       {

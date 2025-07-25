@@ -18,7 +18,7 @@ public class ReadStreamForwardsFromPosition
     var result =
       await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
-    var messages = eventStore.Read(ReadStreamRequest.After(swimlane, streamId, result.StreamPosition / 2));
+    var messages = eventStore.Read(ReadStreamRequest.FromAndAfter(swimlane, streamId, result.StreamPosition / 2));
     var readFromStream = 0;
     var position = ulong.MinValue;
     await foreach (var msg in messages)
