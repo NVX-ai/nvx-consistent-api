@@ -79,6 +79,8 @@ public class EventStoreDbStore(string connectionString, Func<ResolvedEvent, Opti
       }
     } while (hasValue);
 
+    yield break;
+
     async IAsyncEnumerable<ReadAllMessage> DoRead()
     {
       var direction = request.Direction == ReadDirection.Forwards ? Direction.Forwards : Direction.Backwards;
