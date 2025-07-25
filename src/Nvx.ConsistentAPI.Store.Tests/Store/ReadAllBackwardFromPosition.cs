@@ -24,7 +24,7 @@ public class ReadAllBackwardFromPosition
     var insertion = await eventStore
       .Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events))
       .ShouldBeOk();
-    var eventsBefore = insertion.GlobalPosition + 1;
+    var eventsBefore = insertion.GlobalPosition;
     var readFromAll = 0;
     var position = ulong.MaxValue;
     await foreach (var msg in eventStore.Read(ReadAllRequest.Before(eventsBefore, [swimlane])))
