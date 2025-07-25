@@ -322,7 +322,7 @@ internal class TodoProcessor
             Emitter
               .Emit(() =>
               {
-                Logger.LogWarning("Todo {Todo} is waiting for read models to be up-to-date", t.todo);
+                Logger.LogInformation("Todo {Todo} is waiting for read models to be up-to-date", t.todo);
                 try
                 {
                   // ReSharper disable once AccessToDisposedClosure
