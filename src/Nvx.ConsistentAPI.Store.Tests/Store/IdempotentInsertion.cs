@@ -10,7 +10,7 @@ public class IdempotentInsertion
   public async Task Test18(StoreBackend backend)
   {
     var eventStore = await StoreProvider.GetStore(backend);
-    var swimlane = Guid.NewGuid().ToString();
+    const string swimlane = "MyTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());
 
     var events = Enumerable

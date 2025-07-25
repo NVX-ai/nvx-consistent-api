@@ -11,8 +11,8 @@ public class SubscribeToAllFromPosition
   public async Task Test13(StoreBackend backend)
   {
     var eventStore = await StoreProvider.GetStore(backend);
-    var swimlane = Guid.NewGuid().ToString();
-    var otherSwimlane = Guid.NewGuid().ToString();
+    const string swimlane = "MyTestSwimLane";
+    const string otherSwimlane = "MyOtherTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable
       .Range(0, StoreProvider.EventCount)
@@ -119,6 +119,7 @@ public class SubscribeToAllFromPosition
     Action<ReadAllMessage> onMessage,
     SubscribeAllRequest request = default)
   {
+    var stopwatch = Stopwatch.StartNew();
     var hasStartedReading = false;
 
     _ = Task.Run(async () =>
@@ -134,7 +135,7 @@ public class SubscribeToAllFromPosition
       }
     });
 
-    while (!hasStartedReading)
+    while (!hasStartedReading && stopwatch.ElapsedMilliseconds < 2_500)
     {
       await Task.Delay(5);
     }

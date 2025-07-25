@@ -9,8 +9,8 @@ public class ReadAllForwardsFromPosition
   public async Task Test2(StoreBackend backend)
   {
     var eventStore = await StoreProvider.GetStore(backend);
-    var swimlane = Guid.NewGuid().ToString();
-    var otherSwimlane = Guid.NewGuid().ToString();
+    const string swimlane = "MyTestSwimLane";
+    const string otherSwimlane = "MyOtherTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());
     const int skipCount = 10;
     var events = Enumerable

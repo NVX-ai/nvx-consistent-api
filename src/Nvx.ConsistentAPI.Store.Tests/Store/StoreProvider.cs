@@ -41,7 +41,8 @@ public static class StoreProvider
       .WithEnvironment("EVENTSTORE_MEM_DB", "True")
       .Build();
     await container.StartAsync();
-    var store = new EventStoreDbStore(container.GetConnectionString(), ParserBuilder.Build(typeof(MyEvent)).Item2);
+
+    var store = new EventStoreDbStore(container.GetConnectionString());
     var stopwatch = Stopwatch.StartNew();
     while (stopwatch.Elapsed < TimeSpan.FromMinutes(1))
     {
@@ -69,5 +70,11 @@ public record MyEventId(Guid Value) : StrongId
 public record MyEvent(Guid Id) : EventModelEvent
 {
   public string SwimLane => "MyTestSwimLane";
+  public StrongId GetEntityId() => new MyEventId(Id);
+}
+
+public record MyOtherEvent(Guid Id) : EventModelEvent
+{
+  public string SwimLane => "MyOtherTestSwimLane";
   public StrongId GetEntityId() => new MyEventId(Id);
 }

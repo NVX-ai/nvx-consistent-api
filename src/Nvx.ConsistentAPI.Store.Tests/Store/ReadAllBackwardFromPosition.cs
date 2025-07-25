@@ -9,18 +9,22 @@ public class ReadAllBackwardFromPosition
   public async Task Test3(StoreBackend backend)
   {
     var eventStore = await StoreProvider.GetStore(backend);
-    var swimlane = Guid.NewGuid().ToString();
-    var otherSwimlane = Guid.NewGuid().ToString();
+    const string swimlane = "MyTestSwimLane";
+    const string otherSwimlane = "MyOtherTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable
       .Range(0, StoreProvider.EventCount)
       .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
       .ToArray();
-    await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, events)).ShouldBeOk();
+    var otherEvents = Enumerable
+      .Range(0, StoreProvider.EventCount)
+      .Select(EventModelEvent (_) => new MyOtherEvent(Guid.NewGuid()))
+      .ToArray();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, otherEvents)).ShouldBeOk();
     var insertion = await eventStore
       .Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events))
       .ShouldBeOk();
-    var eventsBefore = insertion.GlobalPosition;
+    var eventsBefore = insertion.GlobalPosition + 1;
     var readFromAll = 0;
     var position = ulong.MaxValue;
     await foreach (var msg in eventStore.Read(ReadAllRequest.Before(eventsBefore, [swimlane])))

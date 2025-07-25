@@ -9,7 +9,7 @@ public class ReadStreamForwardsFromTheStart
   public async Task Test8(StoreBackend backend)
   {
     var eventStore = await StoreProvider.GetStore(backend);
-    var swimlane = Guid.NewGuid().ToString();
+    const string swimlane = "MyTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable
       .Range(0, StoreProvider.EventCount)

@@ -11,7 +11,7 @@ public class SubscribeToStreamFromStart
   public async Task Test14(StoreBackend backend)
   {
     var eventStore = await StoreProvider.GetStore(backend);
-    var swimlane = Guid.NewGuid().ToString();
+    const string swimlane = "MyTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable
       .Range(0, StoreProvider.EventCount)
@@ -51,6 +51,7 @@ public class SubscribeToStreamFromStart
     SubscribeStreamRequest request,
     Action<ReadStreamMessage<EventModelEvent>> onMessage)
   {
+    var stopwatch = Stopwatch.StartNew();
     var hasStarted = false;
     _ = Task.Run(async () =>
     {
@@ -65,7 +66,7 @@ public class SubscribeToStreamFromStart
         onMessage(message);
       }
     });
-    while (!hasStarted)
+    while (!hasStarted && stopwatch.ElapsedMilliseconds < 2_500)
     {
       await Task.Delay(5);
     }
