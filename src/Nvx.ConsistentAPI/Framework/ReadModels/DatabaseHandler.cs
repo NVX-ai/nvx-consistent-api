@@ -595,7 +595,14 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     try
     {
       var parameters = new DynamicParameters(rm);
-      parameters.AddDynamicParams(traceabilityFields);
+      
+      var traceabilityFieldsTruncated = traceabilityFields with { FrameworkRelatedEntityId = traceabilityFields.FrameworkRelatedEntityId.Length > StringSizes.InlinedId
+        ? new StringInfo(traceabilityFields.FrameworkRelatedEntityId).SubstringByTextElements(
+          0,
+          StringSizes.InlinedId)
+        : traceabilityFields.FrameworkRelatedEntityId };
+      parameters.AddDynamicParams(traceabilityFieldsTruncated);
+      
       foreach (var prop in stringProperties)
       {
         var strValue = prop.pi.GetValue(rm) as string;
