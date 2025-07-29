@@ -338,7 +338,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       _ when underlyingType == typeof(DateOnly) => "DATETIME2",
       _ when underlyingType == typeof(DateTimeOffset) => "DATETIMEOFFSET",
       _ when underlyingType == typeof(Guid) => "UNIQUEIDENTIFIER",
-      _ when underlyingType == typeof(decimal) => "DECIMAL(18, 2)",
+      _ when underlyingType == typeof(decimal) => "DECIMAL(18, 3)",
       _ => "OBJECT"
     };
 
