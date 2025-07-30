@@ -867,6 +867,13 @@ public class DateTimeTypeHandler : SqlMapper.ITypeHandler
   {
     if (value is DateTime dateTime)
     {
+      if (dateTime is { Hour: 0, Minute: 0, Second: 0, Millisecond: 0 })
+      {
+        var dateOnly = new DateTime(dateTime.Year, dateTime.Month, dateTime.Day, 0, 0, 0, 0, DateTimeKind.Utc);
+        parameter.Value = parameter.Value = dateOnly < SqlMinValue ? SqlMinValue : dateOnly;
+        return;
+      }
+      
       var asUtc = dateTime.ToUniversalTime();
       parameter.Value = asUtc < SqlMinValue ? SqlMinValue : asUtc;
       return;
@@ -884,6 +891,11 @@ public class DateTimeTypeHandler : SqlMapper.ITypeHandler
 
     if (value is DateTime dateTime)
     {
+      if (dateTime is { Hour: 0, Minute: 0, Second: 0, Millisecond: 0 })
+      {
+        return new DateTime(dateTime.Year, dateTime.Month, dateTime.Day, 0, 0, 0, 0, DateTimeKind.Utc);
+      }
+      
       return dateTime.Kind switch
       {
         DateTimeKind.Local => dateTime.ToUniversalTime(),
