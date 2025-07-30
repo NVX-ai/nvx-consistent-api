@@ -7,6 +7,9 @@ public static class Initializer
     new TestSettings
     {
       LogsFolder = "logs",
-      UsePersistentTestContainers = false
+      UsePersistentTestContainers = Environment
+                                      .GetEnvironmentVariable("USE_TEST_PERSISTENT_CONTAINERS")
+                                      ?.Equals("true", StringComparison.InvariantCultureIgnoreCase)
+                                    ?? false
     });
 }

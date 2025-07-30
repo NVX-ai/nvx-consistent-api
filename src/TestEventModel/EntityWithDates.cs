@@ -51,11 +51,11 @@ public record EntityWithDatesSaved(Guid EntityId, DateTimeOffset TheDate) : Even
 }
 
 // LongAgo is here to trigger the inability of MSSQL to store dates bellow the year 1753
-public record EntityWithDatesReadModel(string Id, DateTimeOffset TheDate, DateTime LongAgo, DateOnly OnlyTheDate)
+public record EntityWithDatesReadModel(string Id, DateTimeOffset TheDate, DateTime TheDateTime, DateTime LongAgo, DateOnly OnlyTheDate)
   : EventModelReadModel
 {
   public StrongId GetStrongId() => new StrongString(Id);
 
   public static EntityWithDatesReadModel[] From(EntityWithDates entity) =>
-    [new(entity.Id.ToString(), entity.TheDate, DateTime.MinValue, entity.OnlyTheDate)];
+    [new(entity.Id.ToString(), entity.TheDate, entity.TheDate.DateTime, DateTime.MinValue, entity.OnlyTheDate)];
 }
