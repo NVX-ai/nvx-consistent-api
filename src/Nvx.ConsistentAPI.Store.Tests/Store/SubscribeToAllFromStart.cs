@@ -78,7 +78,9 @@ public class SubscribeToAllFromStart
       },
       SubscribeAllRequest.Start());
 
-    await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, otherStreamId, otherEvents)).ShouldBeOk();
+    await eventStore
+      .Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, otherStreamId, otherEvents))
+      .ShouldBeOk();
     var stopwatch = Stopwatch.StartNew();
     while (stopwatch.Elapsed < StoreProvider.SubscriptionTimeout
            && eventsReceivedByAllSubscription < StoreProvider.EventCount * 2)
@@ -137,7 +139,7 @@ public class SubscribeToAllFromStart
 
     while (!hasStartedReading && stopwatch.ElapsedMilliseconds < 2_500)
     {
-      await Task.Delay(5);
+      await Task.Delay(1);
     }
   }
 }

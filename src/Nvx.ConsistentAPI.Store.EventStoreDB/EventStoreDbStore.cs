@@ -254,56 +254,99 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     SubscribeAllRequest request = default,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var filterOptions = new SubscriptionFilterOptions(
-      request.Swimlanes?.Length > 0
-        ? StreamFilter.Prefix(request.Swimlanes)
-        : EventTypeFilter.ExcludeSystemEvents());
-
-    var position = request.Position switch
+    var enumerator = DoRead().GetAsyncEnumerator(cancellationToken);
+    var hasValue = false;
+    Exception? lastException = null;
+    try
     {
-      0 => FromAll.Start,
-      null => FromAll.End,
-      { } value => FromAll.After(new Position(value, value))
-    };
-
-
-    await foreach (var msg in client
-                     .SubscribeToAll(
-                       position,
-                       filterOptions: filterOptions,
-                       cancellationToken: cancellationToken)
-                     .Messages.WithCancellation(cancellationToken))
+      hasValue = await enumerator.MoveNextAsync();
+    }
+    catch (Exception exception)
     {
-      switch (msg)
+      lastException = exception;
+    }
+
+    if (lastException is not null)
+    {
+      yield return new ReadAllMessage.Terminated(lastException);
+    }
+
+    do
+    {
+      if (hasValue)
       {
-        case StreamMessage.Ok:
-          yield return new ReadAllMessage.ReadingStarted();
-          break;
-        case StreamMessage.Event(var re):
-          yield return parser(re)
-            .Match(
-              ReadAllMessage (e) => new ReadAllMessage.AllEvent(
-                e.SwimLane,
-                e.GetEntityId(),
-                StoredEventMetadata.FromStorage(
-                  EventMetadata.TryParse(
-                    re.Event.Metadata.ToArray(),
-                    re.Event.Created,
+        yield return enumerator.Current;
+      }
+
+      try
+      {
+        hasValue = await enumerator.MoveNextAsync();
+      }
+      catch (Exception exception)
+      {
+        lastException = exception;
+      }
+
+      if (lastException is not null)
+      {
+        yield return new ReadAllMessage.Terminated(lastException);
+      }
+    } while (hasValue);
+
+    yield break;
+
+    async IAsyncEnumerable<ReadAllMessage> DoRead()
+    {
+      var filterOptions = new SubscriptionFilterOptions(
+        request.Swimlanes?.Length > 0
+          ? StreamFilter.Prefix(request.Swimlanes)
+          : EventTypeFilter.ExcludeSystemEvents());
+
+      var position = request.Position switch
+      {
+        0 => FromAll.Start,
+        null => FromAll.End,
+        { } value => FromAll.After(new Position(value, value))
+      };
+
+      await foreach (var msg in client
+                       .SubscribeToAll(
+                         position,
+                         filterOptions: filterOptions,
+                         cancellationToken: cancellationToken)
+                       .Messages.WithCancellation(cancellationToken))
+      {
+        switch (msg)
+        {
+          case StreamMessage.Ok:
+            yield return new ReadAllMessage.ReadingStarted();
+            break;
+          case StreamMessage.Event(var re):
+            yield return parser(re)
+              .Match(
+                ReadAllMessage (e) => new ReadAllMessage.AllEvent(
+                  e.SwimLane,
+                  e.GetEntityId(),
+                  StoredEventMetadata.FromStorage(
+                    EventMetadata.TryParse(
+                      re.Event.Metadata.ToArray(),
+                      re.Event.Created,
+                      re.Event.Position.CommitPosition,
+                      re.Event.EventNumber.ToUInt64()),
+                    re.Event.EventId.ToGuid(),
                     re.Event.Position.CommitPosition,
-                    re.Event.EventNumber.ToUInt64()),
-                  re.Event.EventId.ToGuid(),
+                    re.Event.EventNumber.ToUInt64())),
+                () => new ReadAllMessage.ToxicAllEvent(
+                  re.Event.EventStreamId,
+                  re.Event.EventStreamId,
+                  re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
-                  re.Event.EventNumber.ToUInt64())),
-              () => new ReadAllMessage.ToxicAllEvent(
-                re.Event.EventStreamId,
-                re.Event.EventStreamId,
-                re.Event.Metadata.ToArray(),
-                re.Event.Position.CommitPosition,
-                re.Event.EventNumber.ToUInt64()));
-          break;
-        case StreamMessage.AllStreamCheckpointReached(var pos):
-          yield return new ReadAllMessage.Checkpoint(pos.CommitPosition);
-          break;
+                  re.Event.EventNumber.ToUInt64()));
+            break;
+          case StreamMessage.AllStreamCheckpointReached(var pos):
+            yield return new ReadAllMessage.Checkpoint(pos.CommitPosition);
+            break;
+        }
       }
     }
   }
