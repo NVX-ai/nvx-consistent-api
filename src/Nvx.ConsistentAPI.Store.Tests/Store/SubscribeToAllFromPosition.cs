@@ -14,9 +14,14 @@ public class SubscribeToAllFromPosition
     const string swimlane = "MyTestSwimLane";
     const string otherSwimlane = "MyOtherTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());
+    var otherStreamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable
       .Range(0, StoreProvider.EventCount)
       .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
+      .ToArray();
+    var otherEvents = Enumerable
+      .Range(0, StoreProvider.EventCount)
+      .Select(EventModelEvent (_) => new MyOtherEvent(otherStreamId.Value))
       .ToArray();
 
     var firstInsertion =
@@ -25,8 +30,8 @@ public class SubscribeToAllFromPosition
     var positionAfterFirstBatch = firstInsertion.GlobalPosition;
     var eventsReceivedBySubscription = 0;
 
-    ulong swimLaneStreamPosition = StoreProvider.EventCount;
-    var otherSwimLaneStreamPosition = 0UL;
+    var swimLaneStreamPosition = firstInsertion.StreamPosition;
+    ulong? otherSwimLaneStreamPosition = null;
 
     List<(ulong, ulong)> skippedSwimlaneStreamPositions = [];
     List<(ulong, ulong)> skippedOtherSwimlaneStreamPositions = [];
@@ -57,9 +62,9 @@ public class SubscribeToAllFromPosition
 
             if (sl == otherSwimlane)
             {
-              if (md.StreamPosition != otherSwimLaneStreamPosition + 1)
+              if (otherSwimLaneStreamPosition.HasValue && md.StreamPosition != otherSwimLaneStreamPosition + 1)
               {
-                skippedOtherSwimlaneStreamPositions.Add((otherSwimLaneStreamPosition, md.StreamPosition));
+                skippedOtherSwimlaneStreamPositions.Add((otherSwimLaneStreamPosition.Value, md.StreamPosition));
               }
 
               otherSwimLaneStreamPosition = md.StreamPosition;
@@ -74,7 +79,9 @@ public class SubscribeToAllFromPosition
       },
       SubscribeAllRequest.After(positionAfterFirstBatch));
 
-    await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, events)).ShouldBeOk();
+    await eventStore
+      .Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, otherStreamId, otherEvents))
+      .ShouldBeOk();
 
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
