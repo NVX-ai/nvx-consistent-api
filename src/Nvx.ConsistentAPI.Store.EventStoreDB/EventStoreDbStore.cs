@@ -268,7 +268,10 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
 
 
     await foreach (var msg in client
-                     .SubscribeToAll(position, filterOptions: filterOptions, cancellationToken: cancellationToken)
+                     .SubscribeToAll(
+                       position,
+                       filterOptions: filterOptions,
+                       cancellationToken: cancellationToken)
                      .Messages.WithCancellation(cancellationToken))
     {
       switch (msg)

@@ -6,7 +6,7 @@ public class SubscribeToAllFromStart
 {
   public static TheoryData<StoreBackend> Stores => StoreProvider.Stores;
 
-  [Theory(DisplayName = "subscribe to all")]
+  [Theory(DisplayName = "subscribe to all from start gets all events")]
   [MemberData(nameof(Stores))]
   public async Task Test11(StoreBackend backend)
   {
@@ -14,9 +14,14 @@ public class SubscribeToAllFromStart
     const string swimlane = "MyTestSwimLane";
     const string otherSwimlane = "MyOtherTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());
+    var otherStreamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable
       .Range(0, StoreProvider.EventCount)
       .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
+      .ToArray();
+    var otherEvents = Enumerable
+      .Range(0, StoreProvider.EventCount)
+      .Select(EventModelEvent (_) => new MyOtherEvent(otherStreamId.Value))
       .ToArray();
     var eventsReceivedByAllSubscription = 0;
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
@@ -36,29 +41,33 @@ public class SubscribeToAllFromStart
         switch (message)
         {
           case ReadAllMessage.AllEvent(var sl, _, var md):
-            if (sl == swimlane || sl == otherSwimlane)
+            if (sl is swimlane or otherSwimlane)
             {
               Interlocked.Increment(ref eventsReceivedByAllSubscription);
             }
 
-            if (sl == swimlane)
+            switch (sl)
             {
-              if (swimLaneStreamPosition.HasValue && md.StreamPosition != swimLaneStreamPosition + 1)
+              case swimlane:
               {
-                skippedSwimlaneStreamPositions.Add((swimLaneStreamPosition.Value, md.StreamPosition));
+                if (swimLaneStreamPosition.HasValue && md.StreamPosition != swimLaneStreamPosition + 1)
+                {
+                  skippedSwimlaneStreamPositions.Add((swimLaneStreamPosition.Value, md.StreamPosition));
+                }
+
+                swimLaneStreamPosition = md.StreamPosition;
+                break;
               }
-
-              swimLaneStreamPosition = md.StreamPosition;
-            }
-
-            if (sl == otherSwimlane)
-            {
-              if (otherSwimLaneStreamPosition.HasValue && md.StreamPosition != otherSwimLaneStreamPosition + 1)
+              case otherSwimlane:
               {
-                skippedOtherSwimlaneStreamPositions.Add((otherSwimLaneStreamPosition.Value, md.StreamPosition));
-              }
+                if (otherSwimLaneStreamPosition.HasValue && md.StreamPosition != otherSwimLaneStreamPosition + 1)
+                {
+                  skippedOtherSwimlaneStreamPositions.Add((otherSwimLaneStreamPosition.Value, md.StreamPosition));
+                }
 
-              otherSwimLaneStreamPosition = md.StreamPosition;
+                otherSwimLaneStreamPosition = md.StreamPosition;
+                break;
+              }
             }
 
             break;
@@ -69,7 +78,7 @@ public class SubscribeToAllFromStart
       },
       SubscribeAllRequest.Start());
 
-    await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, events)).ShouldBeOk();
+    await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, otherStreamId, otherEvents)).ShouldBeOk();
     var stopwatch = Stopwatch.StartNew();
     while (stopwatch.Elapsed < StoreProvider.SubscriptionTimeout
            && eventsReceivedByAllSubscription < StoreProvider.EventCount * 2)
