@@ -249,7 +249,6 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 
         if (nextEvent is null)
         {
-          semaphore.Release();
           await Task.Delay(5, cancellationToken);
           continue;
         }
