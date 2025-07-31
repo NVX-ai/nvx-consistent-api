@@ -50,7 +50,7 @@ public class StandardFlowTest
     await setup.Command(new CreateProduct(Guid.NewGuid(), "banana", null));
 
     // Basic command handling and entity projection.
-    await setup.ReadModelNotFound<ProductStock>(productId.ToString());
+    await setup.ReadModelNotFound<ProductStock>(productId.ToString());  
     await Enumerable
       .Range(0, 20)
       .Select<int, Func<Task<Unit>>>(_ => async () =>
@@ -59,8 +59,10 @@ public class StandardFlowTest
         return unit;
       })
       .Parallel();
-
+    
+    await setup.Command(new AddStockTags(productId, ["Cosmetics", "Food", null]));
     var unknownProductStock = await setup.ReadModel<ProductStock>(productId.ToString());
+    Assert.NotNull(unknownProductStock);
     Assert.Equal(productId.ToString(), unknownProductStock.Id);
     Assert.Equal(100, unknownProductStock.Amount);
     Assert.Equal("Unknown product", unknownProductStock.Name);
