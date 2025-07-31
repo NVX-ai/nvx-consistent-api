@@ -90,7 +90,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
         RelativePosition.End => Position.End,
         _ => request.Position switch
         {
-          { } pos => new Position(pos, 0),
+          { } pos => new Position(pos, pos),
           _ => direction == Direction.Forwards ? Position.Start : Position.End
         }
       };

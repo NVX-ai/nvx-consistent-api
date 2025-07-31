@@ -34,6 +34,6 @@ public readonly struct ReadAllRequest()
   public static ReadAllRequest FromAndAfter(ulong position, string[]? swimlanes = null) =>
     new(position, null, ReadDirection.Forwards, swimlanes ?? []);
 
-  public static ReadAllRequest FromAndBefore(ulong position, string[]? swimlanes = null) =>
+  public static ReadAllRequest Before(ulong position, string[]? swimlanes = null) =>
     new(position, null, ReadDirection.Backwards, swimlanes ?? []);
 }

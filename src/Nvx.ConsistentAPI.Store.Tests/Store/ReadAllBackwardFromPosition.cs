@@ -30,19 +30,7 @@ public class ReadAllBackwardFromPosition
     var readFromAll = 0;
     var position = eventsBefore;
 
-    await foreach (var msg in eventStore.Read(ReadStreamRequest.Backwards(swimlane, streamId)))
-    {
-      if (msg is not ReadStreamMessage<EventModelEvent>.SolvedEvent se)
-      {
-        continue;
-      }
-
-      eventsBefore = se.Metadata.GlobalPosition;
-      position = eventsBefore;
-      break;
-    }
-
-    await foreach (var msg in eventStore.Read(ReadAllRequest.FromAndBefore(eventsBefore, [swimlane])))
+    await foreach (var msg in eventStore.Read(ReadAllRequest.Before(eventsBefore, [swimlane])))
     {
       switch (msg)
       {
@@ -57,6 +45,6 @@ public class ReadAllBackwardFromPosition
       }
     }
 
-    Assert.Equal(StoreProvider.EventCount, readFromAll);
+    Assert.Equal(StoreProvider.EventCount - 1, readFromAll);
   }
 }

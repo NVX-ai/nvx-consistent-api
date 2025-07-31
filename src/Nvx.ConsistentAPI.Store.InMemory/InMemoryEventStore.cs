@@ -69,7 +69,11 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       {
         RelativePosition.Start => 0,
         RelativePosition.End => (ulong)events.Count,
-        _ => request.Position
+        _ => request.Direction switch
+        {
+          ReadDirection.Backwards => request.Position - 1,
+          _ => request.Position
+        }
       };
 
       ulong? edge = request.Direction switch
