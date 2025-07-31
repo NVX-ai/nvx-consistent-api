@@ -12,29 +12,44 @@ public class ReadAllBackwardFromPosition
     const string swimlane = "MyTestSwimLane";
     const string otherSwimlane = "MyOtherTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());
+    var otherStreamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable
       .Range(0, StoreProvider.EventCount)
       .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
       .ToArray();
     var otherEvents = Enumerable
       .Range(0, StoreProvider.EventCount)
-      .Select(EventModelEvent (_) => new MyOtherEvent(Guid.NewGuid()))
+      .Select(EventModelEvent (_) => new MyOtherEvent(otherStreamId.Value))
       .ToArray();
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, otherEvents)).ShouldBeOk();
     var insertion = await eventStore
       .Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events))
       .ShouldBeOk();
+
     var eventsBefore = insertion.GlobalPosition;
     var readFromAll = 0;
     var position = eventsBefore;
+
+    await foreach (var msg in eventStore.Read(ReadStreamRequest.Backwards(swimlane, streamId)))
+    {
+      if (msg is not ReadStreamMessage<EventModelEvent>.SolvedEvent se)
+      {
+        continue;
+      }
+
+      eventsBefore = se.Metadata.GlobalPosition;
+      position = eventsBefore;
+      break;
+    }
+
     await foreach (var msg in eventStore.Read(ReadAllRequest.FromAndBefore(eventsBefore, [swimlane])))
     {
       switch (msg)
       {
         case ReadAllMessage.AllEvent(var sl, _, var md):
           readFromAll += 1;
-          Assert.True(position > md.GlobalPosition);
-          Assert.True(md.GlobalPosition < eventsBefore);
+          Assert.True(position >= md.GlobalPosition);
+          Assert.True(md.GlobalPosition <= eventsBefore);
           position = md.GlobalPosition;
 
           Assert.Equal(swimlane, sl);
@@ -42,6 +57,6 @@ public class ReadAllBackwardFromPosition
       }
     }
 
-    Assert.Equal(StoreProvider.EventCount - 1, readFromAll);
+    Assert.Equal(StoreProvider.EventCount, readFromAll);
   }
 }

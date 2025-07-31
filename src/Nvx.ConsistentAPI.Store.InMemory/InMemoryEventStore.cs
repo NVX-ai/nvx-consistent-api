@@ -61,54 +61,55 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     ReadAllRequest request = default,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    await semaphore.WaitAsync(cancellationToken);
-    yield return new ReadAllMessage.ReadingStarted();
-    ulong? index = request.Relative switch
+    try
     {
-      RelativePosition.Start => 0,
-      RelativePosition.End => (ulong)events.Count,
-      _ => request.Direction switch
+      await semaphore.WaitAsync(cancellationToken);
+      yield return new ReadAllMessage.ReadingStarted();
+      ulong? index = request.Relative switch
       {
-        ReadDirection.Backwards => request.Position - 1,
-        _ => request.Position + 1
-      }
-    };
-
-    ulong? edge = request.Direction switch
-    {
-      ReadDirection.Backwards => null,
-      _ => (ulong)events.Count + 1
-    };
-
-    var lanes = request.Swimlanes ?? [];
-    var hasSwimlanes = lanes.Length > 0;
-
-    while (index != edge)
-    {
-      var storedEvent = events.FirstOrDefault(e => e.Metadata.GlobalPosition == index);
-      index = request.Direction switch
-      {
-        ReadDirection.Backwards => index == 0 ? null : index - 1,
-        _ => index + 1
+        RelativePosition.Start => 0,
+        RelativePosition.End => (ulong)events.Count,
+        _ => request.Position
       };
 
-      if (storedEvent is null)
+      ulong? edge = request.Direction switch
       {
-        continue;
-      }
+        ReadDirection.Backwards => null,
+        _ => (ulong)events.Count + 1
+      };
 
-      if (hasSwimlanes && !lanes.Contains(storedEvent.Swimlane))
+      var lanes = request.Swimlanes ?? [];
+      var hasSwimlanes = lanes.Length > 0;
+
+      while (index != edge)
       {
-        continue;
-      }
+        var storedEvent = events.FirstOrDefault(e => e.Metadata.GlobalPosition == index);
+        index = request.Direction switch
+        {
+          ReadDirection.Backwards => index == 0 ? null : index - 1,
+          _ => index + 1
+        };
 
-      yield return new ReadAllMessage.AllEvent(
-        storedEvent.Swimlane,
-        storedEvent.StreamId,
-        storedEvent.Metadata);
+        if (storedEvent is null)
+        {
+          continue;
+        }
+
+        if (hasSwimlanes && !lanes.Contains(storedEvent.Swimlane))
+        {
+          continue;
+        }
+
+        yield return new ReadAllMessage.AllEvent(
+          storedEvent.Swimlane,
+          storedEvent.StreamId,
+          storedEvent.Metadata);
+      }
     }
-
-    semaphore.Release();
+    finally
+    {
+      semaphore.Release();
+    }
   }
 
   public async IAsyncEnumerable<ReadStreamMessage<EventInterface>> Read(
@@ -116,39 +117,44 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
     await semaphore.WaitAsync(cancellationToken);
-    yield return new ReadStreamMessage<EventInterface>.ReadingStarted();
-    var streamEvents = events
-      .Where(se => se.StreamId == request.Id)
-      .Where(se => se.Swimlane == request.Swimlane);
-
-    var orderedEvents = request.Direction switch
+    try
     {
-      ReadDirection.Backwards => streamEvents.Reverse(),
-      _ => streamEvents
-    };
+      yield return new ReadStreamMessage<EventInterface>.ReadingStarted();
+      var streamEvents = events
+        .Where(se => se.StreamId == request.Id)
+        .Where(se => se.Swimlane == request.Swimlane);
 
-    foreach (var storedEvent in orderedEvents)
-    {
-      switch (request.Direction)
+      var orderedEvents = request.Direction switch
       {
-        case ReadDirection.Backwards
-          when request.StreamPosition.HasValue
-               && storedEvent.Metadata.StreamPosition > request.StreamPosition:
-        case ReadDirection.Forwards
-          when request.StreamPosition.HasValue
-               && storedEvent.Metadata.StreamPosition < request.StreamPosition:
-          continue;
-        default:
-          yield return new ReadStreamMessage<EventInterface>.SolvedEvent(
-            storedEvent.Swimlane,
-            storedEvent.StreamId,
-            storedEvent.Event,
-            storedEvent.Metadata);
-          break;
+        ReadDirection.Backwards => streamEvents.Reverse(),
+        _ => streamEvents
+      };
+
+      foreach (var storedEvent in orderedEvents)
+      {
+        switch (request.Direction)
+        {
+          case ReadDirection.Backwards
+            when request.StreamPosition.HasValue
+                 && storedEvent.Metadata.StreamPosition > request.StreamPosition:
+          case ReadDirection.Forwards
+            when request.StreamPosition.HasValue
+                 && storedEvent.Metadata.StreamPosition < request.StreamPosition:
+            continue;
+          default:
+            yield return new ReadStreamMessage<EventInterface>.SolvedEvent(
+              storedEvent.Swimlane,
+              storedEvent.StreamId,
+              storedEvent.Event,
+              storedEvent.Metadata);
+            break;
+        }
       }
     }
-
-    semaphore.Release();
+    finally
+    {
+      semaphore.Release();
+    }
   }
 
   public async IAsyncEnumerable<ReadAllMessage> Subscribe(
@@ -162,37 +168,43 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     while (true)
     {
       await semaphore.WaitAsync(cancellationToken);
-      if (!hasStarted)
+      try
       {
-        yield return new ReadAllMessage.ReadingStarted();
-        hasStarted = true;
+        if (!hasStarted)
+        {
+          yield return new ReadAllMessage.ReadingStarted();
+          hasStarted = true;
+        }
+
+        var nextEvent = events
+          .Where(se => se.Metadata.GlobalPosition > currentGlobalPosition)
+          .Select(se => new ReadAllMessage.AllEvent(
+            se.Swimlane,
+            se.StreamId,
+            se.Metadata))
+          .FirstOrDefault();
+
+        if (nextEvent is null)
+        {
+          semaphore.Release();
+          await Task.Delay(5, cancellationToken);
+          continue;
+        }
+
+        currentGlobalPosition = nextEvent.Metadata.GlobalPosition;
+
+        if (hasSwimlanes && !lanes.Contains(nextEvent.Swimlane))
+        {
+          semaphore.Release();
+          continue;
+        }
+
+        yield return nextEvent;
       }
-
-      var nextEvent = events
-        .Where(se => se.Metadata.GlobalPosition > currentGlobalPosition)
-        .Select(se => new ReadAllMessage.AllEvent(
-          se.Swimlane,
-          se.StreamId,
-          se.Metadata))
-        .FirstOrDefault();
-
-      if (nextEvent is null)
+      finally
       {
         semaphore.Release();
-        await Task.Delay(5, cancellationToken);
-        continue;
       }
-
-      currentGlobalPosition = nextEvent.Metadata.GlobalPosition;
-
-      if (hasSwimlanes && !lanes.Contains(nextEvent.Swimlane))
-      {
-        semaphore.Release();
-        continue;
-      }
-
-      yield return nextEvent;
-      semaphore.Release();
     }
     // ReSharper disable once IteratorNeverReturns
   }
@@ -214,33 +226,39 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     while (true)
     {
       await semaphore.WaitAsync(cancellationToken);
-      if (!hasStarted)
+      try
       {
-        yield return new ReadStreamMessage<EventInterface>.ReadingStarted();
-        hasStarted = true;
+        if (!hasStarted)
+        {
+          yield return new ReadStreamMessage<EventInterface>.ReadingStarted();
+          hasStarted = true;
+        }
+
+        var nextEvent = events
+          .Where(se => se.StreamId == request.Id)
+          .Where(se => se.Swimlane == request.Swimlane)
+          .Where(se => se.Metadata.StreamPosition > currentStreamPosition || currentStreamPosition == null)
+          .Select(se => new ReadStreamMessage<EventInterface>.SolvedEvent(
+            se.Swimlane,
+            se.StreamId,
+            se.Event,
+            se.Metadata))
+          .FirstOrDefault();
+
+        if (nextEvent is null)
+        {
+          semaphore.Release();
+          await Task.Delay(5, cancellationToken);
+          continue;
+        }
+
+        currentStreamPosition = nextEvent.Metadata.StreamPosition;
+        yield return nextEvent;
       }
-
-      var nextEvent = events
-        .Where(se => se.StreamId == request.Id)
-        .Where(se => se.Swimlane == request.Swimlane)
-        .Where(se => se.Metadata.StreamPosition > currentStreamPosition || currentStreamPosition == null)
-        .Select(se => new ReadStreamMessage<EventInterface>.SolvedEvent(
-          se.Swimlane,
-          se.StreamId,
-          se.Event,
-          se.Metadata))
-        .FirstOrDefault();
-
-      if (nextEvent is null)
+      finally
       {
         semaphore.Release();
-        await Task.Delay(5, cancellationToken);
-        continue;
       }
-
-      currentStreamPosition = nextEvent.Metadata.StreamPosition;
-      yield return nextEvent;
-      semaphore.Release();
     }
     // ReSharper disable once IteratorNeverReturns
   }

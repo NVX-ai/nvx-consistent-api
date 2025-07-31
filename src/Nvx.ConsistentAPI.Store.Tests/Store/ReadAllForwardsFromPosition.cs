@@ -12,22 +12,21 @@ public class ReadAllForwardsFromPosition
     const string swimlane = "MyTestSwimLane";
     const string otherSwimlane = "MyOtherTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());
-    const int skipCount = 10;
+    const int positionToReadFrom = 10;
     var events = Enumerable
       .Range(0, StoreProvider.EventCount)
       .Select(EventModelEvent (_) => new MyEvent(streamId.Value))
       .ToArray();
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, streamId, events)).ShouldBeOk();
-    var eventCount = 0L;
     var tenthEventPosition = 0UL;
     await foreach (var msg in eventStore.Read(ReadStreamRequest.Forwards(swimlane, streamId)))
     {
       switch (msg)
       {
         case ReadStreamMessage<EventModelEvent>.SolvedEvent(_, _, _, var md):
-          eventCount += 1;
-          if (eventCount == skipCount)
+          // Since streams start at 0, this will be the (positionToReadFrom + 1)th event.
+          if (md.StreamPosition == positionToReadFrom)
           {
             tenthEventPosition = md.GlobalPosition;
           }
@@ -52,7 +51,6 @@ public class ReadAllForwardsFromPosition
       }
     }
 
-    // Streams start at 1
-    Assert.Equal(StoreProvider.EventCount - skipCount, readFromAll);
+    Assert.Equal(StoreProvider.EventCount - positionToReadFrom, readFromAll);
   }
 }
