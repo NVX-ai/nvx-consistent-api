@@ -258,7 +258,25 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     SubscribeStreamRequest request,
     CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
-  public Task TruncateStream(StrongId id, ulong truncateBefore) => throw new NotImplementedException();
+  public async Task TruncateStream(string swimlane, StrongId id, ulong truncateBefore)
+  {
+    var streamName = $"{swimlane}{id.StreamId()}";
+
+    var read = client.ReadStreamAsync(
+      Direction.Forwards,
+      streamName,
+      StreamPosition.Start,
+      maxCount: 1);
+
+    if (await read.ReadState == ReadState.StreamNotFound)
+    {
+      return;
+    }
+
+    var metadata = await client.GetStreamMetadataAsync(streamName);
+
+
+  }
 
   private async Task<Result<InsertionSuccess, InsertionFailure>> AnyState(
     IEnumerable<EventData> eventData,

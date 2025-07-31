@@ -17,7 +17,7 @@ public class StreamTruncation
       .ToArray();
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
-    await eventStore.TruncateStream(streamId, (ulong)StoreProvider.EventCount / 2);
+    await eventStore.TruncateStream(swimlane, streamId, (ulong)StoreProvider.EventCount / 2);
     var readAfterTruncate = 0UL;
     var messagesAfterTruncate = eventStore.Read(ReadStreamRequest.Forwards(swimlane, streamId));
     await foreach (var msg in messagesAfterTruncate)

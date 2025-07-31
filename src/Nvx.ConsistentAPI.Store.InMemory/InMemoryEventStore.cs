@@ -267,12 +267,12 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     // ReSharper disable once IteratorNeverReturns
   }
 
-  public async Task TruncateStream(StrongId id, ulong truncateBefore)
+  public async Task TruncateStream(string swimlane, StrongId id, ulong truncateBefore)
   {
     await semaphore.WaitAsync();
     try
     {
-      events.RemoveAll(e => e.StreamId == id && e.Metadata.StreamPosition < truncateBefore);
+      events.RemoveAll(e => e.Swimlane == swimlane && e.StreamId == id && e.Metadata.StreamPosition < truncateBefore);
     }
     finally
     {

@@ -22,5 +22,5 @@ public interface EventStore<EventInterface>
     SubscribeStreamRequest request,
     CancellationToken cancellationToken = default);
 
-  Task TruncateStream(StrongId id, ulong truncateBefore);
+  Task TruncateStream(string swimlane, StrongId id, ulong truncateBefore);
 }
