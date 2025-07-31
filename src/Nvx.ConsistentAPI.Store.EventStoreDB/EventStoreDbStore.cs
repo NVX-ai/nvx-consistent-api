@@ -262,11 +262,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
   {
     var streamName = $"{swimlane}{id.StreamId()}";
 
-    var read = client.ReadStreamAsync(
-      Direction.Forwards,
-      streamName,
-      StreamPosition.Start,
-      1);
+    var read = client.ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start, 1);
 
     if (await read.ReadState == ReadState.StreamNotFound)
     {
