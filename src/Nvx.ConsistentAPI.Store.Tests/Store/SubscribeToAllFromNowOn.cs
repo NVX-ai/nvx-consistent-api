@@ -23,13 +23,14 @@ public class SubscribeToAllFromNowOn
       .Range(0, StoreProvider.EventCount)
       .Select(EventModelEvent (_) => new MyEvent(otherStreamId.Value))
       .ToArray();
-    await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
-    var insertion = await eventStore
+    var firstInsertion =
+      await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
+    var otherInsertion = await eventStore
       .Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, otherStreamId, otherEvents))
       .ShouldBeOk();
     var eventsReceivedByAllSubscription = 0;
-    ulong swimLaneStreamPosition = StoreProvider.EventCount;
-    ulong otherSwimLaneStreamPosition = StoreProvider.EventCount;
+    var swimLaneStreamPosition = firstInsertion.StreamPosition;
+    var otherSwimLaneStreamPosition = otherInsertion.StreamPosition;
 
     List<(ulong, ulong)> skippedSwimlaneStreamPositions = [];
     List<(ulong, ulong)> skippedOtherSwimlaneStreamPositions = [];
@@ -81,7 +82,9 @@ public class SubscribeToAllFromNowOn
       SubscribeAllRequest.FromNowOn());
 
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
-    await eventStore.Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, otherStreamId, otherEvents)).ShouldBeOk();
+    await eventStore
+      .Insert(new InsertionPayload<EventModelEvent>(otherSwimlane, otherStreamId, otherEvents))
+      .ShouldBeOk();
 
     var stopwatch = Stopwatch.StartNew();
     while (stopwatch.Elapsed < StoreProvider.SubscriptionTimeout
@@ -113,7 +116,7 @@ public class SubscribeToAllFromNowOn
       Assert.Fail(
         $"Failed to receive all events. Expected {StoreProvider.EventCount * 2}, "
         + $"received {eventsReceivedByAllSubscription} starting now on, "
-        + $"after insertion {insertion}, "
+        + $"after insertion {otherInsertion}, "
         + $"for swimlanes {swimlane} and {otherSwimlane}");
     }
 
