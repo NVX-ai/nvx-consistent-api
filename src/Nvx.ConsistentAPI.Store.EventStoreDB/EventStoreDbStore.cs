@@ -434,8 +434,6 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     {
       var streamName = $"{request.Swimlane}{request.Id.StreamId()}";
 
-      yield return new ReadStreamMessage<EventModelEvent>.ReadingStarted();
-
       await foreach (var msg in client
                        .SubscribeToStream(
                          streamName,
@@ -446,6 +444,10 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       {
         switch (msg)
         {
+          case StreamMessage.SubscriptionConfirmation:
+          case StreamMessage.Ok:
+            yield return new ReadStreamMessage<EventModelEvent>.ReadingStarted();
+            break;
           case StreamMessage.Event(var re):
             yield return parser(re)
               .Match(
