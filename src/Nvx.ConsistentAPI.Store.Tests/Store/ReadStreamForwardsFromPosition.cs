@@ -34,6 +34,6 @@ public class ReadStreamForwardsFromPosition
       }
     }
 
-    Assert.Equal(StoreProvider.EventCount / 2, readFromStream);
+    Assert.Equal(StoreProvider.EventCount / 2 + 1, readFromStream);
   }
 }

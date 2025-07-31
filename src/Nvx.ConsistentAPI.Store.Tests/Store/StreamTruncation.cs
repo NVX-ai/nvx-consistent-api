@@ -30,6 +30,6 @@ public class StreamTruncation
       }
     }
 
-    Assert.Equal(StoreProvider.EventCount - (ulong)StoreProvider.EventCount / 2 + 1, readAfterTruncate);
+    Assert.Equal(StoreProvider.EventCount - (ulong)StoreProvider.EventCount / 2, readAfterTruncate);
   }
 }

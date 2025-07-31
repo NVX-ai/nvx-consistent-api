@@ -16,10 +16,8 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     semaphore.Wait();
     var latestGlobalPosition = events.Select(se => se.Metadata.GlobalPosition).LastOrDefault();
     var latestStreamPosition = events
-      .Where(se => se.StreamId == payload.StreamId)
-      .Where(se => se.Swimlane == payload.Swimlane)
-      .Select(se => se.Metadata.StreamPosition)
-      .LastOrDefault();
+      .LastOrDefault(se => se.StreamId == payload.StreamId && se.Swimlane == payload.Swimlane)
+      ?.Metadata.StreamPosition;
 
     if ((payload.InsertionType is StreamCreation && latestStreamPosition != 0)
         || (payload.InsertionType is ExistingStream && latestStreamPosition == 0)
@@ -50,7 +48,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           md.CausationId,
           md.CreatedAt,
           latestGlobalPosition + index + 1,
-          latestStreamPosition + index + 1)));
+          (latestStreamPosition ?? 0) + index + (latestStreamPosition.HasValue ? 1UL : 0))));
 
     var success = new InsertionSuccess(
       events.Select(e => e.Metadata.GlobalPosition).LastOrDefault(),
@@ -135,10 +133,10 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       {
         case ReadDirection.Backwards
           when request.StreamPosition.HasValue
-               && storedEvent.Metadata.StreamPosition >= request.StreamPosition:
+               && storedEvent.Metadata.StreamPosition > request.StreamPosition:
         case ReadDirection.Forwards
           when request.StreamPosition.HasValue
-               && storedEvent.Metadata.StreamPosition <= request.StreamPosition:
+               && storedEvent.Metadata.StreamPosition < request.StreamPosition:
           continue;
         default:
           yield return new ReadStreamMessage<EventInterface>.SolvedEvent(
