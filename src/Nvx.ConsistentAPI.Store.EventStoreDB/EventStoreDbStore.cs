@@ -157,30 +157,12 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     ReadStreamRequest request,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var enumerator = DoRead().GetAsyncEnumerator(cancellationToken);
-    var hasValue = false;
-    Exception? lastException = null;
-    try
-    {
-      hasValue = await enumerator.MoveNextAsync();
-    }
-    catch (Exception exception)
-    {
-      lastException = exception;
-    }
-
-    if (lastException is not null)
-    {
-      yield return new ReadStreamMessage<EventModelEvent>.Terminated(lastException);
-    }
-
+    bool hadConsumerTooSlowException;
     do
     {
-      if (hasValue)
-      {
-        yield return enumerator.Current;
-      }
-
+      var enumerator = DoRead().GetAsyncEnumerator(cancellationToken);
+      var hasValue = false;
+      Exception? lastException = null;
       try
       {
         hasValue = await enumerator.MoveNextAsync();
@@ -194,7 +176,32 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       {
         yield return new ReadStreamMessage<EventModelEvent>.Terminated(lastException);
       }
-    } while (hasValue);
+
+      do
+      {
+        if (hasValue)
+        {
+          yield return enumerator.Current;
+        }
+
+        try
+        {
+          hasValue = await enumerator.MoveNextAsync();
+        }
+        catch (Exception exception)
+        {
+          lastException = exception;
+        }
+
+        hadConsumerTooSlowException = lastException is RpcException { Status.StatusCode: StatusCode.Aborted } rpcEx
+                                      && rpcEx.Status.Detail.Contains("too slow");
+
+        if (lastException is not null && !hadConsumerTooSlowException)
+        {
+          yield return new ReadStreamMessage<EventModelEvent>.Terminated(lastException);
+        }
+      } while (hasValue);
+    } while (hadConsumerTooSlowException);
 
     yield break;
 
@@ -372,7 +379,8 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
 
   public IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> Subscribe(
     SubscribeStreamRequest request,
-    CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    CancellationToken cancellationToken = default) =>
+    throw new NotImplementedException();
 
   public async Task TruncateStream(string swimlane, StrongId id, ulong truncateBefore)
   {
