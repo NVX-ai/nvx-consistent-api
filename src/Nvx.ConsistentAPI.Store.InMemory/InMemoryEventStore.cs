@@ -190,7 +190,6 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 
         if (nextEvent is null)
         {
-          semaphore.Release();
           await Task.Delay(5, cancellationToken);
           continue;
         }
@@ -199,7 +198,6 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 
         if (hasSwimlanes && !lanes.Contains(nextEvent.Swimlane))
         {
-          semaphore.Release();
           continue;
         }
 
