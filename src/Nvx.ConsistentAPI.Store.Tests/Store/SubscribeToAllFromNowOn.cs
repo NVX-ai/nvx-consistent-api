@@ -21,7 +21,7 @@ public class SubscribeToAllFromNowOn
       .ToArray();
     var otherEvents = Enumerable
       .Range(0, StoreProvider.EventCount)
-      .Select(EventModelEvent (_) => new MyEvent(otherStreamId.Value))
+      .Select(EventModelEvent (_) => new MyOtherEvent(otherStreamId.Value))
       .ToArray();
     var firstInsertion =
       await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
