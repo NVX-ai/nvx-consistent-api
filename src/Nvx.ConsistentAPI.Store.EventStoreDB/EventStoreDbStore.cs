@@ -1,5 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 using EventStore.Client;
+using Grpc.Core;
 using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI.Store.EventStoreDB;
@@ -40,29 +41,12 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     ReadAllRequest request = default,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var enumerator = DoRead().GetAsyncEnumerator(cancellationToken);
-    var hasValue = false;
-    Exception? lastException = null;
-    try
-    {
-      hasValue = await enumerator.MoveNextAsync();
-    }
-    catch (Exception exception)
-    {
-      lastException = exception;
-    }
-
-    if (lastException is not null)
-    {
-      yield return new ReadAllMessage.Terminated(lastException);
-    }
-
+    bool hadConsumerTooSlowException;
     do
     {
-      if (hasValue)
-      {
-        yield return enumerator.Current;
-      }
+      var enumerator = DoRead().GetAsyncEnumerator(cancellationToken);
+      var hasValue = false;
+      Exception? lastException = null;
 
       try
       {
@@ -77,7 +61,32 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       {
         yield return new ReadAllMessage.Terminated(lastException);
       }
-    } while (hasValue);
+
+      do
+      {
+        if (hasValue)
+        {
+          yield return enumerator.Current;
+        }
+
+        try
+        {
+          hasValue = await enumerator.MoveNextAsync();
+        }
+        catch (Exception exception)
+        {
+          lastException = exception;
+        }
+
+        hadConsumerTooSlowException = lastException is RpcException { Status.StatusCode: StatusCode.Aborted } rpcEx
+                                      && rpcEx.Status.Detail.Contains("too slow");
+
+        if (lastException is not null && !hadConsumerTooSlowException)
+        {
+          yield return new ReadAllMessage.Terminated(lastException);
+        }
+      } while (hasValue);
+    } while (hadConsumerTooSlowException);
 
     yield break;
 
@@ -254,29 +263,25 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     SubscribeAllRequest request = default,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var enumerator = DoRead().GetAsyncEnumerator(cancellationToken);
-    var hasValue = false;
-    Exception? lastException = null;
-    try
-    {
-      hasValue = await enumerator.MoveNextAsync();
-    }
-    catch (Exception exception)
-    {
-      lastException = exception;
-    }
+    var filterOptions = new SubscriptionFilterOptions(
+      request.Swimlanes?.Length > 0
+        ? StreamFilter.Prefix(request.Swimlanes)
+        : EventTypeFilter.ExcludeSystemEvents());
 
-    if (lastException is not null)
+    var position = request.Position switch
     {
-      yield return new ReadAllMessage.Terminated(lastException);
-    }
+      0 => FromAll.Start,
+      null => FromAll.End,
+      { } value => FromAll.After(new Position(value, value))
+    };
+
+    bool hadConsumerTooSlowException;
 
     do
     {
-      if (hasValue)
-      {
-        yield return enumerator.Current;
-      }
+      var enumerator = DoRead().GetAsyncEnumerator(cancellationToken);
+      var hasValue = false;
+      Exception? lastException = null;
 
       try
       {
@@ -291,24 +296,37 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       {
         yield return new ReadAllMessage.Terminated(lastException);
       }
-    } while (hasValue);
+
+      do
+      {
+        if (hasValue)
+        {
+          yield return enumerator.Current;
+        }
+
+        try
+        {
+          hasValue = await enumerator.MoveNextAsync();
+        }
+        catch (Exception exception)
+        {
+          lastException = exception;
+        }
+
+        hadConsumerTooSlowException = lastException is RpcException { Status.StatusCode: StatusCode.Aborted } rpcEx
+                                      && rpcEx.Status.Detail.Contains("too slow");
+
+        if (lastException is not null && !hadConsumerTooSlowException)
+        {
+          yield return new ReadAllMessage.Terminated(lastException);
+        }
+      } while (hasValue);
+    } while (hadConsumerTooSlowException);
 
     yield break;
 
     async IAsyncEnumerable<ReadAllMessage> DoRead()
     {
-      var filterOptions = new SubscriptionFilterOptions(
-        request.Swimlanes?.Length > 0
-          ? StreamFilter.Prefix(request.Swimlanes)
-          : EventTypeFilter.ExcludeSystemEvents());
-
-      var position = request.Position switch
-      {
-        0 => FromAll.Start,
-        null => FromAll.End,
-        { } value => FromAll.After(new Position(value, value))
-      };
-
       await foreach (var msg in client
                        .SubscribeToAll(
                          position,
@@ -342,6 +360,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
                   re.Event.EventNumber.ToUInt64()));
+            position = FromAll.After(re.Event.Position);
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
             yield return new ReadAllMessage.Checkpoint(pos.CommitPosition);
