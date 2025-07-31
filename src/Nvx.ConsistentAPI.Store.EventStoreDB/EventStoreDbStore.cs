@@ -158,6 +158,17 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
     bool hadConsumerTooSlowException;
+    var direction = request.Direction == ReadDirection.Forwards ? Direction.Forwards : Direction.Backwards;
+    var position = request.Position switch
+    {
+      RelativePosition.Start => StreamPosition.Start,
+      RelativePosition.End => StreamPosition.End,
+      _ => request.StreamPosition switch
+      {
+        { } pos => StreamPosition.FromInt64((long)pos),
+        _ => direction == Direction.Forwards ? StreamPosition.Start : StreamPosition.End
+      }
+    };
     do
     {
       var enumerator = DoRead().GetAsyncEnumerator(cancellationToken);
@@ -207,18 +218,6 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
 
     async IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> DoRead()
     {
-      var direction = request.Direction == ReadDirection.Forwards ? Direction.Forwards : Direction.Backwards;
-      var position = request.Position switch
-      {
-        RelativePosition.Start => StreamPosition.Start,
-        RelativePosition.End => StreamPosition.End,
-        _ => request.StreamPosition switch
-        {
-          { } pos => StreamPosition.FromInt64((long)pos),
-          _ => direction == Direction.Forwards ? StreamPosition.Start : StreamPosition.End
-        }
-      };
-
       var streamName = $"{request.Swimlane}{request.Id.StreamId()}";
 
       yield return new ReadStreamMessage<EventModelEvent>.ReadingStarted();
@@ -257,6 +256,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
                   re.Event.EventNumber.ToUInt64()));
+            position = re.Event.EventNumber;
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
             yield return new ReadStreamMessage<EventModelEvent>.Checkpoint(pos.CommitPosition);
@@ -377,10 +377,110 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     }
   }
 
-  public IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> Subscribe(
+  public async IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> Subscribe(
     SubscribeStreamRequest request,
-    CancellationToken cancellationToken = default) =>
-    throw new NotImplementedException();
+    [EnumeratorCancellation] CancellationToken cancellationToken = default)
+  {
+    bool hadConsumerTooSlowException;
+    var position = request.IsFromStart ? FromStream.Start : FromStream.End;
+    do
+    {
+      var enumerator = DoRead().GetAsyncEnumerator(cancellationToken);
+      var hasValue = false;
+      Exception? lastException = null;
+      try
+      {
+        hasValue = await enumerator.MoveNextAsync();
+      }
+      catch (Exception exception)
+      {
+        lastException = exception;
+      }
+
+      if (lastException is not null)
+      {
+        yield return new ReadStreamMessage<EventModelEvent>.Terminated(lastException);
+      }
+
+      do
+      {
+        if (hasValue)
+        {
+          yield return enumerator.Current;
+        }
+
+        try
+        {
+          hasValue = await enumerator.MoveNextAsync();
+        }
+        catch (Exception exception)
+        {
+          lastException = exception;
+        }
+
+        hadConsumerTooSlowException = lastException is RpcException { Status.StatusCode: StatusCode.Aborted } rpcEx
+                                      && rpcEx.Status.Detail.Contains("too slow");
+
+        if (lastException is not null && !hadConsumerTooSlowException)
+        {
+          yield return new ReadStreamMessage<EventModelEvent>.Terminated(lastException);
+        }
+      } while (hasValue);
+    } while (hadConsumerTooSlowException);
+
+    yield break;
+
+    async IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> DoRead()
+    {
+      var streamName = $"{request.Swimlane}{request.Id.StreamId()}";
+
+      yield return new ReadStreamMessage<EventModelEvent>.ReadingStarted();
+
+      await foreach (var msg in client
+                       .SubscribeToStream(
+                         streamName,
+                         position,
+                         cancellationToken: cancellationToken)
+                       .Messages
+                       .WithCancellation(cancellationToken))
+      {
+        switch (msg)
+        {
+          case StreamMessage.Event(var re):
+            yield return parser(re)
+              .Match(
+                ReadStreamMessage<EventModelEvent> (e) => new ReadStreamMessage<EventModelEvent>.SolvedEvent(
+                  e.SwimLane,
+                  e.GetEntityId(),
+                  e,
+                  StoredEventMetadata.FromStorage(
+                    EventMetadata.TryParse(
+                      re.Event.Metadata.ToArray(),
+                      re.Event.Created,
+                      re.Event.Position.CommitPosition,
+                      re.Event.EventNumber.ToUInt64()),
+                    re.Event.EventId.ToGuid(),
+                    re.Event.Position.CommitPosition,
+                    re.Event.EventNumber.ToUInt64())),
+                () => new ReadStreamMessage<EventModelEvent>.ToxicEvent(
+                  re.Event.EventStreamId,
+                  null,
+                  re.Event.Data.ToArray(),
+                  re.Event.Metadata.ToArray(),
+                  re.Event.Position.CommitPosition,
+                  re.Event.EventNumber.ToUInt64()));
+            position = FromStream.After(re.Event.EventNumber);
+            break;
+          case StreamMessage.AllStreamCheckpointReached(var pos):
+            yield return new ReadStreamMessage<EventModelEvent>.Checkpoint(pos.CommitPosition);
+            break;
+          case StreamMessage.LastStreamPosition(var pos):
+            position = FromStream.After(pos);
+            break;
+        }
+      }
+    }
+  }
 
   public async Task TruncateStream(string swimlane, StrongId id, ulong truncateBefore)
   {
