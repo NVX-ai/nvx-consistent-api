@@ -266,16 +266,24 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       Direction.Forwards,
       streamName,
       StreamPosition.Start,
-      maxCount: 1);
+      1);
 
     if (await read.ReadState == ReadState.StreamNotFound)
     {
       return;
     }
 
-    var metadata = await client.GetStreamMetadataAsync(streamName);
-
-
+    var currentStreamMetadata = await client.GetStreamMetadataAsync(streamName).Map(mdr => mdr.Metadata);
+    await client.SetStreamMetadataAsync(
+      streamName,
+      StreamState.Any,
+      new StreamMetadata(
+        currentStreamMetadata.MaxCount,
+        currentStreamMetadata.MaxAge,
+        StreamPosition.FromInt64((long)truncateBefore),
+        currentStreamMetadata.CacheControl,
+        currentStreamMetadata.Acl,
+        currentStreamMetadata.CustomMetadata));
   }
 
   private async Task<Result<InsertionSuccess, InsertionFailure>> AnyState(
