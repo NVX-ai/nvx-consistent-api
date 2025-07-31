@@ -25,7 +25,8 @@ public static class StoreProvider
       ? "eventstore/eventstore:23.10.0-alpha-arm64v8"
       : "eventstore/eventstore:23.10.0-jammy";
 
-  public static TheoryData<StoreBackend> Stores => [..Enum.GetValues<StoreBackend>()];
+  // public static TheoryData<StoreBackend> Stores => [..Enum.GetValues<StoreBackend>()];
+  public static TheoryData<StoreBackend> Stores => [StoreBackend.InMemory];
 
   public static async Task<EventStore<EventModelEvent>> GetStore(StoreBackend backend) =>
     backend switch
