@@ -39,6 +39,7 @@ public static class StoreProvider
     var container = new EventStoreDbBuilder()
       .WithImage(EventStoreDefaultImage)
       .WithEnvironment("EVENTSTORE_MEM_DB", "True")
+      .WithEnvironment("EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP", "true")
       .Build();
     await container.StartAsync();
 
