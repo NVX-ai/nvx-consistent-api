@@ -773,7 +773,9 @@ public static class TestEventModel
               stock.ProductId,
               stock.ProductName,
               stock.Amount,
+#pragma warning disable CS8620 // Nullability is violated here for testing a Tag array containing null items.
               stock.Tags,
+#pragma warning restore CS8620 // Nullability is violated here for testing a Tag array containing null items.
               stock.PictureId,
               42,
               3.1416f,

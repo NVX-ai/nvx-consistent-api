@@ -62,7 +62,6 @@ public class StandardFlowTest
     
     await setup.Command(new AddStockTags(productId, ["Cosmetics", "Food", null]));
     var unknownProductStock = await setup.ReadModel<ProductStock>(productId.ToString());
-    Assert.NotNull(unknownProductStock);
     Assert.Equal(productId.ToString(), unknownProductStock.Id);
     Assert.Equal(100, unknownProductStock.Amount);
     Assert.Equal("Unknown product", unknownProductStock.Name);

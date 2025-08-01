@@ -628,10 +628,9 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
         foreach (var batch in BatchedArrayValues(prop, rm))
         {
           var values = batch
-            .Select((value, i) => new { Index = i, Value = value })
-            .Where(x => x.Value != null)
-            .Select(x => new { rm.Id, x.Value });
-          
+            .Select(x => new { rm.Id, Value = x })
+            .Where(y => y.Value != null);
+            
           await connection.ExecuteAsync($"INSERT INTO [{propTableName}] VALUES (@Id, @Value)", values);
         }
       }
