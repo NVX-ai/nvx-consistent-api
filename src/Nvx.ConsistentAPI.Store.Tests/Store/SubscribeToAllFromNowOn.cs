@@ -37,6 +37,9 @@ public class SubscribeToAllFromNowOn
 
     List<ReadAllMessage.ToxicAllEvent> toxicEvents = [];
 
+    // Do a full read so the subscription has indexes to work with.
+    await foreach (var _ in eventStore.Read(ReadAllRequest.Start())) { }
+
     await SubscribeToAll(
       eventStore,
       message =>

@@ -22,10 +22,19 @@ public class SubscribeToStreamFromNowOn
 
     var eventsReceivedBySubscription = 0;
 
+    // Do a full read so the subscription has indexes to work with.
+    await foreach (var _ in eventStore.Read(ReadStreamRequest.Forwards(swimlane, streamId))) { }
+
     await SubscribeToStream(
       eventStore,
       SubscribeStreamRequest.FromNowOn(swimlane, streamId),
-      _ => Interlocked.Increment(ref eventsReceivedBySubscription));
+      evt =>
+      {
+        if (evt is ReadStreamMessage<EventModelEvent>.SolvedEvent)
+        {
+          Interlocked.Increment(ref eventsReceivedBySubscription);
+        }
+      });
 
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 

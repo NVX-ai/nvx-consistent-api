@@ -14,7 +14,7 @@ public enum StoreBackend
 
 public static class StoreProvider
 {
-  public const int EventCount = 418;
+  public static readonly int EventCount = Random.Shared.Next(15, 45);
 
   public static readonly TimeSpan SubscriptionTimeout = TimeSpan.FromSeconds(10);
 
