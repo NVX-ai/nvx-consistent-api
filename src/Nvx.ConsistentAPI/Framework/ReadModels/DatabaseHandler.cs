@@ -617,6 +617,24 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
         parameters.Add(prop.pi.Name, clampedValue);
       }
 
+      foreach (var prop in arrayProperties)
+      {
+        foreach (var batch in BatchedArrayValues(prop, rm))
+        {
+          var values = batch
+            .Select(x => x)
+            .Where(y => y != null)
+            .ToArray();
+
+          if (values.Length == 0)
+          {
+            continue;
+          }
+          
+          parameters.Add(prop.Name, JsonConvert.SerializeObject(values));
+        }
+      }
+      
       await connection.ExecuteAsync(TraceableUpsertSql, parameters);
       foreach (var prop in arrayProperties)
       {
