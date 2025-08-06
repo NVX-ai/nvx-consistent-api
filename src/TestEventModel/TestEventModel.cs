@@ -29,6 +29,18 @@ public record AddStock(Guid ProductId, int Amount) : EventModelCommand<Stock>
   }
 }
 
+public record AddStockTags(Guid ProductId, string?[] Tags) : EventModelCommand<Stock>
+{
+  public Option<StrongId> TryGetEntityId(Option<UserSecurity> user) => new StrongGuid(ProductId);
+
+  public Result<EventInsertion, ApiError> Decide(
+    Option<Stock> entity,
+    Option<UserSecurity> user,
+    FileUpload[] files
+  ) =>
+    new AnyState(new StockTagged(ProductId, Tags));
+}
+
 public record RetrieveStock(Guid ProductId, int Amount) : EventModelCommand<Stock>
 {
   public Option<StrongId> TryGetEntityId(Option<UserSecurity> user) => new StrongGuid(ProductId);
@@ -200,6 +212,12 @@ public record StockAdded(Guid ProductId, int Amount) : EventModelEvent
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
+public record StockTagged(Guid ProductId, string?[] Tags) : EventModelEvent
+{
+  public string GetStreamName() => Stock.GetStreamName(ProductId);
+  public StrongId GetEntityId() => new StrongGuid(ProductId);
+}
+
 public record StockRetrieved(Guid ProductId, int Amount) : EventModelEvent
 {
   public string SwimLane => Stock.StreamPrefix;
@@ -299,9 +317,10 @@ public partial record Product(Guid Id, string Name, Guid? PictureId) :
   public static Product Defaulted(StrongGuid id) => new(id.Value, "Unknown product", null);
 }
 
-public partial record Stock(Guid ProductId, int Amount, string ProductName, Guid? PictureId)
+public partial record Stock(Guid ProductId, int Amount, string ProductName, Guid? PictureId, string?[] Tags)
   : EventModelEntity<Stock>,
     Folds<StockAdded, Stock>,
+    Folds<StockTagged, Stock>,
     Folds<StockRetrieved, Stock>,
     Folds<StockNamed, Stock>,
     Folds<StockPictureAdded, Stock>
@@ -314,6 +333,9 @@ public partial record Stock(Guid ProductId, int Amount, string ProductName, Guid
 
   public ValueTask<Stock> Fold(StockNamed sn, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { ProductName = sn.Name });
+  
+  public ValueTask<Stock> Fold(StockTagged st, EventMetadata metadata, RevisionFetcher fetcher) =>
+    ValueTask.FromResult(this with { Tags = st.Tags });
 
   public ValueTask<Stock> Fold(StockPictureAdded evt, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { PictureId = evt.PictureId });
@@ -322,7 +344,7 @@ public partial record Stock(Guid ProductId, int Amount, string ProductName, Guid
     ValueTask.FromResult(this with { Amount = Amount - rs.Amount });
 
   public static string GetStreamName(Guid productId) => $"{StreamPrefix}{productId}";
-  public static Stock Defaulted(StrongGuid id) => new(id.Value, 0, "Unknown product", null);
+  public static Stock Defaulted(StrongGuid id) => new(id.Value, 0, "Unknown product", null, []);
 }
 
 public record StoreFrontProductId(Guid StoreId, Guid ProductId) : StrongId
@@ -421,6 +443,7 @@ public record ProductStock(
   Guid ProductId,
   string Name,
   int Amount,
+  string[] Tags,
   Guid? PictureId,
   long LongNumber,
   float AllFloat,
@@ -700,6 +723,12 @@ public static class TestEventModel
             "Adds stock to an existing product, since is meant to be used after adding the product to the shelves, it will always be accepted.",
           AreaTag = "ProductStock"
         },
+        new CommandDefinition<AddStockTags, Stock>
+        {
+          Description =
+            "Adds stock tags to an existing stock.",
+          AreaTag = "ProductStock"
+        },
         new CommandDefinition<CreateProduct, Product>
         {
           Description = "Adds a new product to the catalogue.",
@@ -741,6 +770,9 @@ public static class TestEventModel
               stock.ProductId,
               stock.ProductName,
               stock.Amount,
+#pragma warning disable CS8620 // Nullability is violated here for testing a Tag array containing null items.
+              stock.Tags,
+#pragma warning restore CS8620 // Nullability is violated here for testing a Tag array containing null items.
               stock.PictureId,
               42,
               3.1416f,

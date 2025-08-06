@@ -225,6 +225,7 @@ public class EventModel
     dcbDaemon.Initialize();
 
     CatchUp.Endpoint(ReadModels, settings, fetcher, emitter, app);
+    PreHydrationCompleted.Endpoint(ReadModels, settings, fetcher, emitter, app);
     DaemonsInsight.Endpoint(
       ReadModels,
       settings,
