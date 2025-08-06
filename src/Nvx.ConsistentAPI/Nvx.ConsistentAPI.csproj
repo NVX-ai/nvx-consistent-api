@@ -8,7 +8,7 @@
         <WarningsAsErrors>nullable</WarningsAsErrors>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>Nvx.ConsistentAPI</PackageId>
-        <Version>1.0.6</Version>
+        <Version>1.0.7</Version>
         <Authors>NVX.ai, Eighty Data, and Consistently Eventful</Authors>
         <Description>Event Modeling framework</Description>
         <LangVersion>13</LangVersion>

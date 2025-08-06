@@ -31,7 +31,8 @@ internal static class PreHydrationCompleted
 
       if (internalToolingApiKeyHeader == settings.ToolingEndpointsApiKey)
       {
-        context.Response.StatusCode = StatusCodes.Status200OK;
+        // This endpoint is meant to be consumed by tooling that relies on status codes.
+        context.Response.StatusCode = IsCaughtUp() ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
         await context.Response.WriteAsJsonAsync(new PreHydrationStatus(IsCaughtUp(), hydratedAt));
         return;
       }
@@ -41,7 +42,7 @@ internal static class PreHydrationCompleted
         .Iter(
           async _ =>
           {
-            context.Response.StatusCode = StatusCodes.Status200OK;
+            context.Response.StatusCode = IsCaughtUp() ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
             await context.Response.WriteAsJsonAsync(new PreHydrationStatus(IsCaughtUp(), hydratedAt));
           },
           async e => await e.Respond(context));
@@ -51,6 +52,7 @@ internal static class PreHydrationCompleted
       .MapGet(Route, preHydrationDelegate)
       .WithName("read-models-pre-hydration")
       .Produces<PreHydrationStatus>()
+      .Produces<PreHydrationStatus>(StatusCodes.Status503ServiceUnavailable)
       .WithDescription("Checks if all read models have ever been caught up")
       .WithOpenApi(o =>
       {
