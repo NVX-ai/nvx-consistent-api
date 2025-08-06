@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
+using Nvx.ConsistentAPI.Store.EventStoreDB;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
@@ -209,6 +210,9 @@ public static class Generator
       });
     }
 
+    var store = new EventStoreDbStore(settings.EventStoreConnectionString);
+    await store.Initialize();
+
     builder
       .Services
       .AddAuthentication(options =>
@@ -383,7 +387,7 @@ public static class Generator
 
     var logger = app.Services.GetRequiredService<ILogger<WebApplication>>();
 
-    await merged.ApplyTo(app, settings, logger);
+    await merged.ApplyTo(app, settings, logger, store);
 
     settings.AppCustomizations.Iter(c => c(app));
 

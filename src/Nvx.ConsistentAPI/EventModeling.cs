@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Nvx.ConsistentAPI.Framework.Projections;
 using Nvx.ConsistentAPI.Framework.StaticEndpoints;
 using Nvx.ConsistentAPI.InternalTooling;
+using Nvx.ConsistentAPI.Store.EventStoreDB;
 using HashCode = System.HashCode;
 
 namespace Nvx.ConsistentAPI;
@@ -146,10 +147,10 @@ public class EventModel
       InterestTriggers = InterestTriggers.Concat(other.InterestTriggers).ToArray()
     };
 
-  public async Task ApplyTo(WebApplication app, GeneratorSettings settings, ILogger logger)
+  public async Task ApplyTo(WebApplication app, GeneratorSettings settings, ILogger logger, EventStoreDbStore store)
   {
     var esClient = new EventStoreClient(EventStoreClientSettings.Create(settings.EventStoreConnectionString));
-    var emitter = new Emitter(esClient, logger);
+    var emitter = new Emitter(store, esClient, logger);
     var parser = Parser();
 
     var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(esClient, parser)));

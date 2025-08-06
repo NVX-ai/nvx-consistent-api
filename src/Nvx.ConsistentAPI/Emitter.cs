@@ -1,9 +1,10 @@
 using EventStore.Client;
 using Microsoft.Extensions.Logging;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
-public class Emitter(EventStoreClient client, ILogger logger)
+public class Emitter(EventStore<EventModelEvent> store, EventStoreClient client, ILogger logger)
 {
   private static AsyncResult<string, ApiError> GetId(EventModelEvent[] events)
   {
@@ -42,30 +43,31 @@ public class Emitter(EventStoreClient client, ILogger logger)
 
         async Task<Result<string, ApiError>> Go()
         {
-          var streamName = events.First().GetStreamName();
-          var eventData = ToEventData(events, context);
-          var result = await client.AppendToStreamAsync(streamName, StreamState.Any, eventData);
+          var swimlane = events.First().SwimLane;
+          var streamId = events.First().GetEntityId();
+          return await store
+            .Insert(
+              new InsertionPayload<EventModelEvent>(
+                swimlane,
+                streamId,
+                new AnyStreamState(),
+                context?.RelatedUserSub,
+                context?.CorrelationId,
+                context?.CausationId,
+                events))
+            .Match<Result<string, ApiError>>(
+              async r =>
+              {
+                if (!events.Any(e => e.GetType().GetInterfaces().Any(i => i == typeof(EventModelSnapshotEvent))))
+                {
+                  return id;
+                }
 
-          if (!events.Any(e => e.GetType().GetInterfaces().Any(i => i == typeof(EventModelSnapshotEvent))))
-          {
-            return id;
-          }
-
-          var currentStreamMetadata = await client.GetStreamMetadataAsync(streamName).Map(mdr => mdr.Metadata);
-          var newMetadata = new StreamMetadata(
-            currentStreamMetadata.MaxCount,
-            currentStreamMetadata.MaxAge,
-            result.NextExpectedStreamRevision.ToUInt64(),
-            currentStreamMetadata.CacheControl,
-            currentStreamMetadata.Acl,
-            currentStreamMetadata.CustomMetadata);
-          await client.SetStreamMetadataAsync(
-            streamName,
-            StreamState.Any,
-            newMetadata
-          );
-
-          return id;
+                await store.TruncateStream(swimlane, streamId, r.StreamPosition);
+                return id;
+              },
+              f => Task.FromResult<Result<string, ApiError>>(
+                new DisasterError($"Failed event insertion on {swimlane} {streamId} ({f.GetType().Name})")));
         }
       });
 
