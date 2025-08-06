@@ -214,7 +214,7 @@ public record StockAdded(Guid ProductId, int Amount) : EventModelEvent
 
 public record StockTagged(Guid ProductId, string?[] Tags) : EventModelEvent
 {
-  public string GetStreamName() => Stock.GetStreamName(ProductId);
+  public string SwimLane => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
