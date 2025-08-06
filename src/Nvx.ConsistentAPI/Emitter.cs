@@ -4,7 +4,7 @@ using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
-public class Emitter(EventStore<EventModelEvent> store, EventStoreClient client, ILogger logger)
+public class Emitter(EventStore<EventModelEvent> store, ILogger logger)
 {
   private static AsyncResult<string, ApiError> GetId(EventModelEvent[] events)
   {
@@ -111,32 +111,35 @@ public class Emitter(EventStore<EventModelEvent> store, EventStoreClient client,
 
         async Task<Result<string, ApiError>> Go()
         {
-          var streamName = events.First().GetStreamName();
-          var eventData = ToEventData(events, context);
-          var result = await client.AppendToStreamAsync(
-            streamName,
-            StreamRevision.FromInt64(expectedRevision),
-            eventData);
+          var swimlane = events.First().SwimLane;
+          var streamId = events.First().GetEntityId();
+          return await store
+            .Insert(
+              new InsertionPayload<EventModelEvent>(
+                swimlane,
+                streamId,
+                new InsertAfter((ulong)expectedRevision),
+                context?.RelatedUserSub,
+                context?.CorrelationId,
+                context?.CausationId,
+                events))
+            .Match<Result<string, ApiError>>(
+              async r =>
+              {
+                if (!events.Any(e => e.GetType().GetInterfaces().Any(i => i == typeof(EventModelSnapshotEvent))))
+                {
+                  return id;
+                }
 
-          if (!events.Any(e => e.GetType().GetInterfaces().Any(i => i == typeof(EventModelSnapshotEvent))))
-          {
-            return id;
-          }
-
-          var currentStreamMetadata = await client.GetStreamMetadataAsync(streamName).Map(mdr => mdr.Metadata);
-          await client.SetStreamMetadataAsync(
-            streamName,
-            StreamState.Any,
-            new StreamMetadata(
-              currentStreamMetadata.MaxCount,
-              currentStreamMetadata.MaxAge,
-              result.NextExpectedStreamRevision.ToUInt64(),
-              currentStreamMetadata.CacheControl,
-              currentStreamMetadata.Acl,
-              currentStreamMetadata.CustomMetadata)
-          );
-
-          return id;
+                await store.TruncateStream(swimlane, streamId, r.StreamPosition);
+                return id;
+              },
+              f => f
+                .Match<Result<string, ApiError>>(
+                  () => new ConflictError($"Swimlane {swimlane} {streamId} was in the wrong revision"),
+                  () => new DisasterError($"Failed event insertion on {swimlane} {streamId} ({f.GetType().Name})"),
+                  () => new DisasterError($"Failed event insertion on {swimlane} {streamId} ({f.GetType().Name})"))
+                .ToTask());
         }
       });
 
@@ -184,13 +187,31 @@ public class Emitter(EventStore<EventModelEvent> store, EventStoreClient client,
   )
   {
     var i = 0;
-    var random = new Random();
     while (i < 1000)
     {
       try
       {
         // async await is needed for the try catch to work
-        return await encapsulatedDecider().Bind(async ei => await HandleInsert(ei));
+        var result = await encapsulatedDecider().Bind(async ei => await HandleInsert(ei));
+        if (!result.Match(
+              _ => false,
+              e => e.Match(
+                ae => ae is ConflictError ce
+                      && ce.Message.StartsWith("Swimlane")
+                      && ce.Message.EndsWith(" was in the wrong revision"),
+                _ => false)))
+        {
+          return result;
+        }
+
+        i++;
+        if (shouldSkipRetry)
+        {
+          return new DisasterError("Wrong revision when trying to emit").Apply(First<ApiError, TError>);
+        }
+
+        await Task.Delay(Random.Shared.Next(25, 250));
+        continue;
 
         AsyncResult<string, Du<ApiError, TError>> HandleInsert(EventInsertion insertion) =>
           insertion switch
@@ -201,16 +222,6 @@ public class Emitter(EventStore<EventModelEvent> store, EventStoreClient client,
             MultiStream m => MultiStream(m.Events, context).MapError(First<ApiError, TError>),
             _ => new DisasterError("Unknown Event Insertion Type").Apply(First<ApiError, TError>).ToTask()
           };
-      }
-      catch (WrongExpectedVersionException)
-      {
-        i++;
-        if (shouldSkipRetry)
-        {
-          return new DisasterError("Wrong revision when trying to emit").Apply(First<ApiError, TError>);
-        }
-
-        await Task.Delay(random.Next(25, 250));
       }
       catch (Exception ex)
       {
