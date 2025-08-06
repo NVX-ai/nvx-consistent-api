@@ -79,10 +79,24 @@ public class Emitter(EventStore<EventModelEvent> store, EventStoreClient client,
 
         async Task<Result<string, ApiError>> Go()
         {
-          var streamName = events.First().GetStreamName();
-          var eventData = ToEventData(events, context);
-          await client.AppendToStreamAsync(streamName, StreamState.NoStream, eventData);
-          return id;
+          var swimlane = events.First().SwimLane;
+          var streamId = events.First().GetEntityId();
+          return await store
+            .Insert(
+              new InsertionPayload<EventModelEvent>(
+                swimlane,
+                streamId,
+                new StreamCreation(),
+                context?.RelatedUserSub,
+                context?.CorrelationId,
+                context?.CausationId,
+                events))
+            .Match<Result<string, ApiError>>(
+              _ => id,
+              f => f.Match<Result<string, ApiError>>(
+                () => new ConflictError($"Tried to create swimlane {swimlane} {streamId} that already exists"),
+                () => new DisasterError($"Failed event insertion on {swimlane} {streamId} ({f.GetType().Name})"),
+                () => new DisasterError($"Failed event insertion on {swimlane} {streamId} ({f.GetType().Name})")));
         }
       });
 
