@@ -31,7 +31,8 @@ internal static class PreHydrationCompleted
 
       if (internalToolingApiKeyHeader == settings.ToolingEndpointsApiKey)
       {
-        context.Response.StatusCode = StatusCodes.Status200OK;
+        // For HTTP probes we need to return an error HTTP code if not caught up
+        context.Response.StatusCode = IsCaughtUp() ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status200OK;
         await context.Response.WriteAsJsonAsync(new PreHydrationStatus(IsCaughtUp(), hydratedAt));
         return;
       }
