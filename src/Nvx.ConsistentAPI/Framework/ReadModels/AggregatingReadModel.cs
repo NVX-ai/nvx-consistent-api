@@ -34,23 +34,35 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
   public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
   {
-    var effectivePosition = lastEventPosition;
-    var prefixFilter = EventTypeFilter.Prefix(StreamPrefixes);
-    await foreach (var msg in eventStoreClient.ReadAllAsync(Direction.Backwards, Position.End, prefixFilter).Take(1))
-    {
-      effectivePosition = msg.Event.Position.CommitPosition;
-    }
-
-    var currentPosition = lastProcessedEventPosition ?? currentCheckpointPosition ?? 0UL;
-    var percentageComplete = effectivePosition == 0
-      ? 100m
-      : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(effectivePosition);
     return new SingleReadModelInsights(
       DatabaseHandler<Shape>.TableName(typeof(Shape)),
       lastProcessedEventPosition,
       currentCheckpointPosition,
       true,
-      Math.Min(100, isCaughtUp && !isProcessing ? 100 : percentageComplete));
+      await PercentageComplete()
+    );
+
+    async Task<decimal> PercentageComplete()
+    {
+      if ((isCaughtUp && !isProcessing) || SyncState.IsBeingHydratedByAnotherInstance)
+      {
+        return 100;
+      }
+
+      var effectivePosition = lastEventPosition;
+      var prefixFilter = EventTypeFilter.Prefix(StreamPrefixes);
+      await foreach (var msg in eventStoreClient.ReadAllAsync(Direction.Backwards, Position.End, prefixFilter).Take(1))
+      {
+        effectivePosition = msg.Event.Position.CommitPosition;
+      }
+
+      var currentPosition = lastProcessedEventPosition ?? currentCheckpointPosition ?? 0UL;
+      var percentageComplete = effectivePosition == 0
+        ? 100m
+        : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(effectivePosition);
+
+      return Math.Min(100, isCaughtUp && !isProcessing ? 100 : percentageComplete);
+    }
   }
 
   public async Task ApplyTo(
