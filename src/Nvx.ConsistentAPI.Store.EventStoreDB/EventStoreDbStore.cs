@@ -5,6 +5,7 @@ using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI.Store.EventStoreDB;
 
+// This is tightly bound to EventModelEvent, it can be made to work on any event interface.
 public class EventStoreDbStore(string connectionString) : EventStore<EventModelEvent>
 {
   private readonly EventStoreClient client = new(EventStoreClientSettings.Create(connectionString));
