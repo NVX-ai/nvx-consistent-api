@@ -50,7 +50,7 @@ public class StandardFlowTest
     await setup.Command(new CreateProduct(Guid.NewGuid(), "banana", null));
 
     // Basic command handling and entity projection.
-    await setup.ReadModelNotFound<ProductStock>(productId.ToString());  
+    await setup.ReadModelNotFound<ProductStock>(productId.ToString());
     await Enumerable
       .Range(0, 20)
       .Select<int, Func<Task<Unit>>>(_ => async () =>
@@ -64,16 +64,16 @@ public class StandardFlowTest
     const string validTag2 = "Food";
     await setup.Command(new AddStockTags(productId, [validTag1, validTag2, null]));
     var unknownProductStock = await setup.ReadModel<ProductStock>(productId.ToString());
-    
+
     Assert.Equal(productId.ToString(), unknownProductStock.Id);
     Assert.Equal(100, unknownProductStock.Amount);
     Assert.Equal("Unknown product", unknownProductStock.Name);
-    
-    // Validate the null tag is ignored - Read Model is clean. 
+
+    // Validate the null tag is ignored - Read Model is clean.
     Assert.Equal(2, unknownProductStock.Tags.Length);
     Assert.Contains(unknownProductStock.Tags, tag => tag.Equals(validTag1));
     Assert.Contains(unknownProductStock.Tags, tag => tag.Equals(validTag2));
-    
+
     // This creates a lot of products, so the processors can start working and be checked at the end. The processor
     // fails occasionally, and it takes at least 25 seconds to recover, so this starts now and is verified at the end.
     // The test is technically flaky, but the chances of failure are abyssal.
@@ -124,7 +124,8 @@ public class StandardFlowTest
 
     // Verify the background runners.
     var readModel = await setup.ReadModel<UserRegistryOfNamedProductsReadModel>(
-      setup.Auth.CandoSub);
+      setup.Auth.CandoSub,
+      waitType: ConsistencyWaitType.Long);
     Assert.True(100 <= readModel.Count, $"Expecting at least 100 products, got {readModel.Count}");
 
     await setup.FailingCommand(new CreateProduct(productId, productName, null), 409);
