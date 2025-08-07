@@ -239,11 +239,27 @@ public class TestSetup : IAsyncDisposable
             new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
           ])));
 
+  private static IEnumerable<EventData> ToEventData(IEnumerable<EventModelEvent> events, EventContext? context) =>
+    events.Select(e =>
+      new EventData(
+        Uuid.NewUuid(),
+        e.EventType,
+        e.ToBytes(),
+        new EventMetadata(
+            DateTime.UtcNow,
+            context?.CorrelationId,
+            context?.CausationId,
+            context?.RelatedUserSub,
+            null,
+            null)
+          .ToBytes()
+      ));
+
   public async Task InsertEvents(params EventModelEvent[] evt) =>
     await EventStoreClient.AppendToStreamAsync(
       evt.GroupBy(e => e.GetStreamName()).Single().Key,
       StreamState.Any,
-      Emitter.ToEventData(evt, null));
+      ToEventData(evt, null));
 
   /// <summary>
   ///   Waits for the system to be in a consistent state.

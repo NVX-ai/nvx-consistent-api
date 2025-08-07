@@ -1,4 +1,3 @@
-using EventStore.Client;
 using Microsoft.Extensions.Logging;
 using Nvx.ConsistentAPI.Store.Store;
 
@@ -18,22 +17,6 @@ public class Emitter(EventStore<EventModelEvent> store, ILogger logger)
       ? events.First().GetEntityId().StreamId()
       : new DisasterError("All events must belong to the same stream");
   }
-
-  internal static IEnumerable<EventData> ToEventData(IEnumerable<EventModelEvent> events, EventContext? context) =>
-    events.Select(e =>
-      new EventData(
-        Uuid.NewUuid(),
-        e.EventType,
-        e.ToBytes(),
-        new EventMetadata(
-            DateTime.UtcNow,
-            context?.CorrelationId,
-            context?.CausationId,
-            context?.RelatedUserSub,
-            null,
-            null)
-          .ToBytes()
-      ));
 
   private AsyncResult<string, ApiError> AnyState(EventModelEvent[] events, EventContext? context) =>
     GetId(events)
