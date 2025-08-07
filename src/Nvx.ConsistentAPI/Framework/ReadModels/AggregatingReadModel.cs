@@ -31,7 +31,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public required string AreaTag { private get; init; }
   public BuildCustomFilter CustomFilterBuilder { get; init; } = (_, _, _) => new CustomFilter(null, [], null);
   public ReadModelDefaulter<Shape> Defaulter { get; init; } = (_, _, _) => None;
-  private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false);
+  private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false, false);
 
   public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
   {
@@ -137,6 +137,11 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
   public bool IsUpToDate(Position? position)
   {
+    if (SyncState.IsBeingHydratedByAnotherInstance)
+    {
+      return true;
+    }
+
     if (position is null)
     {
       return SyncState.HasReachedEndOnce;
@@ -182,6 +187,8 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       {
         if (!IsIdempotent && !await databaseHandler.TryAcquireLock(processId, SubCancelSource.Token))
         {
+          SyncState = SyncState with { IsBeingHydratedByAnotherInstance = true };
+          logger.LogInformation("Another instance of the API is currently hydrating {Name}", ShapeType.Name);
           await Task.Delay(Random.Shared.Next(500, 2_500), SubCancelSource.Token);
           continue;
         }
@@ -190,7 +197,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
         currentCheckpointPosition = checkpointPosition == Position.Start ? 0 : checkpointPosition.CommitPosition;
         var checkpoint = checkpointPosition == Position.Start ? FromAll.Start : FromAll.After(checkpointPosition);
 
-        SyncState = new ReadModelSyncState(checkpoint, DateTime.UtcNow, checkpoint != FromAll.Start);
+        SyncState = new ReadModelSyncState(checkpoint, DateTime.UtcNow, checkpoint != FromAll.Start, false);
         await using var subscription = client
           .SubscribeToAll(checkpoint, filterOptions: filterOptions, cancellationToken: SubCancelSource.Token);
 

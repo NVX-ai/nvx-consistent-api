@@ -390,7 +390,11 @@ public record FoundEntity<T>(
       tuple.gp));
 }
 
-internal record ReadModelSyncState(FromAll LastPosition, DateTime LastSync, bool HasReachedEndOnce);
+internal record ReadModelSyncState(
+  FromAll LastPosition,
+  DateTime LastSync,
+  bool HasReachedEndOnce,
+  bool IsBeingHydratedByAnotherInstance);
 
 internal static class ReadModelProgress
 {
