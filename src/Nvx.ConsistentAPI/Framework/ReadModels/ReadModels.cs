@@ -183,7 +183,9 @@ public class ReadModelDefinition<Shape, EntityShape> :
           {
             case StreamMessage.Event(var evt):
             {
-              if (streams.TryGetValue(evt.Event.EventStreamId, out var _))
+              if (streams.TryGetValue(evt.Event.EventStreamId, out var _) 
+                  || evt.Event.EventStreamId == StreamPrefix // Skip if stream id is empty
+                  )
               {
                 lastProcessedEventPosition = evt.Event.Position.CommitPosition;
                 continue;
