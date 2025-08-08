@@ -29,6 +29,7 @@ internal class ReadModelHydrationDaemon(
   private readonly SemaphoreSlim semaphore = new(1);
 
   private readonly CentralHydrationStateMachine stateMachine = new(settings, logger);
+  private HydrationCountTracker? hydrationCountTracker;
 
   private bool isInitialized;
   private ulong? lastCheckpoint;
@@ -49,7 +50,8 @@ internal class ReadModelHydrationDaemon(
   }
 
   public bool IsUpToDate(Position? position) =>
-    !position.HasValue || (lastPosition.HasValue && position.Value <= lastPosition.Value);
+    hydrationCountTracker is null
+    || (position.HasValue && lastPosition.HasValue && position.Value <= lastPosition.Value);
 
   public async Task Initialize()
   {
@@ -150,7 +152,7 @@ internal class ReadModelHydrationDaemon(
 
   private async Task Hydrate()
   {
-    HydrationCountTracker? hydrationCountTracker = null;
+    hydrationCountTracker = null;
     while (settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration))
     {
       try

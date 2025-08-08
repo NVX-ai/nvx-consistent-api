@@ -10,6 +10,7 @@ internal static class CatchUp
 
   internal static void Endpoint(
     EventModelingReadModelArtifact[] readModels,
+    ReadModelHydrationDaemon centralDaemon,
     GeneratorSettings settings,
     Fetcher fetcher,
     Emitter emitter,
@@ -69,6 +70,6 @@ internal static class CatchUp
       .ApplyAuth(new PermissionsRequireAll("admin"));
 
     return;
-    bool IsCaughtUp() => readModels.All(rm => rm.IsUpToDate());
+    bool IsCaughtUp() => readModels.All(rm => rm.IsUpToDate()) && centralDaemon.IsUpToDate(null);
   }
 }
