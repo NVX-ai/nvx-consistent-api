@@ -273,7 +273,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
                 }
 
                 if (fetcher
-                    .GetCachedStreamRevision(me.GetEntityId())
+                    .GetCachedStreamRevision(me.GetStreamName(), me.GetEntityId())
                     .Match(r => r >= re.Event.EventNumber.ToInt64(), () => false))
                 {
                   return;
