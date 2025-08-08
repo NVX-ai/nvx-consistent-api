@@ -15,7 +15,6 @@ public interface EntityFetcher
 
   internal bool CanProcessStream(string streamName);
   internal Option<long> GetCachedStreamRevision(StrongId id);
-  internal Option<Position> GetCachedGlobalPosition(StrongId id);
 }
 
 public interface RevisionFetcher
@@ -42,15 +41,10 @@ public class Fetcher
     this.fetchers = fetchers.ToArray();
   }
 
-  internal Option<long> GetCachedStreamRevision(StrongId id) =>
+  internal Option<long> GetCachedStreamRevision(string streamName, StrongId id) =>
     fetchers
-      .SingleOrNone(f => f.CanProcessStream(id.StreamId()))
+      .SingleOrNone(f => f.CanProcessStream(streamName))
       .Bind(f => f.GetCachedStreamRevision(id));
-
-  internal Option<Position> GetCachedGlobalPosition(StrongId id) =>
-    fetchers
-      .SingleOrNone(f => f.CanProcessStream(id.StreamId()))
-      .Bind(f => f.GetCachedGlobalPosition(id));
 
   internal AsyncOption<FoundEntity> DaemonFetch(Option<StrongId> id, string streamName, bool resetCache = false) =>
     fetchers
@@ -134,15 +128,6 @@ public class Fetcher<Entity> : EntityFetcher
         SingleStreamCacheResult<Entity> single => single.Revision,
         MultipleStreamCacheResult<Entity> multiple =>
           multiple.StreamRevisions.TryGetValue(id.StreamId(), out var revision) ? Some(revision) : None,
-        _ => None
-      }
-      : None;
-
-  public Option<Position> GetCachedGlobalPosition(StrongId id) =>
-    cache.TryGetValue<CacheResult>(id.StreamId(), out var cachedEntity)
-      ? cachedEntity switch
-      {
-        MultipleStreamCacheResult<Entity> multiple => multiple.GlobalPosition,
         _ => None
       }
       : None;

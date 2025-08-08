@@ -246,7 +246,7 @@ internal class ReadModelHydrationDaemon(
         {
           // Skip processing if the event is known to not be the last of the stream.
           if (fetcher
-              .GetCachedStreamRevision(@event.GetEntityId())
+              .GetCachedStreamRevision(@event.GetStreamName(), @event.GetEntityId())
               .Match(cachedRevision => cachedRevision >= evt.Event.EventNumber.ToInt64(), () => false))
           {
             await UpdateLastPosition(evt.Event.Position);
