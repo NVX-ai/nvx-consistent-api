@@ -27,6 +27,21 @@ public class DateHandling
     var readModel = await setup.ReadModel<EntityWithDatesReadModel>(entityId.ToString());
     readModel.TheDate.IsCloseTo(now);
   }
+  
+  [Fact(DisplayName = "get the date only as expected in UTC")]
+  public async Task GetTheDateOnlyAsExpectedUtc()
+  {
+    await using var setup = await Initializer.Do();
+    var entityId = Guid.NewGuid();
+    var today = DateTime.UtcNow;
+    var now = new DateTimeOffset(today.Year, today.Month, today.Day, 0, 0, 0, TimeSpan.FromHours(2));
+    var saveEntityWithDates = new SaveEntityWithDates(entityId, now);
+    await setup.Command(saveEntityWithDates);
+    var readModel = await setup.ReadModel<EntityWithDatesReadModel>(entityId.ToString());
+    readModel.TheDate.IsCloseTo(now);
+    Assert.Equal(now.Date.Date, readModel.TheDateTime.Date);
+    Assert.Equal(new DateOnly(today.Year, today.Month, today.Day), readModel.OnlyTheDate);
+  }
 
   [Theory(DisplayName = "filters on date only")]
   [MemberData(nameof(OffsetData))]
