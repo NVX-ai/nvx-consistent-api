@@ -4,7 +4,6 @@ using Nvx.ConsistentAPI.Framework;
 using Nvx.ConsistentAPI.InternalTooling;
 using Nvx.ConsistentAPI.Store.Store;
 
-
 namespace Nvx.ConsistentAPI;
 
 internal class DynamicConsistencyBoundaryDaemon(
@@ -196,6 +195,8 @@ internal class DynamicConsistencyBoundaryDaemon(
 
   private async Task InsertEvent(EventModelEvent evt)
   {
+    await store.Insert(new InsertionPayload<EventModelEvent>(evt.GetSwimLane(), evt.GetEntityId(), [evt]));
+
     switch (evt)
     {
       case InterestedEntityRegisteredInterest:
@@ -205,24 +206,6 @@ internal class DynamicConsistencyBoundaryDaemon(
         Interlocked.Increment(ref interestsRemovedSinceStartup);
         break;
     }
-
-    await client.AppendToStreamAsync(
-      evt.GetStreamName(),
-      StreamState.Any,
-      [
-        new EventData(
-          Uuid.NewUuid(),
-          evt.EventType,
-          evt.ToBytes(),
-          new EventMetadata(
-              DateTime.UtcNow,
-              null,
-              null,
-              null,
-              null,
-              null)
-            .ToBytes())
-      ]);
   }
 
   private static Dictionary<string, string> ToDictionary(StrongId id)
