@@ -335,7 +335,6 @@ public class Fetcher<Entity> : EntityFetcher
 
         var events = store.Read(request).Events();
 
-
         var result = await events
           .TakeWhile(re => upToGlobalPosition is null || re.Metadata.GlobalPosition <= upToGlobalPosition)
           .AggregateAwaitAsync<
@@ -372,7 +371,12 @@ public class Fetcher<Entity> : EntityFetcher
             tuple => ValueTask.FromResult(
               new FetchResult<Entity>(tuple.entity, tuple.rev, tuple.gp, tuple.fe, tuple.le, tuple.fu, tuple.lu)));
 
-        if (result.Revision < 0 || upToGlobalPosition is not null)
+        if (result.Revision < 0)
+        {
+          return new FetchResult<Entity>(None, -1, None, null, null, null, null);
+        }
+
+        if (upToGlobalPosition is not null)
         {
           return result;
         }
