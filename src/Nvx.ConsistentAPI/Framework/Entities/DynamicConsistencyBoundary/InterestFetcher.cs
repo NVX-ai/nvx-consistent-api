@@ -19,7 +19,7 @@ internal class InterestFetcher(EventStore<EventModelEvent> store)
       : ReadStreamRequest.FromAndAfter(
         ConcernedEntityEntity.StreamPrefix,
         new ConcernedEntityId(streamName),
-        Convert.ToUInt64(entity.Revision));
+        Convert.ToInt64(entity.Revision));
     var stream = store.Read(request);
 
     await foreach (var evt in stream.Events())
@@ -62,7 +62,7 @@ internal class InterestFetcher(EventStore<EventModelEvent> store)
       : ReadStreamRequest.FromAndAfter(
         InterestedEntityEntity.StreamPrefix,
         new InterestedEntityId(streamName),
-        Convert.ToUInt64(entity.Revision));
+        Convert.ToInt64(entity.Revision));
 
     var stream = store.Read(request);
     await foreach (var evt in stream.Events())

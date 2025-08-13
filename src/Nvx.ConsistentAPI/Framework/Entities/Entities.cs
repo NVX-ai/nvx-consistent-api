@@ -35,7 +35,10 @@ public interface EntityDefinition
   EntityFetcher GetFetcher(
     EventStoreClient client,
     EventStore<EventModelEvent> store,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser);
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    IReadOnlyDictionary<Type, string> swimlaneLookup);
+
+  Type EntityType { get; }
 }
 
 public class EntityDefinition<EntityShape, EntityId> :
@@ -52,14 +55,16 @@ public class EntityDefinition<EntityShape, EntityId> :
   public EntityFetcher GetFetcher(
     EventStoreClient client,
     EventStore<EventModelEvent> store,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser) =>
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    IReadOnlyDictionary<Type, string> swimlaneLookup) =>
     new Fetcher<EntityShape>(
-      client,
       store,
       sid => Optional(sid as EntityId).Bind<EntityShape>(eid => Defaulter(eid)),
-      parser,
       CacheSize,
       CacheExpiration,
       IsSlidingCache,
+      swimlaneLookup,
       StreamPrefix);
+
+  public Type EntityType => typeof(EntityShape);
 }

@@ -101,7 +101,7 @@ public class Emitter(EventStore<EventModelEvent> store, ILogger logger)
               new InsertionPayload<EventModelEvent>(
                 swimlane,
                 streamId,
-                new InsertAfter((ulong)expectedRevision),
+                new InsertAfter(expectedRevision),
                 context?.RelatedUserSub,
                 context?.CorrelationId,
                 context?.CausationId,

@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -153,7 +154,10 @@ public class EventModel
     var emitter = new Emitter(store, logger);
     var parser = Parser();
 
-    var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(esClient, store, parser)));
+    var swimlaneLookup =
+      new ReadOnlyDictionary<Type, string>(Entities.ToDictionary(e => e.EntityType, e => e.StreamPrefix));
+
+    var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(esClient, store, parser, swimlaneLookup)));
 
     await FileDefinitions.InitializeEndpoint(app, emitter, fetcher, settings);
     UserSecurityDefinitions.InitializeEndpoints(app, emitter, fetcher, settings);

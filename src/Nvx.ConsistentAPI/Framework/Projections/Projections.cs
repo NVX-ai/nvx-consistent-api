@@ -39,7 +39,7 @@ public abstract class
               evt.Event.Metadata.ToArray(),
               evt.Event.Created,
               evt.Event.Position.CommitPosition,
-              evt.Event.EventNumber.ToUInt64())),
+              evt.Event.EventNumber.ToInt64())),
           _ => Task.CompletedTask
         }),
         () => Task.CompletedTask);

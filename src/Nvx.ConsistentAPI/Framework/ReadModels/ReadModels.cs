@@ -374,7 +374,7 @@ public record FoundEntity<T>(
   string? FirstUserSubFound,
   string? LastUserSubFound,
   long StreamRevision,
-  Option<Position> GlobalPosition)
+  Option<ulong> GlobalPosition)
   : FoundEntity
   where T : EventModelEntity<T>
 {

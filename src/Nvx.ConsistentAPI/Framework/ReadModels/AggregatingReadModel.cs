@@ -230,7 +230,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                       evt.Event.Metadata.ToArray(),
                       evt.Event.Created,
                       evt.Event.Position.CommitPosition,
-                      evt.Event.EventNumber.ToUInt64());
+                      evt.Event.EventNumber.ToInt64());
                     var aggregatedEvent =
                       new EventWithMetadata<EventModelEvent>(e, evt.Event.Position, evt.Event.EventId, metadata);
 
