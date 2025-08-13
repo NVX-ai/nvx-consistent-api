@@ -22,11 +22,7 @@ internal class InterestFetcher(EventStore<EventModelEvent> store)
         Convert.ToUInt64(entity.Revision));
     var stream = store.Read(request);
 
-    await foreach (var evt in
-                   from m in stream
-                   let e = m as ReadStreamMessage<EventModelEvent>.SolvedEvent
-                   where e is not null
-                   select e)
+    await foreach (var evt in stream.Events())
     {
       var metadata = new EventMetadata(
         evt.Metadata.CreatedAt,
@@ -69,11 +65,7 @@ internal class InterestFetcher(EventStore<EventModelEvent> store)
         Convert.ToUInt64(entity.Revision));
 
     var stream = store.Read(request);
-    await foreach (var evt in
-                   from m in stream
-                   let e = m as ReadStreamMessage<EventModelEvent>.SolvedEvent
-                   where e is not null
-                   select e)
+    await foreach (var evt in stream.Events())
     {
       var metadata = new EventMetadata(
         evt.Metadata.CreatedAt,
