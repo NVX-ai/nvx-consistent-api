@@ -330,7 +330,7 @@ public class Fetcher<Entity> : EntityFetcher
             : (defaulted, None, None, null, null, null, null);
 
         var request = seed.r.Match(
-          sp => ReadStreamRequest.FromAndAfter(swimlane, id, sp),
+          sp => ReadStreamRequest.FromAndAfter(swimlane, id, sp + 1),
           () => ReadStreamRequest.Forwards(swimlane, id));
 
         var events = store.Read(request).Events();
