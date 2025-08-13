@@ -60,18 +60,18 @@ public partial record IdempotencyCache(
 
 public record IdempotentCommandStarted(string Key, DateTime StartedAt) : EventModelEvent
 {
-  public string SwimLane => IdempotencyCache.StreamPrefix;
+  public string GetSwimLane() => IdempotencyCache.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Key);
 }
 
 public record IdempotentCommandAccepted(string Key, CommandAcceptedResult Accepted) : EventModelEvent
 {
-  public string SwimLane => IdempotencyCache.StreamPrefix;
+  public string GetSwimLane() => IdempotencyCache.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Key);
 }
 
 public record IdempotentCommandRejected(string Key, ApiError Error) : EventModelEvent
 {
-  public string SwimLane => IdempotencyCache.StreamPrefix;
+  public string GetSwimLane() => IdempotencyCache.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Key);
 }

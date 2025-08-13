@@ -11,54 +11,54 @@ public record NotificationSent(
   DateTime CreatedAt,
   Dictionary<string, string>? AdditionalDetails) : EventModelEvent
 {
-  public string SwimLane => UserNotificationEntity.StreamPrefix;
+  public string GetSwimLane() => UserNotificationEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }
 
 public record NotificationRead(string Id) : EventModelEvent
 {
-  public string SwimLane => UserNotificationEntity.StreamPrefix;
+  public string GetSwimLane() => UserNotificationEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }
 
 public record NotificationUnread(string Id) : EventModelEvent
 {
-  public string SwimLane => UserNotificationEntity.StreamPrefix;
+  public string GetSwimLane() => UserNotificationEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }
 
 public record NotificationFavorite(string Id) : EventModelEvent
 {
-  public string SwimLane => UserNotificationEntity.StreamPrefix;
+  public string GetSwimLane() => UserNotificationEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }
 
 public record NotificationUnfavorite(string Id) : EventModelEvent
 {
-  public string SwimLane => UserNotificationEntity.StreamPrefix;
+  public string GetSwimLane() => UserNotificationEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }
 
 public record NotificationArchived(string Id) : EventModelEvent
 {
-  public string SwimLane => UserNotificationEntity.StreamPrefix;
+  public string GetSwimLane() => UserNotificationEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }
 
 public record NotificationDeleted(string Id) : EventModelEvent
 {
-  public string SwimLane => UserNotificationEntity.StreamPrefix;
+  public string GetSwimLane() => UserNotificationEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }
 
 public record NotificationRestored(string Id) : EventModelEvent
 {
-  public string SwimLane => UserNotificationEntity.StreamPrefix;
+  public string GetSwimLane() => UserNotificationEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }
 
 public record NotificationPermanentlyDeleted(string Id) : EventModelEvent
 {
-  public string SwimLane => UserNotificationEntity.StreamPrefix;
+  public string GetSwimLane() => UserNotificationEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }

@@ -13,6 +13,6 @@ public record SignalRMessageScheduled(
   DateTime ScheduledAt)
   : EventModelEvent
 {
-  public string SwimLane => SignalRMessageEntity.StreamPrefix;
+  public string GetSwimLane() => SignalRMessageEntity.StreamPrefix;
   public StrongId GetEntityId() => new SignalRMessageId(Id);
 }

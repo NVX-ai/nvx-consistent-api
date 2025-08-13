@@ -45,7 +45,7 @@ public record ExtremeCountId(Guid Id) : StrongId
 
 public record ExtremeCountHappened(Guid Id) : EventModelEvent
 {
-  public string SwimLane => ExtremeCountEntity.StreamPrefix;
+  public string GetSwimLane() => ExtremeCountEntity.StreamPrefix;
   public StrongId GetEntityId() => new ExtremeCountId(Id);
 }
 

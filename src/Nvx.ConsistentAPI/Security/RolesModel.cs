@@ -118,25 +118,25 @@ public record RemovePermissionFromRole(Guid Id, string Permission) : TenantEvent
 
 public record RoleCreatedFromTemplate(Guid Id, Guid TemplateId, Guid TenantId) : EventModelEvent
 {
-  public string SwimLane => RoleEntity.StreamPrefix;
+  public string GetSwimLane() => RoleEntity.StreamPrefix;
   public StrongId GetEntityId() => new RoleId(Id, TenantId);
 }
 
 public record RoleCreated(Guid Id, string Name, string Description, Guid TenantId) : EventModelEvent
 {
-  public string SwimLane => RoleEntity.StreamPrefix;
+  public string GetSwimLane() => RoleEntity.StreamPrefix;
   public StrongId GetEntityId() => new RoleId(Id, TenantId);
 }
 
 public record PermissionAddedToRole(Guid Id, string Permission, Guid TenantId) : EventModelEvent
 {
-  public string SwimLane => RoleEntity.StreamPrefix;
+  public string GetSwimLane() => RoleEntity.StreamPrefix;
   public StrongId GetEntityId() => new RoleId(Id, TenantId);
 }
 
 public record PermissionRemovedFromRole(Guid Id, string Permission, Guid TenantId) : EventModelEvent
 {
-  public string SwimLane => RoleEntity.StreamPrefix;
+  public string GetSwimLane() => RoleEntity.StreamPrefix;
   public StrongId GetEntityId() => new RoleId(Id, TenantId);
 }
 

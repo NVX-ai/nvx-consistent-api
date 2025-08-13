@@ -37,7 +37,7 @@ public static class GuidValidationModel
 
 public record GuidValidationEvent(Guid Id) : EventModelEvent
 {
-  public string SwimLane => GuidValidationEntity.StreamPrefix;
+  public string GetSwimLane() => GuidValidationEntity.StreamPrefix;
   public StrongId GetEntityId() => new GuidValidationId(Id);
 }
 

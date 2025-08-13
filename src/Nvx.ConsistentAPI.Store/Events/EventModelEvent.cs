@@ -5,8 +5,8 @@ namespace Nvx.ConsistentAPI;
 public interface EventModelEvent
 {
   public string EventType => GetType().Apply(Naming.ToSpinalCase);
-  public string GetStreamName() => $"{SwimLane}{GetEntityId().StreamId()}";
-  string SwimLane { get; }
+  public string GetStreamName() => $"{GetSwimLane()}{GetEntityId().StreamId()}";
+  string GetSwimLane();
   public byte[] ToBytes() => EventSerialization.ToBytes(this);
   StrongId GetEntityId();
 }

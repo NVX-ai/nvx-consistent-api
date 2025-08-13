@@ -46,7 +46,7 @@ public record SaveEntityWithDates(Guid EntityId, DateTimeOffset TheDate) : Event
 
 public record EntityWithDatesSaved(Guid EntityId, DateTimeOffset TheDate) : EventModelEvent
 {
-  public string SwimLane => EntityWithDates.StreamPrefix;
+  public string GetSwimLane() => EntityWithDates.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(EntityId);
 }
 

@@ -26,7 +26,7 @@ public class Emitter(EventStore<EventModelEvent> store, ILogger logger)
 
         async Task<Result<string, ApiError>> Go()
         {
-          var swimlane = events.First().SwimLane;
+          var swimlane = events.First().GetSwimLane();
           var streamId = events.First().GetEntityId();
           return await store
             .Insert(
@@ -62,7 +62,7 @@ public class Emitter(EventStore<EventModelEvent> store, ILogger logger)
 
         async Task<Result<string, ApiError>> Go()
         {
-          var swimlane = events.First().SwimLane;
+          var swimlane = events.First().GetSwimLane();
           var streamId = events.First().GetEntityId();
           return await store
             .Insert(
@@ -94,7 +94,7 @@ public class Emitter(EventStore<EventModelEvent> store, ILogger logger)
 
         async Task<Result<string, ApiError>> Go()
         {
-          var swimlane = events.First().SwimLane;
+          var swimlane = events.First().GetSwimLane();
           var streamId = events.First().GetEntityId();
           return await store
             .Insert(

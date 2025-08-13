@@ -126,28 +126,28 @@ public record TenantPermissionAssignedProjection(
   : EventModelEvent
 {
   public StrongId GetEntityId() => new UserWithTenantPermissionId(Sub, TenantId, Permission);
-  public string SwimLane => UserWithTenantPermissionProjection.StreamPrefix;
+  public string GetSwimLane() => UserWithTenantPermissionProjection.StreamPrefix;
 }
 
 public record TenantPermissionRevokedProjection(string Sub, Guid TenantId, string Permission)
   : EventModelEvent
 {
   public StrongId GetEntityId() => new UserWithTenantPermissionId(Sub, TenantId, Permission);
-  public string SwimLane => UserWithTenantPermissionProjection.StreamPrefix;
+  public string GetSwimLane() => UserWithTenantPermissionProjection.StreamPrefix;
 }
 
 public record TenantPermissionNameReceivedProjection(string Sub, Guid TenantId, string Permission, string Name)
   : EventModelEvent
 {
   public StrongId GetEntityId() => new UserWithTenantPermissionId(Sub, TenantId, Permission);
-  public string SwimLane => UserWithTenantPermissionProjection.StreamPrefix;
+  public string GetSwimLane() => UserWithTenantPermissionProjection.StreamPrefix;
 }
 
 public record TenantPermissionEmailReceivedProjection(string Sub, Guid TenantId, string Permission, string Email)
   : EventModelEvent
 {
   public StrongId GetEntityId() => new UserWithTenantPermissionId(Sub, TenantId, Permission);
-  public string SwimLane => UserWithTenantPermissionProjection.StreamPrefix;
+  public string GetSwimLane() => UserWithTenantPermissionProjection.StreamPrefix;
 }
 
 public class TenantPermissionAssignedProjector :

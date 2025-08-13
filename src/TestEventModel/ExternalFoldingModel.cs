@@ -140,13 +140,13 @@ public partial record EntityThatDepends(Guid Id, Guid[] DependedOnIds, string[] 
 
 public record EntityThatDependsOnReceivedDependency(Guid Id, Guid DependsOnId) : EventModelEvent
 {
-  public string SwimLane => EntityThatDepends.StreamPrefix;
+  public string GetSwimLane() => EntityThatDepends.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record EntityThatDependsOnRemovedDependency(Guid Id, Guid DependsOnId) : EventModelEvent
 {
-  public string SwimLane => EntityThatDepends.StreamPrefix;
+  public string GetSwimLane() => EntityThatDepends.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
@@ -188,13 +188,13 @@ public partial record EntityDependedOn(Guid Id, string[] Tags)
 
 public record EntityDependedOnTagged(Guid Id, string Tag) : EventModelEvent
 {
-  public string SwimLane => EntityDependedOn.StreamPrefix;
+  public string GetSwimLane() => EntityDependedOn.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record EntityDependedOnHeardAboutEntityThatDepends(Guid Id, Guid EntityThatDependsId)
   : EventModelEvent
 {
-  public string SwimLane => EntityDependedOn.StreamPrefix;
+  public string GetSwimLane() => EntityDependedOn.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }

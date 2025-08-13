@@ -208,79 +208,79 @@ public record SendNotificationToUser(string Message, string RecipientSub) : Even
 // Events
 public record StockAdded(Guid ProductId, int Amount) : EventModelEvent
 {
-  public string SwimLane => Stock.StreamPrefix;
+  public string GetSwimLane() => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockTagged(Guid ProductId, string?[] Tags) : EventModelEvent
 {
-  public string SwimLane => Stock.StreamPrefix;
+  public string GetSwimLane() => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockRetrieved(Guid ProductId, int Amount) : EventModelEvent
 {
-  public string SwimLane => Stock.StreamPrefix;
+  public string GetSwimLane() => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockNamed(Guid ProductId, string Name) : EventModelEvent
 {
-  public string SwimLane => Stock.StreamPrefix;
+  public string GetSwimLane() => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record ProductCreated(Guid ProductId, string Name) : EventModelEvent
 {
-  public string SwimLane => Product.StreamPrefix;
+  public string GetSwimLane() => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record ProductPictureAdded(Guid ProductId, Guid PictureId) : EventModelEvent
 {
-  public string SwimLane => Product.StreamPrefix;
+  public string GetSwimLane() => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record AggregatingProductHidden(Guid ProductId) : EventModelEvent
 {
-  public string SwimLane => Product.StreamPrefix;
+  public string GetSwimLane() => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record AggregatingProductShown(Guid ProductId) : EventModelEvent
 {
-  public string SwimLane => Product.StreamPrefix;
+  public string GetSwimLane() => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockPictureAdded(Guid ProductId, Guid PictureId) : EventModelEvent
 {
-  public string SwimLane => Stock.StreamPrefix;
+  public string GetSwimLane() => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record OrganizationBuildingRegistered(string Name, Guid TenantId) : EventModelEvent
 {
-  public string SwimLane => OrganizationBuilding.StreamPrefix;
+  public string GetSwimLane() => OrganizationBuilding.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Name);
 }
 
 public record UserSelectedFavoriteFood(string Sub, string Name) : EventModelEvent
 {
-  public string SwimLane => UserFavoriteFood.StreamPrefix;
+  public string GetSwimLane() => UserFavoriteFood.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record StoreReceivedProduct(Guid StoreId, Guid ProductId) : EventModelEvent
 {
-  public string SwimLane => StoreFrontProduct.StreamPrefix;
+  public string GetSwimLane() => StoreFrontProduct.StreamPrefix;
   public StrongId GetEntityId() => new StoreFrontProductId(StoreId, ProductId);
 }
 
 public record UserNamedOneProduct(string UserSub, Guid ProductId, string Name) : EventModelEvent
 {
-  public string SwimLane => UserRegistryOfNamedProducts.StreamPrefix;
+  public string GetSwimLane() => UserRegistryOfNamedProducts.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(UserSub);
 }
 

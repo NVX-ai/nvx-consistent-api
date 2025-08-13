@@ -86,7 +86,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
             yield return parser(re)
               .Match(
                 ReadAllMessage (e) => new ReadAllMessage.AllEvent(
-                  e.SwimLane,
+                  e.GetSwimLane(),
                   e.GetEntityId(),
                   StoredEventMetadata.FromStorage(
                     EventMetadata.TryParse(
@@ -154,7 +154,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
             yield return parser(re)
               .Match(
                 ReadStreamMessage<EventModelEvent> (e) => new ReadStreamMessage<EventModelEvent>.SolvedEvent(
-                  e.SwimLane,
+                  e.GetSwimLane(),
                   e.GetEntityId(),
                   e,
                   CreateStoredEventMetadata(re)),
@@ -214,7 +214,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
             yield return parser(re)
               .Match(
                 ReadAllMessage (e) => new ReadAllMessage.AllEvent(
-                  e.SwimLane,
+                  e.GetSwimLane(),
                   e.GetEntityId(),
                   CreateStoredEventMetadata(re)),
                 () => new ReadAllMessage.ToxicAllEvent(
@@ -266,7 +266,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
             yield return parser(re)
               .Match(
                 ReadStreamMessage<EventModelEvent> (e) => new ReadStreamMessage<EventModelEvent>.SolvedEvent(
-                  e.SwimLane,
+                  e.GetSwimLane(),
                   e.GetEntityId(),
                   e,
                   CreateStoredEventMetadata(re)),

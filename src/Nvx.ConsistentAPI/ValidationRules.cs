@@ -115,13 +115,13 @@ public record RemoveValidationRule(string CommandName, string Rule) : EventModel
 
 public record ValidationRuleSet(string CommandName, string Rule) : EventModelEvent
 {
-  public string SwimLane => FrameworkValidationRuleEntity.StreamPrefix;
+  public string GetSwimLane() => FrameworkValidationRuleEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(CommandName);
 }
 
 public record ValidationRuleRemoved(string CommandName, string Rule) : EventModelEvent
 {
-  public string SwimLane => FrameworkValidationRuleEntity.StreamPrefix;
+  public string GetSwimLane() => FrameworkValidationRuleEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(CommandName);
 }
 
