@@ -1,5 +1,3 @@
-using EventStore.Client;
-
 namespace Nvx.ConsistentAPI;
 
 public record UserWithPermissionId(string Sub, string Permission) : StrongId
@@ -138,14 +136,14 @@ internal class PermissionAssignedProjector :
     UserSecurity e,
     Option<UserWithPermissionProjection> projectionEntity,
     UserWithPermissionId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata
   ) => new PermissionAssignedToUserProjection(e.Sub, e.FullName, e.Email, eventToProject.Permission);
 
   public override IEnumerable<UserWithPermissionId> GetProjectionIds(
     ApplicationPermissionAssigned sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
+    Guid sourceEventId) =>
     [new(sourceEvent.Sub, sourceEvent.Permission)];
 }
 
@@ -164,14 +162,14 @@ internal class PermissionRevokedProjector :
     UserSecurity e,
     Option<UserWithPermissionProjection> projectionEntity,
     UserWithPermissionId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata
   ) => new PermissionRemovedFromUserProjection(e.Sub, eventToProject.Permission);
 
   public override IEnumerable<UserWithPermissionId> GetProjectionIds(
     ApplicationPermissionRevoked sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId
+    Guid sourceEventId
   ) => [new(sourceEvent.Sub, sourceEvent.Permission)];
 }
 
@@ -190,14 +188,14 @@ internal class NameAssignedToUserProjection :
     UserSecurity e,
     Option<UserWithPermissionProjection> projectionEntity,
     UserWithPermissionId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata
   ) => projectionEntity.Map(uwr => new NameReceivedForUserProjection(uwr.Sub, uwr.Permission, unr.FullName));
 
   public override IEnumerable<UserWithPermissionId> GetProjectionIds(
     UserNameReceived sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId
+    Guid sourceEventId
   ) => sourceEntity
     .ApplicationPermissions.Select(permission => new UserWithPermissionId(sourceEntity.Sub, permission))
     .ToArray();
@@ -218,14 +216,14 @@ internal class EmailAssignedToUserProjection :
     UserSecurity e,
     Option<UserWithPermissionProjection> projectionEntity,
     UserWithPermissionId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata
   ) => projectionEntity.Map(uwr => new EmailReceivedForUserProjection(uwr.Sub, uwr.Permission, uer.Email));
 
   public override IEnumerable<UserWithPermissionId> GetProjectionIds(
     UserEmailReceived sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId
+    Guid sourceEventId
   ) => sourceEntity
     .ApplicationPermissions.Select(permission => new UserWithPermissionId(sourceEntity.Sub, permission))
     .ToArray();

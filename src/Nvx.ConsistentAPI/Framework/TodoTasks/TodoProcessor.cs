@@ -1,5 +1,4 @@
 using Dapper;
-using EventStore.Client;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -159,7 +158,7 @@ public class TodoTaskDefinition<DataShape, Entity, SourceEvent, EntityId> : Todo
     }
   }
 
-  private static Guid GetTaskId(Uuid sourceEventUuid, string type) =>
+  private static Guid GetTaskId(Guid sourceEventUuid, string type) =>
     IdempotentUuid.Generate($"{sourceEventUuid}{type})").ToGuid();
 
   public override int GetHashCode() => Type.GetHashCode();
@@ -188,7 +187,7 @@ public class TodoTaskDefinition<DataShape, Entity, SourceEvent, EntityId> : Todo
       Entity e,
       Option<ProcessorEntity> projectionEntity,
       StrongGuid projectionId,
-      Uuid sourceEventUuid,
+      Guid sourceEventUuid,
       EventMetadata metadata)
     {
       var todoData = Originator(eventToProject, e, metadata);
@@ -213,7 +212,7 @@ public class TodoTaskDefinition<DataShape, Entity, SourceEvent, EntityId> : Todo
     public override IEnumerable<StrongGuid> GetProjectionIds(
       SourceEvent sourceEvent,
       Entity sourceEntity,
-      Uuid sourceEventId) => [new(GetTaskId(sourceEventId, Type))];
+      Guid sourceEventId) => [new(GetTaskId(sourceEventId, Type))];
   }
 }
 

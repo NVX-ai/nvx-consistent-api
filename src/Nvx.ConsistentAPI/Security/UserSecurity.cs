@@ -1,4 +1,3 @@
-using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nvx.ConsistentAPI.Framework.SignalRMessage;
@@ -491,7 +490,7 @@ public class AssignToTenantOnTenantPermissionAssigned :
     UserSecurity e,
     Option<UserSecurity> projectionEntity,
     StrongString projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     e.Tenants.Any(t => t.TenantId == eventToProject.TenantId)
       ? None
@@ -500,7 +499,7 @@ public class AssignToTenantOnTenantPermissionAssigned :
   public override IEnumerable<StrongString> GetProjectionIds(
     TenantPermissionAssigned sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
+    Guid sourceEventId) =>
     [new(Guid.NewGuid().ToString())];
 }
 
@@ -516,7 +515,7 @@ public class SendNotificationOnTenantPermissionAssigned :
     UserSecurity e,
     Option<SignalRMessageEntity> projectionEntity,
     SignalRMessageId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     new SignalRMessageScheduled(
       projectionId.Value,
@@ -533,7 +532,7 @@ public class SendNotificationOnTenantPermissionAssigned :
   public override IEnumerable<SignalRMessageId> GetProjectionIds(
     TenantPermissionAssigned sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
+    Guid sourceEventId) =>
     [new(Guid.NewGuid())];
 }
 
@@ -549,7 +548,7 @@ public class SendNotificationOnTenantPermissionRevoked :
     UserSecurity e,
     Option<SignalRMessageEntity> projectionEntity,
     SignalRMessageId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     new SignalRMessageScheduled(
       projectionId.Value,
@@ -566,7 +565,7 @@ public class SendNotificationOnTenantPermissionRevoked :
   public override IEnumerable<SignalRMessageId> GetProjectionIds(
     TenantPermissionRevoked sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
+    Guid sourceEventId) =>
     [new(Guid.NewGuid())];
 }
 

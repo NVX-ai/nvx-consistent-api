@@ -79,11 +79,11 @@ public interface EventModelingProjectionArtifact
   string Name { get; }
 
   string SourcePrefix { get; }
-  bool CanProject(ResolvedEvent evt);
+  bool CanProject(EventModelEvent evt);
 
   Task HandleEvent(
-    ResolvedEvent evt,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    EventModelEvent me,
+    StoredEventMetadata storedMetadata,
     Fetcher fetcher,
     EventStore<EventModelEvent> store);
 }
@@ -179,9 +179,7 @@ public class EventModel
         .ToArray(),
       fetcher,
       emitter,
-      esClient,
       store,
-      parser,
       app,
       settings,
       logger);
@@ -366,7 +364,7 @@ public class EventModel
 public record EventWithMetadata<E>(
   E Event,
   Position Revision,
-  Uuid EventId,
+  Guid EventId,
   EventMetadata Metadata) where E : EventModelEvent
 {
   public EventWithMetadata<E2> As<E2>(E2 e) where E2 : EventModelEvent => new(e, Revision, EventId, Metadata);

@@ -1,4 +1,5 @@
 ﻿using Nvx.ConsistentAPI.Store.Events;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
@@ -26,4 +27,13 @@ public record EventMetadata(
       return new EventMetadata(createdAt, null, null, null, globalPosition, streamPosition);
     }
   }
+
+  public static EventMetadata From(StoredEventMetadata storedEventMetadata) =>
+    new(
+      storedEventMetadata.CreatedAt,
+      storedEventMetadata.CorrelationId,
+      storedEventMetadata.CausationId,
+      storedEventMetadata.RelatedUserSub,
+      storedEventMetadata.GlobalPosition,
+      storedEventMetadata.StreamPosition);
 }

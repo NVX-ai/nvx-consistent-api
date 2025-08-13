@@ -254,14 +254,7 @@ public class Fetcher<Entity> : EntityFetcher
           hadEvents = true;
           positions[solvedEvent.Event.GetStreamName()] = solvedEvent.Metadata.StreamPosition;
 
-          var metadata =
-            new EventMetadata(
-              solvedEvent.Metadata.CreatedAt,
-              solvedEvent.Metadata.CorrelationId,
-              solvedEvent.Metadata.CausationId,
-              solvedEvent.Metadata.RelatedUserSub,
-              solvedEvent.Metadata.GlobalPosition,
-              solvedEvent.Metadata.StreamPosition);
+          var metadata = EventMetadata.From(solvedEvent.Metadata);
 
           var firstEventAt = seed.fe ?? metadata.CreatedAt;
           var lastEventAt = metadata.CreatedAt;
@@ -344,13 +337,7 @@ public class Fetcher<Entity> : EntityFetcher
             (seed.e, seed.r.DefaultValue(-1), seed.gp, seed.fe, seed.le, seed.fu, seed.lu),
             async (r, @event) =>
             {
-              var metadata = new EventMetadata(
-                @event.Metadata.CreatedAt,
-                @event.Metadata.CorrelationId,
-                @event.Metadata.CausationId,
-                @event.Metadata.RelatedUserSub,
-                @event.Metadata.GlobalPosition,
-                @event.Metadata.StreamPosition);
+              var metadata = EventMetadata.From(@event.Metadata);
 
               var firstEventAt = r.fe ?? metadata.CreatedAt;
               var lastEventAt = metadata.CreatedAt;

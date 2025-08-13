@@ -22,20 +22,13 @@ internal class InterestFetcher(EventStore<EventModelEvent> store)
         Convert.ToInt64(entity.Revision));
     var stream = store.Read(request);
 
-    await foreach (var evt in stream.Events())
-    {
-      var metadata = new EventMetadata(
-        evt.Metadata.CreatedAt,
-        evt.Metadata.CorrelationId,
-        evt.Metadata.CausationId,
-        evt.Metadata.RelatedUserSub,
-        evt.Metadata.GlobalPosition,
-        evt.Metadata.StreamPosition);
-
-      entity = new InterestCacheElement<ConcernedEntityEntity>(
-        await entity.Entity.Fold(evt.Event, metadata, null!),
-        Convert.ToInt64(evt.Metadata.StreamPosition));
-    }
+    entity = await stream
+      .Events()
+      .AggregateAwaitAsync(
+        entity,
+        async (current, evt) => new InterestCacheElement<ConcernedEntityEntity>(
+          await current.Entity.Fold(evt.Event, EventMetadata.From(evt.Metadata), null!),
+          Convert.ToInt64(evt.Metadata.StreamPosition)));
 
     if (entity.Revision == -1)
     {

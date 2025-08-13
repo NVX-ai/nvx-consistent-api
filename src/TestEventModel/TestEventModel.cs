@@ -1,6 +1,5 @@
 using System.Data.Common;
 using Dapper;
-using EventStore.Client;
 using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Nvx.ConsistentAPI;
@@ -333,15 +332,15 @@ public partial record Stock(Guid ProductId, int Amount, string ProductName, Guid
 
   public ValueTask<Stock> Fold(StockNamed sn, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { ProductName = sn.Name });
-  
-  public ValueTask<Stock> Fold(StockTagged st, EventMetadata metadata, RevisionFetcher fetcher) =>
-    ValueTask.FromResult(this with { Tags = st.Tags });
 
   public ValueTask<Stock> Fold(StockPictureAdded evt, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { PictureId = evt.PictureId });
 
   public ValueTask<Stock> Fold(StockRetrieved rs, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { Amount = Amount - rs.Amount });
+
+  public ValueTask<Stock> Fold(StockTagged st, EventMetadata metadata, RevisionFetcher fetcher) =>
+    ValueTask.FromResult(this with { Tags = st.Tags });
 
   public static string GetStreamName(Guid productId) => $"{StreamPrefix}{productId}";
   public static Stock Defaulted(StrongGuid id) => new(id.Value, 0, "Unknown product", null, []);
@@ -889,14 +888,14 @@ public static class TestEventModel
       Product e,
       Option<Stock> destinationEntity,
       StrongGuid projectionId,
-      Uuid eventId,
+      Guid eventId,
       EventMetadata metadata) =>
       new StockNamed(e.Id, e.Name);
 
     public override IEnumerable<StrongGuid> GetProjectionIds(
       ProductCreated sourceEvent,
       Product sourceEntity,
-      Uuid sourceEventId) => [new(sourceEvent.ProductId)];
+      Guid sourceEventId) => [new(sourceEvent.ProductId)];
   }
 
   private class ProductPictureUploadedToStockPictureAdded :
@@ -910,13 +909,13 @@ public static class TestEventModel
       Product e,
       Option<Stock> destinationEntity,
       StrongGuid projectionId,
-      Uuid eventId,
+      Guid eventId,
       EventMetadata metadata) => new StockPictureAdded(e.Id, se.PictureId);
 
     public override IEnumerable<StrongGuid> GetProjectionIds(
       ProductPictureAdded sourceEvent,
       Product sourceEntity,
-      Uuid sourceEventId) => [new(sourceEvent.ProductId)];
+      Guid sourceEventId) => [new(sourceEvent.ProductId)];
   }
 }
 

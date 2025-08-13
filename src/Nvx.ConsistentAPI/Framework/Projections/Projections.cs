@@ -23,38 +23,29 @@ public abstract class
 
   public abstract string SourcePrefix { get; }
 
-  public bool CanProject(ResolvedEvent e) =>
-    e.Event.EventStreamId.StartsWith(SourcePrefix)
-    && e.Event.EventType == Naming.ToSpinalCase<SourceEvent>();
+  public bool CanProject(EventModelEvent e) =>
+    e.GetStreamName().StartsWith(SourcePrefix)
+    && e.EventType == Naming.ToSpinalCase<SourceEvent>();
 
-  public Task HandleEvent(
-    ResolvedEvent evt,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+  public async Task HandleEvent(
+    EventModelEvent me,
+    StoredEventMetadata storedMetadata,
     Fetcher fetcher,
     EventStore<EventModelEvent> store)
   {
-    return parser(evt)
-      .Match(
-        async me => await (me switch
-        {
-          SourceEvent se => Handle(
-            se,
-            evt.Event.EventId,
-            EventMetadata.TryParse(
-              evt.Event.Metadata.ToArray(),
-              evt.Event.Created,
-              evt.Event.Position.CommitPosition,
-              evt.Event.EventNumber.ToInt64())),
-          _ => Task.CompletedTask
-        }),
-        () => Task.CompletedTask);
+    await (me switch
+    {
+      SourceEvent se => Handle(se, storedMetadata.EventId, EventMetadata.From(storedMetadata)),
+      _ => Task.CompletedTask
+    });
+    return;
 
-    async Task Handle(SourceEvent sourceEvent, Uuid sourceEventUuid, EventMetadata metadata)
+    async Task Handle(SourceEvent sourceEvent, Guid sourceEventUuid, EventMetadata metadata)
     {
       await Emit(Decider, store);
       return;
 
-      async Task<Result<(Option<EventModelEvent>, Uuid, EventMetadata)[], ApiError>> Decider()
+      async Task<Result<(Option<EventModelEvent>, Guid, EventMetadata)[], ApiError>> Decider()
       {
         return await
           fetcher
@@ -68,11 +59,11 @@ public abstract class
                 (ProjectionId id, FetchResult<ProjectionEntity> fr)[],
                 (SourceEntity e, (ProjectionId id, Option<ProjectionEntity> pe)[] pes)>(ett =>
                 (t.e, ett.Select(et => (et.id, et.fr.Ent)).ToArray())))
-            .Map<(Option<EventModelEvent> evt, Uuid sourceEventUuid, EventMetadata metadata)[]>(t =>
+            .Map<(Option<EventModelEvent> evt, Guid sourceEventUuid, EventMetadata metadata)[]>(t =>
               t.pes.Select(pt => ToProjection(pt, t.e)).ToArray())
             .DefaultValue([]);
 
-        (Option<EventModelEvent>, Uuid sourceEventUuid, EventMetadata) ToProjection(
+        (Option<EventModelEvent>, Guid sourceEventUuid, EventMetadata) ToProjection(
           (ProjectionId id, Option<ProjectionEntity> pe) pt,
           SourceEntity se) =>
           (Project(sourceEvent, se, pt.pe, pt.id, sourceEventUuid, metadata).Map(e => e as EventModelEvent),
@@ -89,7 +80,7 @@ public abstract class
   }
 
   private async Task Emit(
-    Func<Task<Result<(Option<EventModelEvent>, Uuid, EventMetadata)[], ApiError>>> decider,
+    Func<Task<Result<(Option<EventModelEvent>, Guid, EventMetadata)[], ApiError>>> decider,
     EventStore<EventModelEvent> store)
   {
     var i = 0;
@@ -109,7 +100,7 @@ public abstract class
 
     return;
 
-    async Task<Unit> Go((Option<EventModelEvent>, Uuid, EventMetadata)[] tuples)
+    async Task<Unit> Go((Option<EventModelEvent>, Guid, EventMetadata)[] tuples)
     {
       var offset = 0;
       foreach (var tuple in tuples)
@@ -164,13 +155,13 @@ public abstract class
     SourceEntity e,
     Option<ProjectionEntity> projectionEntity,
     ProjectionId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata);
 
   public abstract IEnumerable<ProjectionId> GetProjectionIds(
     SourceEvent sourceEvent,
     SourceEntity sourceEntity,
-    Uuid sourceEventId);
+    Guid sourceEventId);
 
   public override int GetHashCode() => Name.GetHashCode();
 }
