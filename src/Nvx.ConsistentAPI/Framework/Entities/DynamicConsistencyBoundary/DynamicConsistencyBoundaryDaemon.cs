@@ -1,5 +1,4 @@
-﻿using EventStore.Client;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Nvx.ConsistentAPI.Framework;
 using Nvx.ConsistentAPI.InternalTooling;
 using Nvx.ConsistentAPI.Store.Store;
@@ -7,9 +6,7 @@ using Nvx.ConsistentAPI.Store.Store;
 namespace Nvx.ConsistentAPI;
 
 internal class DynamicConsistencyBoundaryDaemon(
-  EventStoreClient client,
   EventStore<EventModelEvent> store,
-  Func<ResolvedEvent, Option<EventModelEvent>> parser,
   InterestTrigger[] triggers,
   ILogger logger)
 {

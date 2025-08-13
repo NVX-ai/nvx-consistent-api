@@ -226,7 +226,7 @@ public class EventModel
 
     processor.Initialize();
 
-    var dcbDaemon = new DynamicConsistencyBoundaryDaemon(esClient, store, parser, InterestTriggers, logger);
+    var dcbDaemon = new DynamicConsistencyBoundaryDaemon(store, InterestTriggers, logger);
     dcbDaemon.Initialize();
 
     CatchUp.Endpoint(ReadModels, settings, fetcher, emitter, app);
