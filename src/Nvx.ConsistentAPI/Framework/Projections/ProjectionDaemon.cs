@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.Framework.Projections.Model;
 using Nvx.ConsistentAPI.InternalTooling;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI.Framework.Projections;
 
@@ -14,6 +15,7 @@ public class ProjectionDaemon(
   Fetcher fetcher,
   Emitter emitter,
   EventStoreClient client,
+  EventStore<EventModelEvent> store,
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   WebApplication app,
   GeneratorSettings gs,

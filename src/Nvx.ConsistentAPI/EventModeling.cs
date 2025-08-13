@@ -180,6 +180,7 @@ public class EventModel
       fetcher,
       emitter,
       esClient,
+      store,
       parser,
       app,
       settings,
