@@ -1,9 +1,9 @@
-﻿using EventStore.Client;
-using Microsoft.Extensions.Caching.Memory;
+﻿using Microsoft.Extensions.Caching.Memory;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
-internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
+internal class InterestFetcher(EventStore<EventModelEvent> store)
 {
   private readonly MemoryCache cache = new(new MemoryCacheOptions { SizeLimit = 500 });
 
@@ -13,26 +13,32 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
                  ?? new InterestCacheElement<ConcernedEntityEntity>(
                    ConcernedEntityEntity.Defaulted(new ConcernedEntityId(streamName)),
                    -1);
-    var position = entity.Revision == -1 ? StreamPosition.Start : StreamPosition.FromInt64(entity.Revision);
-    var read = client.ReadStreamAsync(Direction.Forwards, entity.Entity.GetStreamName(), position);
-    if (await read.ReadState == ReadState.StreamNotFound)
-    {
-      return None;
-    }
 
-    await foreach (var resolvedEvent in read)
+    var request = entity.Revision == -1
+      ? ReadStreamRequest.Forwards(ConcernedEntityEntity.StreamPrefix, new ConcernedEntityId(streamName))
+      : ReadStreamRequest.FromAndAfter(
+        ConcernedEntityEntity.StreamPrefix,
+        new ConcernedEntityId(streamName),
+        Convert.ToUInt64(entity.Revision));
+    var stream = store.Read(request);
+
+    await foreach (var evt in
+                   from m in stream
+                   let e = m as ReadStreamMessage<EventModelEvent>.SolvedEvent
+                   where e is not null
+                   select e)
     {
-      foreach (var parsed in parser(resolvedEvent))
-      {
-        var metadata = EventMetadata.TryParse(
-          resolvedEvent.Event.Metadata.ToArray(),
-          resolvedEvent.Event.Created,
-          resolvedEvent.Event.Position.CommitPosition,
-          resolvedEvent.Event.EventNumber.ToUInt64());
-        entity = new InterestCacheElement<ConcernedEntityEntity>(
-          await entity.Entity.Fold(parsed, metadata, null!),
-          resolvedEvent.Event.EventNumber.ToInt64());
-      }
+      var metadata = new EventMetadata(
+        evt.Metadata.CreatedAt,
+        evt.Metadata.CorrelationId,
+        evt.Metadata.CausationId,
+        evt.Metadata.RelatedUserSub,
+        evt.Metadata.GlobalPosition,
+        evt.Metadata.StreamPosition);
+
+      entity = new InterestCacheElement<ConcernedEntityEntity>(
+        await entity.Entity.Fold(evt.Event, metadata, null!),
+        Convert.ToInt64(evt.Metadata.StreamPosition));
     }
 
     if (entity.Revision == -1)
@@ -54,26 +60,32 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
                  ?? new InterestCacheElement<InterestedEntityEntity>(
                    InterestedEntityEntity.Defaulted(new InterestedEntityId(streamName)),
                    -1);
-    var position = entity.Revision == -1 ? StreamPosition.Start : StreamPosition.FromInt64(entity.Revision);
-    var read = client.ReadStreamAsync(Direction.Forwards, entity.Entity.GetStreamName(), position);
-    if (await read.ReadState == ReadState.StreamNotFound)
-    {
-      return None;
-    }
 
-    await foreach (var resolvedEvent in read)
+    var request = entity.Revision == -1
+      ? ReadStreamRequest.Forwards(InterestedEntityEntity.StreamPrefix, new InterestedEntityId(streamName))
+      : ReadStreamRequest.FromAndAfter(
+        InterestedEntityEntity.StreamPrefix,
+        new InterestedEntityId(streamName),
+        Convert.ToUInt64(entity.Revision));
+
+    var stream = store.Read(request);
+    await foreach (var evt in
+                   from m in stream
+                   let e = m as ReadStreamMessage<EventModelEvent>.SolvedEvent
+                   where e is not null
+                   select e)
     {
-      foreach (var parsed in parser(resolvedEvent))
-      {
-        var metadata = EventMetadata.TryParse(
-          resolvedEvent.Event.Metadata.ToArray(),
-          resolvedEvent.Event.Created,
-          resolvedEvent.Event.Position.CommitPosition,
-          resolvedEvent.Event.EventNumber.ToUInt64());
-        entity = new InterestCacheElement<InterestedEntityEntity>(
-          await entity.Entity.Fold(parsed, metadata, null!),
-          resolvedEvent.Event.EventNumber.ToInt64());
-      }
+      var metadata = new EventMetadata(
+        evt.Metadata.CreatedAt,
+        evt.Metadata.CorrelationId,
+        evt.Metadata.CausationId,
+        evt.Metadata.RelatedUserSub,
+        evt.Metadata.GlobalPosition,
+        evt.Metadata.StreamPosition);
+
+      entity = new InterestCacheElement<InterestedEntityEntity>(
+        await entity.Entity.Fold(evt.Event, metadata, null!),
+        Convert.ToInt64(evt.Metadata.StreamPosition));
     }
 
     if (entity.Revision == -1)

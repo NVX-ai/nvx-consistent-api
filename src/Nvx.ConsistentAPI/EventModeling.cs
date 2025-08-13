@@ -201,6 +201,7 @@ public class EventModel
     var hydrationDaemon = new ReadModelHydrationDaemon(
       settings,
       esClient,
+      store,
       fetcher,
       parser,
       ReadModels.Where(rm => rm is IdempotentReadModel).Cast<IdempotentReadModel>().ToArray(),
@@ -221,7 +222,7 @@ public class EventModel
 
     processor.Initialize();
 
-    var dcbDaemon = new DynamicConsistencyBoundaryDaemon(esClient, parser, InterestTriggers, logger);
+    var dcbDaemon = new DynamicConsistencyBoundaryDaemon(esClient, store, parser, InterestTriggers, logger);
     dcbDaemon.Initialize();
 
     CatchUp.Endpoint(ReadModels, settings, fetcher, emitter, app);

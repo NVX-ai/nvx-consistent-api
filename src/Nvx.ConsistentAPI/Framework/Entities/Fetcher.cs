@@ -116,6 +116,7 @@ public class Fetcher<Entity> : EntityFetcher
     cache = new MemoryCache(new MemoryCacheOptions { SizeLimit = cacheSize });
     fetch = Build(
       client,
+      store,
       defaulter,
       parser,
       cache,
@@ -170,13 +171,14 @@ public class Fetcher<Entity> : EntityFetcher
 
   private static Func<Option<StrongId>, Position?, Fetcher, bool, Task<FetchResult<Entity>>> Build(
     EventStoreClient client,
+    EventStore<EventModelEvent> store,
     Func<StrongId, Option<Entity>> defaulter,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     MemoryCache cache,
     TimeSpan cacheExpiration,
     bool isSlidingCache)
   {
-    var interestFetcher = new InterestFetcher(client, parser);
+    var interestFetcher = new InterestFetcher(store);
     var entryOptions = new MemoryCacheEntryOptions { Size = 1 };
     if (isSlidingCache)
     {

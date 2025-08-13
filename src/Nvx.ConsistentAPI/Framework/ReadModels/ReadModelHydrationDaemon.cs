@@ -4,12 +4,14 @@ using EventStore.Client;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Nvx.ConsistentAPI.InternalTooling;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
 internal class ReadModelHydrationDaemon(
   GeneratorSettings settings,
   EventStoreClient client,
+  EventStore<EventModelEvent> store,
   Fetcher fetcher,
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   IdempotentReadModel[] readModels,
@@ -23,7 +25,7 @@ internal class ReadModelHydrationDaemon(
   private readonly DatabaseHandlerFactory databaseHandlerFactory =
     new(settings.ReadModelConnectionString, logger);
 
-  private readonly InterestFetcher interestFetcher = new(client, parser);
+  private readonly InterestFetcher interestFetcher = new(store);
 
   private readonly SemaphoreSlim lastPositionSemaphore = new(1);
   private readonly SemaphoreSlim semaphore = new(1);
