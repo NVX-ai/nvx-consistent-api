@@ -153,7 +153,7 @@ public class EventModel
     var emitter = new Emitter(store, logger);
     var parser = Parser();
 
-    var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(esClient, parser)));
+    var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(esClient, store, parser)));
 
     await FileDefinitions.InitializeEndpoint(app, emitter, fetcher, settings);
     UserSecurityDefinitions.InitializeEndpoints(app, emitter, fetcher, settings);

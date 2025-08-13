@@ -1,6 +1,7 @@
 ﻿using EventStore.Client;
 using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
@@ -103,6 +104,7 @@ public class Fetcher<Entity> : EntityFetcher
 
   public Fetcher(
     EventStoreClient client,
+    EventStore<EventModelEvent> store,
     Func<StrongId, Option<Entity>> defaulter,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     int cacheSize,

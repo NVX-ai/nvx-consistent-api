@@ -1,4 +1,5 @@
 using EventStore.Client;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
@@ -30,7 +31,11 @@ public interface EventModelEntity<Entity> : EventModelEntity
 public interface EntityDefinition
 {
   string StreamPrefix { get; }
-  EntityFetcher GetFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser);
+
+  EntityFetcher GetFetcher(
+    EventStoreClient client,
+    EventStore<EventModelEvent> store,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser);
 }
 
 public class EntityDefinition<EntityShape, EntityId> :
@@ -44,9 +49,13 @@ public class EntityDefinition<EntityShape, EntityId> :
   public bool IsSlidingCache { get; init; } = true;
   public required string StreamPrefix { get; init; }
 
-  public EntityFetcher GetFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser) =>
+  public EntityFetcher GetFetcher(
+    EventStoreClient client,
+    EventStore<EventModelEvent> store,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser) =>
     new Fetcher<EntityShape>(
       client,
+      store,
       sid => Optional(sid as EntityId).Bind<EntityShape>(eid => Defaulter(eid)),
       parser,
       CacheSize,
