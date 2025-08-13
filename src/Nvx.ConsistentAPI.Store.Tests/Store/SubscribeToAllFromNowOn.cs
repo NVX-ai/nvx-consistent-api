@@ -35,7 +35,7 @@ public class SubscribeToAllFromNowOn
     List<(long, long)> skippedSwimlaneStreamPositions = [];
     List<(long, long)> skippedOtherSwimlaneStreamPositions = [];
 
-    List<ReadAllMessage.ToxicAllEvent> toxicEvents = [];
+    List<ReadAllMessage<EventModelEvent>.ToxicAllEvent> toxicEvents = [];
 
     // Do a full read so the subscription has indexes to work with.
     await foreach (var _ in eventStore.Read(ReadAllRequest.Start())) { }
@@ -46,7 +46,7 @@ public class SubscribeToAllFromNowOn
       {
         switch (message)
         {
-          case ReadAllMessage.AllEvent(var sl, _, var md):
+          case ReadAllMessage<EventModelEvent>.AllEvent(var sl, _, _, var md):
             if (sl is swimlane or otherSwimlane)
             {
               Interlocked.Increment(ref eventsReceivedByAllSubscription);
@@ -77,7 +77,7 @@ public class SubscribeToAllFromNowOn
             }
 
             break;
-          case ReadAllMessage.ToxicAllEvent e:
+          case ReadAllMessage<EventModelEvent>.ToxicAllEvent e:
             toxicEvents.Add(e);
             break;
         }
@@ -128,7 +128,7 @@ public class SubscribeToAllFromNowOn
 
   private static async Task SubscribeToAll(
     EventStore<EventModelEvent> eventStore,
-    Action<ReadAllMessage> onMessage,
+    Action<ReadAllMessage<EventModelEvent>> onMessage,
     SubscribeAllRequest request = default)
   {
     var stopwatch = Stopwatch.StartNew();
@@ -138,7 +138,7 @@ public class SubscribeToAllFromNowOn
     {
       await foreach (var message in eventStore.Subscribe(request))
       {
-        if (message is ReadAllMessage.ReadingStarted)
+        if (message is ReadAllMessage<EventModelEvent>.ReadingStarted)
         {
           hasStartedReading = true;
         }

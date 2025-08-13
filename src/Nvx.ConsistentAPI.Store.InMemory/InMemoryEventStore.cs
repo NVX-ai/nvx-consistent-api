@@ -57,14 +57,14 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     return success;
   }
 
-  public async IAsyncEnumerable<ReadAllMessage> Read(
+  public async IAsyncEnumerable<ReadAllMessage<EventInterface>> Read(
     ReadAllRequest request = default,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
     try
     {
       await semaphore.WaitAsync(cancellationToken);
-      yield return new ReadAllMessage.ReadingStarted();
+      yield return new ReadAllMessage<EventInterface>.ReadingStarted();
       ulong? index = request.Relative switch
       {
         RelativePosition.Start => 0,
@@ -104,9 +104,10 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           continue;
         }
 
-        yield return new ReadAllMessage.AllEvent(
+        yield return new ReadAllMessage<EventInterface>.AllEvent(
           storedEvent.Swimlane,
           storedEvent.StreamId,
+          storedEvent.Event,
           storedEvent.Metadata);
       }
     }
@@ -161,7 +162,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     }
   }
 
-  public async IAsyncEnumerable<ReadAllMessage> Subscribe(
+  public async IAsyncEnumerable<ReadAllMessage<EventInterface>> Subscribe(
     SubscribeAllRequest request = default,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
@@ -176,15 +177,16 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       {
         if (!hasStarted)
         {
-          yield return new ReadAllMessage.ReadingStarted();
+          yield return new ReadAllMessage<EventInterface>.ReadingStarted();
           hasStarted = true;
         }
 
         var nextEvent = events
           .Where(se => se.Metadata.GlobalPosition > currentGlobalPosition)
-          .Select(se => new ReadAllMessage.AllEvent(
+          .Select(se => new ReadAllMessage<EventInterface>.AllEvent(
             se.Swimlane,
             se.StreamId,
+            se.Event,
             se.Metadata))
           .FirstOrDefault();
 

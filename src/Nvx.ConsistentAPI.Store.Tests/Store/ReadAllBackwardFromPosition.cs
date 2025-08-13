@@ -34,7 +34,7 @@ public class ReadAllBackwardFromPosition
     {
       switch (msg)
       {
-        case ReadAllMessage.AllEvent(var sl, _, var md):
+        case ReadAllMessage<EventModelEvent>.AllEvent(var sl, _, _, var md):
           readFromAll += 1;
           Assert.True(position >= md.GlobalPosition);
           Assert.True(md.GlobalPosition <= eventsBefore);

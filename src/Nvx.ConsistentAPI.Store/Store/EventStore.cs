@@ -6,7 +6,7 @@ public interface EventStore<EventInterface>
 
   AsyncResult<InsertionSuccess, InsertionFailure> Insert(InsertionPayload<EventInterface> payload);
 
-  IAsyncEnumerable<ReadAllMessage> Read(
+  IAsyncEnumerable<ReadAllMessage<EventInterface>> Read(
     ReadAllRequest request = default,
     CancellationToken cancellationToken = default);
 
@@ -14,7 +14,7 @@ public interface EventStore<EventInterface>
     ReadStreamRequest request,
     CancellationToken cancellationToken = default);
 
-  IAsyncEnumerable<ReadAllMessage> Subscribe(
+  IAsyncEnumerable<ReadAllMessage<EventInterface>> Subscribe(
     SubscribeAllRequest request = default,
     CancellationToken cancellationToken = default);
 

@@ -5,7 +5,7 @@ public readonly struct SubscribeAllRequest()
   public readonly ulong? Position = 0;
   public readonly string[] Swimlanes = [];
 
-  public SubscribeAllRequest(ulong? position, string[] swimlanes) : this()
+  private SubscribeAllRequest(ulong? position, string[] swimlanes) : this()
   {
     Position = position;
     Swimlanes = swimlanes;

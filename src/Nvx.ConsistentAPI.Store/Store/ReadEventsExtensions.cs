@@ -2,9 +2,10 @@
 
 public static class ReadEventsExtensions
 {
-  public static IAsyncEnumerable<ReadAllMessage.AllEvent> Events(this IAsyncEnumerable<ReadAllMessage> self) =>
+  public static IAsyncEnumerable<ReadAllMessage<EventInterface>.AllEvent> Events<EventInterface>(
+    this IAsyncEnumerable<ReadAllMessage<EventInterface>> self) =>
     from msg in self
-    let evt = msg as ReadAllMessage.AllEvent
+    let evt = msg as ReadAllMessage<EventInterface>.AllEvent
     where evt is not null
     select evt;
 
