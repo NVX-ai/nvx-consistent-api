@@ -7,6 +7,7 @@ using Nvx.ConsistentAPI.Framework.Projections;
 using Nvx.ConsistentAPI.Framework.StaticEndpoints;
 using Nvx.ConsistentAPI.InternalTooling;
 using Nvx.ConsistentAPI.Store.EventStoreDB;
+using Nvx.ConsistentAPI.Store.Store;
 using HashCode = System.HashCode;
 
 namespace Nvx.ConsistentAPI;
@@ -39,7 +40,10 @@ public interface EventModelingCommandArtifact : Endpoint
 public interface EventModelingReadModelArtifact : Endpoint
 {
   Type ShapeType { get; }
-  Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClien);
+
+  Task<SingleReadModelInsights> Insights(
+    ulong lastEventPosition,
+    EventStore<EventModelEvent> store);
 
   Task ApplyTo(
     WebApplication app,
@@ -234,7 +238,7 @@ public class EventModel
     DaemonsInsight.Endpoint(
       ReadModels,
       settings,
-      esClient,
+      store,
       fetcher,
       emitter,
       app,

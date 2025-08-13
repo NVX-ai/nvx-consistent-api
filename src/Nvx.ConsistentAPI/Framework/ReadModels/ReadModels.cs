@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.InternalTooling;
 using Nvx.ConsistentAPI.Store.Events;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
@@ -57,7 +58,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
   public bool IsUpToDate(Position? position) => isUpToDate;
 
-  public Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClien)
+  public Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStore<EventModelEvent> store)
   {
     var currentPosition = lastProcessedEventPosition ?? lastCheckpointPosition ?? lastEventPosition;
     var percentageComplete = isUpToDate || lastEventPosition == 0

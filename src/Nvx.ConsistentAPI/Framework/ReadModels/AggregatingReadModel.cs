@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.InternalTooling;
 using Nvx.ConsistentAPI.Store.Events;
+using Nvx.ConsistentAPI.Store.Store;
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable AutoPropertyCanBeMadeGetOnly.Global
@@ -33,13 +34,12 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public ReadModelDefaulter<Shape> Defaulter { get; init; } = (_, _, _) => None;
   private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false, false);
 
-  public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
+  public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStore<EventModelEvent> store)
   {
     var effectivePosition = lastEventPosition;
-    var prefixFilter = EventTypeFilter.Prefix(StreamPrefixes);
-    await foreach (var msg in eventStoreClient.ReadAllAsync(Direction.Backwards, Position.End, prefixFilter).Take(1))
+    await foreach (var solvedEvent in store.Read(ReadAllRequest.End(StreamPrefixes)).Events().Take(1))
     {
-      effectivePosition = msg.Event.Position.CommitPosition;
+      effectivePosition = solvedEvent.Metadata.GlobalPosition;
     }
 
     var currentPosition = lastProcessedEventPosition ?? currentCheckpointPosition ?? 0UL;

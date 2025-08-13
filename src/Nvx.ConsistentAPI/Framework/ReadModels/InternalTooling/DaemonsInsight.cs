@@ -1,9 +1,9 @@
-﻿using EventStore.Client;
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.Framework.Projections;
+using Nvx.ConsistentAPI.Store.Store;
 
 // ReSharper disable NotAccessedPositionalProperty.Global
 
@@ -16,7 +16,7 @@ internal static class DaemonsInsight
   internal static void Endpoint(
     EventModelingReadModelArtifact[] readModels,
     GeneratorSettings settings,
-    EventStoreClient eventStoreClient,
+    EventStore<EventModelEvent> store,
     Fetcher fetcher,
     Emitter emitter,
     WebApplication app,
@@ -48,7 +48,7 @@ internal static class DaemonsInsight
               settings,
               processor,
               readModels,
-              eventStoreClient,
+              store,
               daemon,
               dcbDaemon,
               projectionDaemon));
@@ -66,7 +66,7 @@ internal static class DaemonsInsight
                   settings,
                   processor,
                   readModels,
-                  eventStoreClient,
+                  store,
                   daemon,
                   dcbDaemon,
                   projectionDaemon));
@@ -109,7 +109,7 @@ internal static class DaemonsInsight
     GeneratorSettings settings,
     TodoProcessor processor,
     EventModelingReadModelArtifact[] readModels,
-    EventStoreClient eventStoreClient,
+    EventStore<EventModelEvent> store,
     ReadModelHydrationDaemon readModelDaemon,
     DynamicConsistencyBoundaryDaemon dynamicConsistencyBoundaryDaemon,
     ProjectionDaemon projectionDaemon)
@@ -117,19 +117,17 @@ internal static class DaemonsInsight
     var isHydrating = settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration);
     var lastEventPosition = 0UL;
     var lastEventEmittedAt = DateTime.UnixEpoch;
-    await foreach (var evt in eventStoreClient
-                     .ReadAllAsync(Direction.Backwards, Position.End, EventTypeFilter.ExcludeSystemEvents(), 1)
-                     .Take(1))
+    await foreach (var solvedEvent in store.Read(ReadAllRequest.End()).Events().Take(1))
     {
-      lastEventPosition = evt.Event.Position.CommitPosition;
-      lastEventEmittedAt = evt.Event.Created;
+      lastEventPosition = solvedEvent.Metadata.GlobalPosition;
+      lastEventEmittedAt = solvedEvent.Metadata.CreatedAt;
     }
 
     var catchingUpReadModels = isHydrating
       ? await readModels
         .Select<EventModelingReadModelArtifact, Func<Task<SingleReadModelInsights>>>(rm =>
-          async () => await rm.Insights(lastEventPosition, eventStoreClient))
-        .Parallel()
+          async () => await rm.Insights(lastEventPosition, store))
+        .Parallel(1)
         .Map(i =>
           i
             .Where(s => s.PercentageComplete < 100)
