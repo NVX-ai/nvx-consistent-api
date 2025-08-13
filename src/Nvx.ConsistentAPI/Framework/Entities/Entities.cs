@@ -1,4 +1,3 @@
-using EventStore.Client;
 using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
@@ -33,9 +32,7 @@ public interface EntityDefinition
   string StreamPrefix { get; }
 
   EntityFetcher GetFetcher(
-    EventStoreClient client,
     EventStore<EventModelEvent> store,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     IReadOnlyDictionary<Type, string> swimlaneLookup);
 
   Type EntityType { get; }
@@ -53,9 +50,7 @@ public class EntityDefinition<EntityShape, EntityId> :
   public required string StreamPrefix { get; init; }
 
   public EntityFetcher GetFetcher(
-    EventStoreClient client,
     EventStore<EventModelEvent> store,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     IReadOnlyDictionary<Type, string> swimlaneLookup) =>
     new Fetcher<EntityShape>(
       store,

@@ -157,7 +157,7 @@ public class EventModel
     var swimlaneLookup =
       new ReadOnlyDictionary<Type, string>(Entities.ToDictionary(e => e.EntityType, e => e.StreamPrefix));
 
-    var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(esClient, store, parser, swimlaneLookup)));
+    var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(store, swimlaneLookup)));
 
     await FileDefinitions.InitializeEndpoint(app, emitter, fetcher, settings);
     UserSecurityDefinitions.InitializeEndpoints(app, emitter, fetcher, settings);
