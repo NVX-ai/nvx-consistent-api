@@ -177,7 +177,7 @@ public class ProjectionDaemon(
                 {
                   continue;
                 }
-                await projector.HandleEvent(evt, parser, fetcher, client);
+                await projector.HandleEvent(evt, parser, fetcher, store);
                 Interlocked.Increment(ref projectedCount);
               }
               catch (Exception ex)
@@ -243,7 +243,7 @@ public class ProjectionDaemon(
                     }
 
                     isProjecting = true;
-                    await projector.HandleEvent(evt, parser, fetcher, client);
+                    await projector.HandleEvent(evt, parser, fetcher, store);
                     isProjecting = false;
                     hasProjected = true;
                   }

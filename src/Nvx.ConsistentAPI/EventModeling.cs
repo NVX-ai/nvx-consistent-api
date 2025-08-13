@@ -85,7 +85,7 @@ public interface EventModelingProjectionArtifact
     ResolvedEvent evt,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Fetcher fetcher,
-    EventStoreClient client);
+    EventStore<EventModelEvent> store);
 }
 
 public static class PermissionsEndpoint

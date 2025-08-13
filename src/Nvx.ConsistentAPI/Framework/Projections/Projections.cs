@@ -2,12 +2,13 @@
 
 using EventStore.Client;
 using Nvx.ConsistentAPI.Store.Events;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
 public abstract class
-  ProjectionDefinition<SourceEvent, ProjectedEvent, SourceEntity, ProjectionEntity,
-    ProjectionId> : EventModelingProjectionArtifact
+  ProjectionDefinition<SourceEvent, ProjectedEvent, SourceEntity, ProjectionEntity, ProjectionId>
+  : EventModelingProjectionArtifact
   where SourceEvent : EventModelEvent
   where ProjectedEvent : EventModelEvent
   where SourceEntity : EventModelEntity<SourceEntity>
@@ -22,11 +23,15 @@ public abstract class
 
   public abstract string SourcePrefix { get; }
 
+  public bool CanProject(ResolvedEvent e) =>
+    e.Event.EventStreamId.StartsWith(SourcePrefix)
+    && e.Event.EventType == Naming.ToSpinalCase<SourceEvent>();
+
   public Task HandleEvent(
     ResolvedEvent evt,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Fetcher fetcher,
-    EventStoreClient client)
+    EventStore<EventModelEvent> store)
   {
     return parser(evt)
       .Match(
@@ -46,7 +51,7 @@ public abstract class
 
     async Task Handle(SourceEvent sourceEvent, Uuid sourceEventUuid, EventMetadata metadata)
     {
-      await Emit(Decider, client);
+      await Emit(Decider, store);
       return;
 
       async Task<Result<(Option<EventModelEvent>, Uuid, EventMetadata)[], ApiError>> Decider()
@@ -83,13 +88,9 @@ public abstract class
     }
   }
 
-  public bool CanProject(ResolvedEvent e) =>
-    e.Event.EventStreamId.StartsWith(SourcePrefix)
-    && e.Event.EventType == Naming.ToSpinalCase<SourceEvent>();
-
   private async Task Emit(
     Func<Task<Result<(Option<EventModelEvent>, Uuid, EventMetadata)[], ApiError>>> decider,
-    EventStoreClient esClient)
+    EventStore<EventModelEvent> store)
   {
     var i = 0;
     while (i < 1000)
@@ -108,32 +109,6 @@ public abstract class
 
     return;
 
-    IEnumerable<EventData> ToEventData(
-      EventModelEvent @event,
-      Uuid sourceEventUuid,
-      int offset,
-      EventMetadata? metadata) =>
-      IdempotentUuid
-        .Generate($"{Name}{sourceEventUuid}{offset}")
-        .Apply(id => new[]
-        {
-          new EventData(
-            id,
-            @event.EventType,
-            @event.ToBytes(),
-            (metadata is not null
-              ? metadata with { CreatedAt = DateTime.UtcNow, CausationId = sourceEventUuid.ToString() }
-              : new EventMetadata(
-                DateTime.UtcNow,
-                Guid.NewGuid().ToString(),
-                sourceEventUuid.ToString(),
-                null,
-                null,
-                null)
-            ).ToBytes()
-          )
-        });
-
     async Task<Unit> Go((Option<EventModelEvent>, Uuid, EventMetadata)[] tuples)
     {
       var offset = 0;
@@ -144,28 +119,35 @@ public abstract class
           .Match(
             async @event =>
             {
-              var result = await esClient.AppendToStreamAsync(
-                @event.GetStreamName(),
-                StreamState.Any,
-                ToEventData(@event, sourceEventUuid, offset++, metadata));
+              var result = await store.Insert(
+                new InsertionPayload<EventModelEvent>(
+                  @event.GetSwimLane(),
+                  @event.GetEntityId(),
+                  new AnyStreamState(),
+                  [
+                    (
+                      @event,
+                      new EventInsertionMetadataPayload(
+                        IdempotentUuid.Generate($"{Name}{sourceEventUuid}{offset++}").ToGuid(),
+                        metadata.RelatedUserSub,
+                        metadata.CorrelationId ?? Guid.NewGuid().ToString(),
+                        sourceEventUuid.ToString(),
+                        metadata.CreatedAt)
+                    )
+                  ]));
 
               if (@event is not EventModelSnapshotEvent)
               {
                 return unit;
               }
 
-              var currentStreamMetadata =
-                await esClient.GetStreamMetadataAsync(@event.GetStreamName()).Map(mdr => mdr.Metadata);
-
-              var newMetadata = new StreamMetadata(
-                currentStreamMetadata.MaxCount,
-                currentStreamMetadata.MaxAge,
-                result.NextExpectedStreamRevision.ToUInt64(),
-                currentStreamMetadata.CacheControl,
-                currentStreamMetadata.Acl,
-                currentStreamMetadata.CustomMetadata);
-
-              await esClient.SetStreamMetadataAsync(@event.GetStreamName(), StreamState.Any, newMetadata);
+              foreach (var insertionSuccess in result.Option)
+              {
+                await store.TruncateStream(
+                  @event.GetSwimLane(),
+                  @event.GetEntityId(),
+                  insertionSuccess.StreamPosition);
+              }
 
               return unit;
             },
