@@ -7,13 +7,13 @@ public record StoredEventMetadata(
   string? CausationId,
   DateTime CreatedAt,
   ulong GlobalPosition,
-  ulong StreamPosition)
+  long StreamPosition)
 {
   public static StoredEventMetadata FromStorage(
     EventMetadata metadata,
     Guid eventId,
     ulong globalPosition,
-    ulong streamPosition) =>
+    long streamPosition) =>
     new(
       eventId,
       metadata.RelatedUserSub,

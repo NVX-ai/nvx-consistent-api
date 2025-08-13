@@ -31,10 +31,10 @@ public class SubscribeToAllFromPosition
     var eventsReceivedBySubscription = 0;
 
     var swimLaneStreamPosition = firstInsertion.StreamPosition;
-    ulong? otherSwimLaneStreamPosition = null;
+    long? otherSwimLaneStreamPosition = null;
 
-    List<(ulong, ulong)> skippedSwimlaneStreamPositions = [];
-    List<(ulong, ulong)> skippedOtherSwimlaneStreamPositions = [];
+    List<(long, long)> skippedSwimlaneStreamPositions = [];
+    List<(long, long)> skippedOtherSwimlaneStreamPositions = [];
 
     List<ReadAllMessage.ToxicAllEvent> toxicEvents = [];
 
@@ -45,7 +45,7 @@ public class SubscribeToAllFromPosition
         switch (message)
         {
           case ReadAllMessage.AllEvent(var sl, _, var md):
-            if (sl == swimlane || sl == otherSwimlane)
+            if (sl is swimlane or otherSwimlane)
             {
               Interlocked.Increment(ref eventsReceivedBySubscription);
             }

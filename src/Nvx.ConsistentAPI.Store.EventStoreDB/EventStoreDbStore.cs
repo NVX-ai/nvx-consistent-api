@@ -93,10 +93,10 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                       re.Event.Metadata.ToArray(),
                       re.Event.Created,
                       re.Event.Position.CommitPosition,
-                      re.Event.EventNumber.ToUInt64()),
+                      re.Event.EventNumber.ToInt64()),
                     re.Event.EventId.ToGuid(),
                     re.Event.Position.CommitPosition,
-                    re.Event.EventNumber.ToUInt64())),
+                    re.Event.EventNumber.ToInt64())),
                 () => new ReadAllMessage.ToxicAllEvent(
                   re.Event.EventStreamId,
                   re.Event.EventStreamId,
@@ -290,7 +290,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     }
   }
 
-  public async Task TruncateStream(string swimlane, StrongId id, ulong truncateBefore)
+  public async Task TruncateStream(string swimlane, StrongId id, long truncateBefore)
   {
     var streamName = $"{swimlane}{id.StreamId()}";
 
@@ -308,7 +308,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       new StreamMetadata(
         currentStreamMetadata.MaxCount,
         currentStreamMetadata.MaxAge,
-        StreamPosition.FromInt64((long)truncateBefore),
+        StreamPosition.FromInt64(truncateBefore),
         currentStreamMetadata.CacheControl,
         currentStreamMetadata.Acl,
         currentStreamMetadata.CustomMetadata));
@@ -322,7 +322,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     {
       var result = await client.AppendToStreamAsync(streamName, StreamState.Any, eventData);
       // NextExpectedStreamRevision is the position of the last inserted event.
-      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision);
+      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision.ToInt64());
     }
     catch
     {
@@ -333,13 +333,13 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
   private async Task<Result<InsertionSuccess, InsertionFailure>> InsertAfter(
     IEnumerable<EventData> eventData,
     string streamName,
-    ulong position)
+    long position)
   {
     try
     {
       var result = await client.AppendToStreamAsync(streamName, StreamRevision.FromInt64((long)position), eventData);
       // NextExpectedStreamRevision is the position of the last inserted event.
-      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision);
+      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision.ToInt64());
     }
     catch (WrongExpectedVersionException)
     {
@@ -359,7 +359,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     {
       var result = await client.AppendToStreamAsync(streamName, StreamState.NoStream, eventData);
       // NextExpectedStreamRevision is the position of the last inserted event.
-      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision);
+      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision.ToInt64());
     }
     catch (WrongExpectedVersionException)
     {
@@ -379,7 +379,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     {
       var result = await client.AppendToStreamAsync(streamName, StreamState.StreamExists, eventData);
       // NextExpectedStreamRevision is the position of the last inserted event.
-      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision);
+      return new InsertionSuccess(result.LogPosition.CommitPosition, result.NextExpectedStreamRevision.ToInt64());
     }
     catch (WrongExpectedVersionException)
     {
@@ -513,8 +513,8 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
         re.Event.Metadata.ToArray(),
         re.Event.Created,
         re.Event.Position.CommitPosition,
-        re.Event.EventNumber.ToUInt64()),
+        re.Event.EventNumber.ToInt64()),
       re.Event.EventId.ToGuid(),
       re.Event.Position.CommitPosition,
-      re.Event.EventNumber.ToUInt64());
+      re.Event.EventNumber.ToInt64());
 }

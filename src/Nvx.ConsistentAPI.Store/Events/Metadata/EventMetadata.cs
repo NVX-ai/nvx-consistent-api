@@ -8,11 +8,11 @@ public record EventMetadata(
   string? CausationId,
   string? RelatedUserSub,
   ulong? GlobalPosition,
-  ulong? StreamPosition)
+  long? StreamPosition)
 {
   public byte[] ToBytes() => EventSerialization.ToBytes(this);
 
-  public static EventMetadata TryParse(byte[] bytes, DateTime createdAt, ulong globalPosition, ulong streamPosition)
+  public static EventMetadata TryParse(byte[] bytes, DateTime createdAt, ulong globalPosition, long streamPosition)
   {
     try
     {

@@ -18,7 +18,7 @@ public class ReadStreamBackwardsFromPosition
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
     var messages =
-      eventStore.Read(ReadStreamRequest.FromAndBefore(swimlane, streamId,(ulong) StoreProvider.EventCount / 2));
+      eventStore.Read(ReadStreamRequest.FromAndBefore(swimlane, streamId,(long) StoreProvider.EventCount / 2));
     var readFromStream = 0;
     var position = ulong.MaxValue;
     await foreach (var msg in messages)

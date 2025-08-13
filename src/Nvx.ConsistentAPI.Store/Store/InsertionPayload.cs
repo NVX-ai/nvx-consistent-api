@@ -6,7 +6,7 @@ public interface InsertionType;
 
 public record StreamCreation : InsertionType;
 
-public record InsertAfter(ulong Position) : InsertionType;
+public record InsertAfter(long Position) : InsertionType;
 
 public record ExistingStream : InsertionType;
 

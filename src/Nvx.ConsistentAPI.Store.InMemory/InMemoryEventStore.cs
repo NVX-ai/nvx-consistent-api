@@ -33,7 +33,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       select insertion;
 
     events.AddRange(
-      from tuple in nonExistingEvents.Select((t, i) => (t, i: (ulong)i))
+      from tuple in nonExistingEvents.Select((t, i) => (t, i: (long)i))
       let evt = tuple.t.Event
       let md = tuple.t.Metadata
       let index = tuple.i
@@ -47,8 +47,8 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           md.CorrelationId,
           md.CausationId,
           md.CreatedAt,
-          latestGlobalPosition + index + 1,
-          (latestStreamPosition ?? 0) + index + (latestStreamPosition.HasValue ? 1UL : 0))));
+          latestGlobalPosition + (ulong)index + 1UL,
+          (latestStreamPosition ?? 0) + index + (latestStreamPosition.HasValue ? 1L : 0))));
 
     var success = new InsertionSuccess(
       events.Select(e => e.Metadata.GlobalPosition).LastOrDefault(),
@@ -215,7 +215,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     SubscribeStreamRequest request,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    ulong? currentStreamPosition = request.IsFromStart
+    long? currentStreamPosition = request.IsFromStart
       ? null
       : events
         .Where(se => se.StreamId == request.Id)
@@ -264,7 +264,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     // ReSharper disable once IteratorNeverReturns
   }
 
-  public async Task TruncateStream(string swimlane, StrongId id, ulong truncateBefore)
+  public async Task TruncateStream(string swimlane, StrongId id, long truncateBefore)
   {
     await semaphore.WaitAsync();
     try

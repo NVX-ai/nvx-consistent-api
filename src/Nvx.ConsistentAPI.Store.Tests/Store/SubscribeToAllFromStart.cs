@@ -26,11 +26,11 @@ public class SubscribeToAllFromStart
     var eventsReceivedByAllSubscription = 0;
     await eventStore.Insert(new InsertionPayload<EventModelEvent>(swimlane, streamId, events)).ShouldBeOk();
 
-    ulong? swimLaneStreamPosition = null;
-    ulong? otherSwimLaneStreamPosition = null;
+    long? swimLaneStreamPosition = null;
+    long? otherSwimLaneStreamPosition = null;
 
-    List<(ulong, ulong)> skippedSwimlaneStreamPositions = [];
-    List<(ulong, ulong)> skippedOtherSwimlaneStreamPositions = [];
+    List<(long, long)> skippedSwimlaneStreamPositions = [];
+    List<(long, long)> skippedOtherSwimlaneStreamPositions = [];
 
     List<ReadAllMessage.ToxicAllEvent> toxicEvents = [];
 

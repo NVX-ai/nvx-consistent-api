@@ -32,8 +32,8 @@ public class SubscribeToAllFromNowOn
     var swimLaneStreamPosition = firstInsertion.StreamPosition;
     var otherSwimLaneStreamPosition = otherInsertion.StreamPosition;
 
-    List<(ulong, ulong)> skippedSwimlaneStreamPositions = [];
-    List<(ulong, ulong)> skippedOtherSwimlaneStreamPositions = [];
+    List<(long, long)> skippedSwimlaneStreamPositions = [];
+    List<(long, long)> skippedOtherSwimlaneStreamPositions = [];
 
     List<ReadAllMessage.ToxicAllEvent> toxicEvents = [];
 

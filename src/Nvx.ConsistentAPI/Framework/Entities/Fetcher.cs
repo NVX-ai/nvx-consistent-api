@@ -1,13 +1,14 @@
 ﻿using EventStore.Client;
 using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json;
+using Nvx.ConsistentAPI.Store.Events.Metadata;
 using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
 public interface EntityFetcher
 {
-  Task<FetchResult<T>> Fetch<T>(Option<StrongId> id, Position? upToRevision, Fetcher fetcher)
+  Task<FetchResult<T>> Fetch<T>(Option<StrongId> id, ulong? upToRevision, Fetcher fetcher)
     where T : EventModelEntity<T>;
 
   internal AsyncOption<FoundEntity> DaemonFetch(Option<StrongId> id, Fetcher fetcher, bool resetCache = false);
@@ -15,8 +16,8 @@ public interface EntityFetcher
   Type GetFetchType();
 
   internal bool CanProcessStream(string streamName);
-  internal Option<long> GetCachedStreamRevision(StrongId id);
-  internal Option<Position> GetCachedGlobalPosition(StrongId id);
+  internal Option<ulong> GetCachedStreamRevision(StrongId id);
+  internal Option<ulong> GetCachedGlobalPosition(StrongId id);
 }
 
 public interface RevisionFetcher
@@ -25,7 +26,7 @@ public interface RevisionFetcher
   AsyncOption<T> LatestFetch<T>(Option<StrongId> id) where T : EventModelEntity<T>;
 }
 
-internal class RevisionFetchWrapper(Fetcher fetcher, Position upToRevision) : RevisionFetcher
+internal class RevisionFetchWrapper(Fetcher fetcher, ulong upToRevision) : RevisionFetcher
 {
   public AsyncOption<T> Fetch<T>(Option<StrongId> id) where T : EventModelEntity<T> =>
     fetcher.Fetch<T>(id, upToRevision).Map(fr => fr.Ent);
@@ -43,7 +44,7 @@ public class Fetcher
     this.fetchers = fetchers.ToArray();
   }
 
-  internal Option<long> GetCachedStreamRevision(StrongId id) =>
+  internal Option<ulong> GetCachedStreamRevision(StrongId id) =>
     fetchers
       .SingleOrNone(f => f.CanProcessStream(id.StreamId()))
       .Bind(f => f.GetCachedStreamRevision(id));
@@ -60,7 +61,7 @@ public class Fetcher
         f => f.DaemonFetch(id, this, resetCache),
         () => Option<FoundEntity>.None.ToTask());
 
-  public Task<FetchResult<T>> Fetch<T>(Option<StrongId> id, Position? upToRevision = null)
+  public Task<FetchResult<T>> Fetch<T>(Option<StrongId> id, ulong? upToRevision = null)
     where T : EventModelEntity<T> =>
     fetchers
       .SingleOrNone(f => f.GetFetchType() == typeof(T))
@@ -68,7 +69,7 @@ public class Fetcher
 
   public AsyncResult<FetchResult<T>, ApiError> SafeFetch<T>(
     Option<StrongId> id,
-    Position? upToRevision = null) where T : EventModelEntity<T>
+    ulong? upToRevision = null) where T : EventModelEntity<T>
   {
     try
     {
@@ -98,7 +99,7 @@ public class Fetcher<Entity> : EntityFetcher
   private readonly MemoryCache cache;
   private readonly Type entityType = typeof(Entity);
 
-  private readonly Func<Option<StrongId>, Position?, Fetcher, bool, Task<FetchResult<Entity>>> fetch;
+  private readonly Func<Option<StrongId>, ulong?, Fetcher, bool, Task<FetchResult<Entity>>> fetch;
 
   private readonly string streamPrefix;
 
@@ -130,7 +131,7 @@ public class Fetcher<Entity> : EntityFetcher
   public Type GetFetchType() => entityType;
   public bool CanProcessStream(string streamName) => streamName.StartsWith(streamPrefix);
 
-  public Option<long> GetCachedStreamRevision(StrongId id) =>
+  public Option<ulong> GetCachedStreamRevision(StrongId id) =>
     cache.TryGetValue<CacheResult>(id.StreamId(), out var cachedEntity)
       ? cachedEntity switch
       {
@@ -150,7 +151,7 @@ public class Fetcher<Entity> : EntityFetcher
       }
       : None;
 
-  public Task<FetchResult<T>> Fetch<T>(Option<StrongId> id, Position? upToRevision, Fetcher fetcher)
+  public Task<FetchResult<T>> Fetch<T>(Option<StrongId> id, ulong? upToRevision, Fetcher fetcher)
     where T : EventModelEntity<T> =>
     Fetch(id, upToRevision, fetcher)
       .Map(fr => new FetchResult<T>(
@@ -164,12 +165,12 @@ public class Fetcher<Entity> : EntityFetcher
 
   public Task<FetchResult<Entity>> Fetch(
     Option<StrongId> id,
-    Position? upToRevision,
+    ulong? upToRevision,
     Fetcher fetcher,
     bool resetCache = false) =>
     fetch(id, upToRevision, fetcher, resetCache);
 
-  private static Func<Option<StrongId>, Position?, Fetcher, bool, Task<FetchResult<Entity>>> Build(
+  private static Func<Option<StrongId>, ulong?, Fetcher, bool, Task<FetchResult<Entity>>> Build(
     EventStoreClient client,
     EventStore<EventModelEvent> store,
     Func<StrongId, Option<Entity>> defaulter,
@@ -190,17 +191,22 @@ public class Fetcher<Entity> : EntityFetcher
     }
 
     return (id, r, f, sk) => id
-      .Bind(defaulter)
+      .Bind(i => defaulter(i).Map(e => (e, i)))
       .Match(
-        e => Fetch(e, r, f, sk),
+        t => Fetch(t.e, t.i, r, f, sk),
         () => new FetchResult<Entity>(None, -1, None, null, null, null, null).Apply(Task.FromResult));
 
-    async Task<FetchResult<Entity>> Fetch(Entity defaulted, Position? upToRevision, Fetcher fetcher, bool resetCache)
+    async Task<FetchResult<Entity>> Fetch(
+      Entity defaulted,
+      StrongId id,
+      ulong? upToGlobalPosition,
+      Fetcher fetcher,
+      bool resetCache)
     {
       var interests = await interestFetcher
         .Interested(defaulted.GetStreamName())
         .Async()
-        .Match(i => i.ConcernedStreamNames, () => []);
+        .Match(i => i.ConcernedStreams, () => []);
 
       if (resetCache)
       {
@@ -213,15 +219,15 @@ public class Fetcher<Entity> : EntityFetcher
       {
         var cached = resetCache ? new Miss() : cache.Find(defaulted.GetStreamName());
         var allStreams = interests
-          .Append(defaulted.GetStreamName())
+          .Append((defaulted.GetStreamName(), id))
           .Distinct()
           .ToArray();
 
         var revisions = cached is MultipleStreamCacheResult<Entity> m
           ? m.StreamRevisions
-          : new Dictionary<string, long>();
+          : new Dictionary<string, ulong>();
 
-        (Entity e, Option<Position> gp, Option<long> r, DateTime? fe, DateTime? le, string? fu, string? lu) seed =
+        (Entity e, Option<Position> gp, Option<ulong> r, DateTime? fe, DateTime? le, string? fu, string? lu) seed =
           cached switch
           {
             MultipleStreamCacheResult<Entity> multiple =>
@@ -237,50 +243,51 @@ public class Fetcher<Entity> : EntityFetcher
           };
 
         var hadEvents = seed.gp.IsSome;
-        await foreach (var re in Zip(allStreams, client, revisions))
+        await foreach (var @event in Zip(allStreams, store, revisions))
         {
-          foreach (var parsed in parser(re))
+          if (@event.Event.GetStreamName() == seed.e.GetStreamName() && @event.Metadata.GlobalPosition > upToGlobalPosition)
           {
-            if (parsed.GetStreamName() == seed.e.GetStreamName() && re.Event.Position > upToRevision)
-            {
-              continue;
-            }
-
-            hadEvents = true;
-            revisions[re.Event.EventStreamId] = re.Event.EventNumber.ToInt64();
-
-            var metadata = EventMetadata.TryParse(
-              re.Event.Metadata.ToArray(),
-              re.Event.Created,
-              re.Event.Position.CommitPosition,
-              re.Event.EventNumber.ToUInt64());
-            var firstEventAt = seed.fe ?? metadata.CreatedAt;
-            var lastEventAt = metadata.CreatedAt;
-            var firstUserSubFound = seed.fu ?? metadata.RelatedUserSub;
-            var lastUserSubFound = metadata.RelatedUserSub ?? seed.lu;
-
-            var folded = await seed.e.Fold(
-              parsed,
-              metadata,
-              new RevisionFetchWrapper(fetcher, re.OriginalEvent.Position));
-
-            var revision = re.Event.EventStreamId == seed.e.GetStreamName()
-              ? re.Event.EventNumber.ToInt64()
-              : seed.r;
-
-            seed = (
-              folded,
-              re.Event.Position,
-              revision,
-              firstEventAt,
-              lastEventAt,
-              firstUserSubFound,
-              lastUserSubFound
-            );
+            continue;
           }
+
+          hadEvents = true;
+          revisions[@event.Event.GetStreamName()] = @event.Metadata.GlobalPosition;
+
+          var metadata =
+            new EventMetadata(
+              @event.Metadata.CreatedAt,
+              @event.Metadata.CorrelationId,
+              @event.Metadata.CausationId,
+              @event.Metadata.RelatedUserSub,
+              @event.Metadata.GlobalPosition,
+              @event.Metadata.StreamPosition);
+
+          var firstEventAt = seed.fe ?? metadata.CreatedAt;
+          var lastEventAt = metadata.CreatedAt;
+          var firstUserSubFound = seed.fu ?? metadata.RelatedUserSub;
+          var lastUserSubFound = metadata.RelatedUserSub ?? seed.lu;
+
+          var folded = await seed.e.Fold(
+            @event.Event,
+            metadata,
+            new RevisionFetchWrapper(fetcher, @event.Metadata.GlobalPosition));
+
+          var revision = @event.Event.GetStreamName() == seed.e.GetStreamName()
+            ? @event.Metadata.StreamPosition
+            : seed.r;
+
+          seed = (
+            folded,
+            re.Event.Position,
+            revision,
+            firstEventAt,
+            lastEventAt,
+            firstUserSubFound,
+            lastUserSubFound
+          );
         }
 
-        if (hadEvents && upToRevision is null)
+        if (hadEvents && upToGlobalPosition is null)
         {
           cache.Set(
             seed.e.GetStreamName(),
@@ -305,7 +312,7 @@ public class Fetcher<Entity> : EntityFetcher
       {
         var cached = resetCache ? new Miss() : cache.Find(defaulted.GetStreamName());
         (Entity e, Option<long> r, Option<Position> gp, DateTime? fe, DateTime? le, string? fu, string? lu) seed =
-          upToRevision is null
+          upToGlobalPosition is null
             ? cached switch
             {
               SingleStreamCacheResult<Entity> single =>
@@ -332,7 +339,7 @@ public class Fetcher<Entity> : EntityFetcher
         }
 
         var result = await read
-          .TakeWhile(re => upToRevision is null || re.Event.Position <= upToRevision)
+          .TakeWhile(re => upToGlobalPosition is null || re.Event.Position <= upToGlobalPosition)
           .AggregateAwaitAsync<
             ResolvedEvent,
             (Entity entity, long rev, Option<Position> gp, DateTime? fe, DateTime? le, string? fu, string? lu),
@@ -389,7 +396,7 @@ public class Fetcher<Entity> : EntityFetcher
             tuple => ValueTask.FromResult(
               new FetchResult<Entity>(tuple.entity, tuple.rev, tuple.gp, tuple.fe, tuple.le, tuple.fu, tuple.lu)));
 
-        if (result.Revision < 0 || upToRevision is not null)
+        if (result.Revision < 0 || upToGlobalPosition is not null)
         {
           return result;
         }
@@ -414,19 +421,20 @@ public class Fetcher<Entity> : EntityFetcher
     }
   }
 
-  private static async IAsyncEnumerable<ResolvedEvent> Zip(
-    string[] streamNames,
-    EventStoreClient client,
-    Dictionary<string, long> streamRevisions)
+  private static async IAsyncEnumerable<ReadStreamMessage<EventModelEvent>.SolvedEvent> Zip(
+    (string name, StrongId id)[] streams,
+    EventStore<EventModelEvent> store,
+    Dictionary<string, ulong> streamRevisions)
   {
-    var zipWrappers = streamNames
-      .Select(s => new StreamZipWrapper(
-        client.ReadStreamAsync(
-          Direction.Forwards,
-          s,
-          streamRevisions.TryGetValue(s, out var r)
-            ? StreamPosition.FromInt64(r + 1)
-            : StreamPosition.Start)))
+    var zipWrappers = streams
+      .Select(s =>
+      {
+        var request = streamRevisions.TryGetValue(s.name, out var r)
+          ? ReadStreamRequest.FromAndAfter(s.name, s.id, r + 1)
+          : ReadStreamRequest.Forwards(s.name, s.id);
+
+        return new StreamZipWrapper(store.Read(request));
+      })
       .ToArray();
 
     while (zipWrappers.Any(w => !w.IsDone))
@@ -441,16 +449,20 @@ public class Fetcher<Entity> : EntityFetcher
   }
 }
 
-internal class StreamZipWrapper(EventStoreClient.ReadStreamResult stream)
+internal class StreamZipWrapper(IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> stream)
 {
-  private readonly IAsyncEnumerator<ResolvedEvent> enumerator = stream.GetAsyncEnumerator();
-  private readonly Lazy<Task<ReadState>> readState = new(() => stream.ReadState);
-  private ResolvedEvent? current;
+  private readonly IAsyncEnumerator<ReadStreamMessage<EventModelEvent>.SolvedEvent> enumerator =
+    stream.Events().GetAsyncEnumerator();
+
+  private ReadStreamMessage<EventModelEvent>.SolvedEvent? current;
   public bool IsDone { get; private set; }
 
-  public Position? Position => current?.Event.Position;
+  public GlobalPosition? Position =>
+    current is not null
+      ? new GlobalPosition(current.Metadata.GlobalPosition, current.Metadata.GlobalPosition)
+      : null;
 
-  public ResolvedEvent? TryPop()
+  public ReadStreamMessage<EventModelEvent>.SolvedEvent? TryPop()
   {
     var result = current;
     current = null;
@@ -461,12 +473,6 @@ internal class StreamZipWrapper(EventStoreClient.ReadStreamResult stream)
   {
     if (current is not null)
     {
-      return;
-    }
-
-    if (await readState.Value == ReadState.StreamNotFound)
-    {
-      IsDone = true;
       return;
     }
 
@@ -494,7 +500,7 @@ internal interface CacheResult;
 
 internal record SingleStreamCacheResult<TEntity>(
   TEntity Entity,
-  Option<long> Revision,
+  Option<ulong> Revision,
   Option<Position> GlobalPosition,
   DateTime FirstEventAt,
   DateTime LastEventAt,
@@ -504,8 +510,8 @@ internal record SingleStreamCacheResult<TEntity>(
 internal record MultipleStreamCacheResult<TEntity>(
   TEntity Entity,
   Option<Position> GlobalPosition,
-  Option<long> Revision,
-  Dictionary<string, long> StreamRevisions,
+  Option<ulong> Revision,
+  Dictionary<string, ulong> StreamRevisions,
   DateTime FirstEventAt,
   DateTime LastEventAt,
   string? FirstUserSubFound,

@@ -21,4 +21,4 @@ public abstract record InsertionFailure
     };
 }
 
-public record InsertionSuccess(ulong GlobalPosition, ulong StreamPosition);
+public record InsertionSuccess(ulong GlobalPosition, long StreamPosition);
