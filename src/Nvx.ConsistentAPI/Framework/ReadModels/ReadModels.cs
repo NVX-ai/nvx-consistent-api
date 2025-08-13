@@ -56,7 +56,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
   public ShouldHydrate<EntityShape> ShouldHydrate { get; init; } = (_, _) => true;
   public AuthOptions Auth { get; init; } = new Everyone();
 
-  public bool IsUpToDate(Position? position) => isUpToDate;
+  public bool IsUpToDate(ulong? position) => isUpToDate;
 
   public Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStore<EventModelEvent> store)
   {
@@ -392,7 +392,7 @@ public record FoundEntity<T>(
 }
 
 internal record ReadModelSyncState(
-  FromAll LastPosition,
+  ulong LastPosition,
   DateTime LastSync,
   bool HasReachedEndOnce,
   bool IsBeingHydratedByAnotherInstance);

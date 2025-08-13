@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Nvx.ConsistentAPI.InternalTooling;
 using Nvx.ConsistentAPI.Metrics;
+using Nvx.ConsistentAPI.Store.Events.Metadata;
 
 namespace Nvx.ConsistentAPI;
 
@@ -288,8 +289,8 @@ internal class TodoProcessor
     }
   }
 
-  private static Position? TryParsePosition(string? val) =>
-    ulong.TryParse(val, out var pos) ? new Position(pos, pos) : null;
+  private static GlobalPosition? TryParsePosition(string? val) =>
+    ulong.TryParse(val, out var pos) ? new GlobalPosition(pos, pos) : null;
 
   private Func<Task<Unit>> ProcessOne((TodoTaskDefinition definition, TodoEventModelReadModel todo) t) =>
     async () =>
@@ -299,11 +300,17 @@ internal class TodoProcessor
       try
       {
         // Await for all relevant read models to be up-to-date.
-        if (t.definition.DependingReadModels.All(drm =>
-              ReadModels.Any(rm => drm == rm.ShapeType
-                                   && TryParsePosition(t.todo.EventPosition)
-                                     .Apply(pos => rm.IsUpToDate(pos)
-                                                   && HydrationDaemon.IsUpToDate(pos)))))
+        if (t
+            .definition
+            .DependingReadModels
+            .All(drm =>
+              ReadModels
+                .Any(rm =>
+                  drm == rm.ShapeType
+                  && TryParsePosition(t.todo.EventPosition)
+                    .Apply(pos =>
+                      rm.IsUpToDate(pos?.CommitPosition)
+                      && HydrationDaemon.IsUpToDate(pos?.CommitPosition)))))
         {
           return await TryFetch()
             .Option

@@ -1,5 +1,5 @@
-﻿using EventStore.Client;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
@@ -22,10 +22,14 @@ internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger 
     }
   }
 
-  public async Task Queue(ResolvedEvent evt, Func<ResolvedEvent, Task> tryProcess)
+  public async Task Queue(
+    StrongId strongId,
+    StoredEventMetadata metadata,
+    EventModelEvent evt,
+    Func<StrongId, StoredEventMetadata, EventModelEvent, Task> tryProcess)
   {
     await hydrationSemaphore.WaitAsync();
-    if (hydrationTasks.Any(t => t.stream == evt.Event.EventStreamId))
+    if (hydrationTasks.Any(t => t.stream == evt.GetStreamName()))
     {
       try
       {
@@ -43,14 +47,18 @@ internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger 
       }
     }
 
-    hydrationTasks.Add((evt.Event.EventStreamId, DoQueue(evt, tryProcess)));
+    hydrationTasks.Add((evt.GetStreamName(), DoQueue(strongId, metadata, evt, tryProcess)));
   }
 
-  private async Task DoQueue(ResolvedEvent evt, Func<ResolvedEvent, Task> tryProcess)
+  private async Task DoQueue(
+    StrongId strongId,
+    StoredEventMetadata metadata,
+    EventModelEvent evt,
+    Func<StrongId, StoredEventMetadata, EventModelEvent, Task> tryProcess)
   {
     try
     {
-      await tryProcess(evt);
+      await tryProcess(strongId, metadata, evt);
     }
     finally
     {
@@ -58,7 +66,7 @@ internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger 
     }
   }
 
-  public async Task Checkpoint(Position position, Func<Position, Task> checkpoint)
+  public async Task Checkpoint(ulong position, Func<ulong, Task> checkpoint)
   {
     try
     {

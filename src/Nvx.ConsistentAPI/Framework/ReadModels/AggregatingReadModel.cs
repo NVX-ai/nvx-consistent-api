@@ -32,7 +32,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public required string AreaTag { private get; init; }
   public BuildCustomFilter CustomFilterBuilder { get; init; } = (_, _, _) => new CustomFilter(null, [], null);
   public ReadModelDefaulter<Shape> Defaulter { get; init; } = (_, _, _) => None;
-  private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false, false);
+  private ReadModelSyncState SyncState { get; set; } = new(0, DateTime.MinValue, false, false);
 
   public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStore<EventModelEvent> store)
   {
@@ -135,7 +135,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
   public AuthOptions Auth { get; init; } = new Everyone();
 
-  public bool IsUpToDate(Position? position)
+  public bool IsUpToDate(ulong? position)
   {
     if (SyncState.IsBeingHydratedByAnotherInstance)
     {
@@ -147,7 +147,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       return SyncState.HasReachedEndOnce;
     }
 
-    if (FromAll.After(position.Value) <= SyncState.LastPosition)
+    if (position <= SyncState.LastPosition)
     {
       return true;
     }
@@ -197,7 +197,11 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
         currentCheckpointPosition = checkpointPosition == Position.Start ? 0 : checkpointPosition.CommitPosition;
         var checkpoint = checkpointPosition == Position.Start ? FromAll.Start : FromAll.After(checkpointPosition);
 
-        SyncState = new ReadModelSyncState(checkpoint, DateTime.UtcNow, checkpoint != FromAll.Start, false);
+        SyncState = new ReadModelSyncState(
+          checkpoint == FromAll.Start ? 0 : checkpoint.ToUInt64().commitPosition,
+          DateTime.UtcNow,
+          checkpoint != FromAll.Start,
+          false);
         await using var subscription = client
           .SubscribeToAll(checkpoint, filterOptions: filterOptions, cancellationToken: SubCancelSource.Token);
 
@@ -270,7 +274,8 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                 });
               SyncState = SyncState with
               {
-                LastPosition = FromAll.After(evt.OriginalEvent.Position), LastSync = DateTime.UtcNow
+                LastPosition = evt.OriginalEvent.Position.CommitPosition,
+                LastSync = DateTime.UtcNow
               };
               isProcessing = false;
               break;
@@ -280,7 +285,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
               if (SyncState.LastSync < DateTime.UtcNow.AddSeconds(-syncDelay))
               {
                 await databaseHandler.UpdateCheckpoint(FromAll.After(pos).ToString());
-                SyncState = SyncState with { LastPosition = FromAll.After(pos), LastSync = DateTime.UtcNow };
+                SyncState = SyncState with { LastPosition = pos.CommitPosition, LastSync = DateTime.UtcNow };
                 lastProcessedEventPosition = pos.CommitPosition;
                 currentCheckpointPosition = pos.CommitPosition;
               }

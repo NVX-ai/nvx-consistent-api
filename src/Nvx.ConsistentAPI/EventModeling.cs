@@ -54,7 +54,7 @@ public interface EventModelingReadModelArtifact : Endpoint
     GeneratorSettings settings,
     ILogger logger);
 
-  bool IsUpToDate(Position? position = null);
+  bool IsUpToDate(ulong? position = null);
 }
 
 public interface IdempotentReadModel
@@ -208,10 +208,8 @@ public class EventModel
 
     var hydrationDaemon = new ReadModelHydrationDaemon(
       settings,
-      esClient,
       store,
       fetcher,
-      parser,
       ReadModels.Where(rm => rm is IdempotentReadModel).Cast<IdempotentReadModel>().ToArray(),
       logger);
 

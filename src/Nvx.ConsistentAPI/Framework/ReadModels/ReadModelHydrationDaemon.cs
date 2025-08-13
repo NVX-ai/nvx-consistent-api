@@ -1,19 +1,18 @@
 ﻿using System.Collections.Concurrent;
 using Dapper;
-using EventStore.Client;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Nvx.ConsistentAPI.Framework;
 using Nvx.ConsistentAPI.InternalTooling;
+using Nvx.ConsistentAPI.Store.Events.Metadata;
 using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
 internal class ReadModelHydrationDaemon(
   GeneratorSettings settings,
-  EventStoreClient client,
   EventStore<EventModelEvent> store,
   Fetcher fetcher,
-  Func<ResolvedEvent, Option<EventModelEvent>> parser,
   IdempotentReadModel[] readModels,
   ILogger logger)
 {
@@ -34,12 +33,11 @@ internal class ReadModelHydrationDaemon(
 
   private bool isInitialized;
   private ulong? lastCheckpoint;
-  private Position? lastPosition;
-  internal FailedHydration[] FailedHydrations { get; private set; } = [];
+  private ulong? lastPosition;
 
   public async Task<HydrationDaemonInsights> Insights(ulong lastEventPosition)
   {
-    var currentPosition = lastPosition?.CommitPosition ?? 0UL;
+    var currentPosition = lastPosition ?? 0UL;
     var percentageComplete = lastEventPosition == 0
       ? 100m
       : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(lastEventPosition);
@@ -50,7 +48,7 @@ internal class ReadModelHydrationDaemon(
       await stateMachine.EventsBeingProcessedCount());
   }
 
-  public bool IsUpToDate(Position? position) =>
+  public bool IsUpToDate(ulong? position) =>
     !position.HasValue || (lastPosition.HasValue && position.Value <= lastPosition.Value);
 
   public async Task Initialize()
@@ -109,9 +107,9 @@ internal class ReadModelHydrationDaemon(
 
     const string failedHydrationSql =
       """
-      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'FailedReadModelHydration')
+      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'FailedReadModelHydrationWithId')
         BEGIN
-          CREATE TABLE [FailedReadModelHydration]
+          CREATE TABLE [FailedReadModelHydrationWithId]
           (
             [StreamName] NVARCHAR(255) NOT NULL,
             [EventId] NVARCHAR(255) NOT NULL,
@@ -120,6 +118,10 @@ internal class ReadModelHydrationDaemon(
             [RetryCount] INT NOT NULL DEFAULT 0,
             [ErrorMessage] NVARCHAR(MAX) NOT NULL,
             [NextRetryFrom] DATETIME2 NOT NULL,
+            [SerializedId] NVARCHAR(MAX) NOT NULL,
+            [StrongIdTypeNamespace] NVARCHAR(255) NOT NULL,
+            [StrongIdTypeName] NVARCHAR(255) NOT NULL,
+            [Swimlane] NVARCHAR(255) NOT NULL,
           )
         END
       """;
@@ -127,23 +129,19 @@ internal class ReadModelHydrationDaemon(
     await connection.ExecuteAsync(failedHydrationSql);
   }
 
-  private async Task<FromAll> GetCheckpoint()
+  private async Task<GlobalPosition?> GetCheckpoint()
   {
     await using var connection = new SqlConnection(connectionString);
     const string sql = "SELECT [Checkpoint] FROM [CentralDaemonCheckpoint] ORDER BY [Checkpoint] DESC";
     var value = await connection.QueryFirstOrDefaultAsync<string?>(sql);
-
-    if (value is null)
-    {
-      return FromAll.Start;
-    }
-
-    return Position.TryParse(value, out var position) && position != null
-      ? FromAll.After(position.Value)
-      : FromAll.Start;
+    return
+      value is null
+      || !GlobalPosition.TryParse(value, out var position)
+        ? null
+        : position;
   }
 
-  private async Task UpdateLastPosition(Position? pos)
+  private async Task UpdateLastPosition(ulong? pos)
   {
     await lastPositionSemaphore.WaitAsync();
     lastPosition = pos > lastPosition || lastPosition is null ? pos : lastPosition;
@@ -158,25 +156,23 @@ internal class ReadModelHydrationDaemon(
       try
       {
         var checkpoint = await GetCheckpoint();
-        Position? lastPositionCandidate = checkpoint == FromAll.Start
-          ? null
-          : new Position(checkpoint.ToUInt64().commitPosition, checkpoint.ToUInt64().preparePosition);
-        await UpdateLastPosition(lastPositionCandidate);
-        lastCheckpoint = lastPosition?.CommitPosition;
+        var request = checkpoint is null
+          ? SubscribeAllRequest.Start()
+          : SubscribeAllRequest.After(checkpoint.Value.CommitPosition);
+
+        await UpdateLastPosition(checkpoint?.CommitPosition);
+        lastCheckpoint = lastPosition;
         StartTracker();
 
-        await using var subscription = client.SubscribeToAll(
-          checkpoint,
-          filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()));
-        await foreach (var message in subscription.Messages)
+        await foreach (var message in store.Subscribe(request))
         {
           switch (message)
           {
-            case StreamMessage.Event(var evt):
+            case ReadAllMessage<EventModelEvent>.AllEvent evt:
             {
               try
               {
-                await stateMachine.Queue(evt, TryProcess);
+                await stateMachine.Queue(evt.StrongId, evt.Metadata, evt.Event, TryProcess);
               }
               catch (Exception ex)
               {
@@ -184,20 +180,20 @@ internal class ReadModelHydrationDaemon(
                   ex,
                   "Error hydrating read models, event type: {Event}, event id: {EventId}, stream name: {StreamName}, stream position: {StreamPosition}",
                   evt.Event.EventType,
-                  evt.Event.EventId,
-                  evt.Event.EventStreamId,
-                  evt.OriginalEvent.EventNumber);
+                  evt.Metadata.EventId,
+                  evt.Event.GetStreamName(),
+                  evt.Metadata.StreamPosition);
               }
 
               break;
             }
-            case StreamMessage.AllStreamCheckpointReached(var pos):
+            case ReadAllMessage<EventModelEvent>.Checkpoint(var pos):
             {
               await stateMachine.Checkpoint(pos, Checkpoint);
-              lastCheckpoint = pos.CommitPosition;
+              lastCheckpoint = pos;
               break;
             }
-            case StreamMessage.CaughtUp:
+            case ReadAllMessage<EventModelEvent>.CaughtUp:
             {
               if (lastPosition is { } pos)
               {
@@ -207,7 +203,7 @@ internal class ReadModelHydrationDaemon(
               ClearTracker();
               break;
             }
-            case StreamMessage.FellBehind:
+            case ReadAllMessage<EventModelEvent>.FellBehind:
             {
               StartTracker();
               break;
@@ -236,66 +232,60 @@ internal class ReadModelHydrationDaemon(
     }
   }
 
-  private async Task TryProcess(ResolvedEvent evt)
+  private async Task TryProcess(StrongId strongId, StoredEventMetadata metadata, EventModelEvent @event)
   {
     try
     {
-      await parser(evt)
-        .Async()
-        .Iter(async @event =>
+      // Skip processing if the event is known to not be the last of the stream.
+      if (fetcher
+          .GetCachedStreamRevision(strongId)
+          .Match(cachedRevision => cachedRevision >= metadata.StreamPosition, () => false))
+      {
+        await UpdateLastPosition(metadata.GlobalPosition);
+        return;
+      }
+
+      if (IsInterestEvent(@event))
+      {
+        await TryProcessInterestedEvent(@event);
+        await UpdateLastPosition(metadata.GlobalPosition);
+        return;
+      }
+
+      var interestedTask = TryProcessInterestedStreams(@event);
+
+      var ableReadModels =
+        ModelsForEvent.GetOrAdd(
+          @event.EventType,
+          _ => readModels.Where(rm => rm.CanProject(@event)).ToArray());
+
+      if (ableReadModels.Length == 0)
+      {
+        await interestedTask;
+        await UpdateLastPosition(metadata.GlobalPosition);
+        return;
+      }
+
+      await fetcher
+        .DaemonFetch(strongId, @event.GetStreamName())
+        .Iter(async entity =>
         {
-          // Skip processing if the event is known to not be the last of the stream.
-          if (fetcher
-              .GetCachedStreamRevision(@event.GetEntityId())
-              .Match(cachedRevision => cachedRevision >= evt.Event.EventNumber.ToInt64(), () => false))
-          {
-            await UpdateLastPosition(evt.Event.Position);
-            return;
-          }
-
-          if (IsInterestEvent(@event))
-          {
-            await TryProcessInterestedEvent(@event);
-            await UpdateLastPosition(evt.Event.Position);
-            return;
-          }
-
-          var interestedTask = TryProcessInterestedStreams(@event);
-
-          var ableReadModels =
-            ModelsForEvent.GetOrAdd(
-              evt.Event.EventType,
-              _ => readModels.Where(rm => rm.CanProject(@event)).ToArray());
-
-          if (ableReadModels.Length == 0)
-          {
-            await interestedTask;
-            await UpdateLastPosition(evt.Event.Position);
-            return;
-          }
-
-          await fetcher
-            .DaemonFetch(@event.GetEntityId(), @event.GetStreamName())
-            .Iter(async entity =>
-            {
-              await ableReadModels
-                .Select<IdempotentReadModel, Func<Task<Unit>>>(rm =>
-                  async () =>
-                  {
-                    await rm.TryProcess(
-                      entity,
-                      databaseHandlerFactory,
-                      @event.GetEntityId(),
-                      evt.OriginalEvent.Position.ToString(),
-                      logger);
-                    await UpdateLastPosition(evt.Event.Position);
-                    return unit;
-                  })
-                .Parallel();
-            });
-          await interestedTask;
-          await UpdateLastPosition(evt.Event.Position);
+          await ableReadModels
+            .Select<IdempotentReadModel, Func<Task<Unit>>>(rm =>
+              async () =>
+              {
+                await rm.TryProcess(
+                  entity,
+                  databaseHandlerFactory,
+                  strongId,
+                  new GlobalPosition(metadata.GlobalPosition, metadata.GlobalPosition).ToString(),
+                  logger);
+                return unit;
+              })
+            .Parallel();
         });
+      await interestedTask;
+      await UpdateLastPosition(metadata.GlobalPosition);
     }
     catch (Exception ex)
     {
@@ -305,23 +295,36 @@ internal class ReadModelHydrationDaemon(
         await connection.ExecuteAsync(
           """
           IF NOT EXISTS (
-            SELECT 1 FROM [FailedReadModelHydration]
+            SELECT 1 FROM [FailedReadModelHydrationWithId]
             WHERE [StreamName] = @StreamName AND [EventId] = @EventId
           )
-          INSERT INTO [FailedReadModelHydration] (
-            [StreamName], [EventId], [EventType], [HappenedAt], [ErrorMessage], [NextRetryFrom]
+          INSERT INTO [FailedReadModelHydrationWithId] (
+            [StreamName],
+            [EventId],
+            [EventType],
+            [HappenedAt], 
+            [ErrorMessage], 
+            [NextRetryFrom],
+            [SerializedId],
+            [StrongIdTypeNamespace],
+            [StrongIdTypeName],
+            [Swimlane]
           ) VALUES (
             @StreamName, @EventId, @EventType, @HappenedAt, @ErrorMessage, @NextRetryFrom
           )
           """,
           new
           {
-            StreamName = evt.Event.EventStreamId,
-            EventId = evt.Event.EventId.ToString(),
-            evt.Event.EventType,
+            StreamName = @event.GetStreamName(),
+            metadata.EventId,
+            @event.EventType,
             HappenedAt = DateTime.UtcNow,
             ErrorMessage = ex.Message,
-            NextRetryFrom = DateTime.UtcNow
+            NextRetryFrom = DateTime.UtcNow,
+            SerializedId = Serialization.Serialize(strongId),
+            StrongIdTypeNamespace = strongId.GetType().Namespace ?? string.Empty,
+            StrongIdTypeName = strongId.GetType().Name,
+            Swimlane = @event.GetSwimLane()
           });
       }
       catch (Exception dbEx)
@@ -329,8 +332,8 @@ internal class ReadModelHydrationDaemon(
         logger.LogError(
           dbEx,
           "Error logging failed read model hydration for event {EventId} on stream {StreamName}",
-          evt.Event.EventId,
-          evt.Event.EventStreamId);
+          metadata.EventId,
+          @event.GetStreamName());
         throw;
       }
     }
@@ -406,9 +409,9 @@ internal class ReadModelHydrationDaemon(
       });
   }
 
-  private async Task Checkpoint(Position position)
+  private async Task Checkpoint(ulong position)
   {
-    var serialized = position.ToString();
+    var serialized = new GlobalPosition(position, position).ToString();
     await using var connection = new SqlConnection(connectionString);
     await connection.OpenAsync();
     await using var transaction = await connection.BeginTransactionAsync();
@@ -452,8 +455,12 @@ internal class ReadModelHydrationDaemon(
               [HappenedAt],
               [RetryCount],
               [ErrorMessage],
-              [NextRetryFrom]
-            FROM [FailedReadModelHydration]
+              [NextRetryFrom],
+              [SerializedId],
+              [StrongIdTypeNamespace],
+              [StrongIdTypeName],
+              [Swimlane]
+            FROM [FailedReadModelHydrationWithId]
             WHERE [RetryCount] < @RetryLimit
             AND [NextRetryFrom] < GETUTCDATE()
             ORDER BY [RetryCount] ASC
@@ -463,8 +470,6 @@ internal class ReadModelHydrationDaemon(
               RetryLimit = HydrationRetryLimit
             })
           .Map(Enumerable.ToArray);
-
-        FailedHydrations = failedHydrations;
 
         if (failedHydrations.Length == 0)
         {
@@ -476,7 +481,7 @@ internal class ReadModelHydrationDaemon(
         {
           const string increaseRetrySql =
             """
-            UPDATE [FailedReadModelHydration]
+            UPDATE [FailedReadModelHydrationWithId]
             SET [RetryCount] = [RetryCount] + 1, [NextRetryFrom] = @NextRetryFrom
             WHERE [EventId] = @EventId AND [StreamName] = @StreamName
             """;
@@ -501,18 +506,26 @@ internal class ReadModelHydrationDaemon(
             continue;
           }
 
-          var streamRead = client.ReadStreamAsync(Direction.Backwards, fh.StreamName, StreamPosition.End, 1);
-          if (await streamRead.ReadState == ReadState.StreamNotFound)
+          var idDictionary = new Dictionary<string, string>
           {
-            continue;
+            { "StrongIdTypeName", fh.StrongIdTypeName },
+            { "SerializedId", fh.SerializedId }
+          };
+
+          if (!string.IsNullOrWhiteSpace(fh.StrongIdTypeNamespace))
+          {
+            idDictionary.Add("StrongIdTypeNamespace", fh.StrongIdTypeNamespace);
           }
 
-          await foreach (var resolvedEvent in streamRead.Take(1))
+          foreach (var id in idDictionary.GetStrongId())
           {
-            await TryProcess(resolvedEvent);
-            await connection.ExecuteAsync(
-              "DELETE FROM [FailedReadModelHydration] WHERE [EventId] = @EventId AND [StreamName] = @StreamName",
-              new { fh.EventId, fh.StreamName });
+            await foreach (var @event in store.Read(ReadStreamRequest.Backwards(fh.Swimlane, id)).Events().Take(1))
+            {
+              await TryProcess(@event.Id, @event.Metadata, @event.Event);
+              await connection.ExecuteAsync(
+                "DELETE FROM [FailedReadModelHydrationWithId] WHERE [EventId] = @EventId AND [StreamName] = @StreamName",
+                new { fh.EventId, fh.StreamName });
+            }
           }
         }
       }
@@ -542,8 +555,12 @@ internal class ReadModelHydrationDaemon(
           [HappenedAt],
           [RetryCount],
           [ErrorMessage],
-          [NextRetryFrom]
-        FROM [FailedReadModelHydration]
+          [NextRetryFrom],
+          [SerializedId],
+          [StrongIdTypeNamespace],
+          [StrongIdTypeName],
+          [Swimlane]
+        FROM [FailedReadModelHydrationWithId]
         WHERE [RetryCount] > 10
         ORDER BY [RetryCount] ASC
         """)
@@ -558,4 +575,8 @@ public record FailedHydration(
   DateTime HappenedAt,
   int RetryCount,
   string? ErrorMessage,
-  DateTime NextRetryFrom);
+  DateTime NextRetryFrom,
+  string SerializedId,
+  string StrongIdTypeNamespace,
+  string StrongIdTypeName,
+  string Swimlane);
