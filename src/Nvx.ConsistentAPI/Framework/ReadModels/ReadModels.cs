@@ -271,7 +271,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
           }
 
           if (fetcher
-              .GetCachedStreamRevision(me.GetEntityId())
+              .GetCachedStreamRevision(me.GetStreamName(), me.GetEntityId())
               .Match(r => r >= ae.Metadata.StreamPosition, () => false))
           {
             return;
