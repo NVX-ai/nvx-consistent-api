@@ -6,8 +6,9 @@ namespace Nvx.ConsistentAPI.Store.InMemory;
 
 public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 {
-  private const int TimesUntilCaughtUp = 750;
-  private const int DelayPollingSubscriptions = 10;
+  private const int DelayPollingSubscriptions = 25;
+  private const int TimeoutForCaughtUp = 2_500;
+  private const int TimesUntilCaughtUp = TimeoutForCaughtUp / DelayPollingSubscriptions;
   private readonly List<StoredEvent> events = [];
   private readonly SemaphoreSlim semaphore = new(1, 1);
 
@@ -219,8 +220,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 
       if (nextEvent is null)
       {
-        timesWithoutNewEvents =
-          timesWithoutNewEvents == ulong.MaxValue ? TimesUntilCaughtUp - 1 : timesWithoutNewEvents + 1;
+        timesWithoutNewEvents++;
         emittedFellBehind = false;
         if (timesWithoutNewEvents == TimesUntilCaughtUp)
         {
@@ -293,8 +293,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 
       if (nextEvent is null)
       {
-        timesWithoutNewEvents =
-          timesWithoutNewEvents == ulong.MaxValue ? TimesUntilCaughtUp - 1 : timesWithoutNewEvents + 1;
+        timesWithoutNewEvents++;
         emittedFellBehind = false;
         if (timesWithoutNewEvents == TimesUntilCaughtUp)
         {
