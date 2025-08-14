@@ -499,7 +499,9 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
         lastException = exception;
       }
 
-      if (lastException is not null)
+      hadConsumerTooSlowException = IsConsumerTooSlowException(lastException);
+
+      if (lastException is not null && !hadConsumerTooSlowException)
       {
         yield return CreateTerminatedMessage<T>(lastException);
       }
@@ -534,8 +536,8 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     exception is RpcException { Status.StatusCode: StatusCode.Aborted } rpcEx
     && rpcEx.Status.Detail.Contains("too slow");
 
-  private static T CreateTerminatedMessage<T>(Exception exception) where T : class =>
-    typeof(T) == typeof(ReadAllMessage<>)
+  internal static T CreateTerminatedMessage<T>(Exception exception) where T : class =>
+    typeof(T) == typeof(ReadAllMessage<EventModelEvent>)
       ? (T)(object)new ReadAllMessage<EventModelEvent>.Terminated(exception)
       : (T)(object)new ReadStreamMessage<EventModelEvent>.Terminated(exception);
 
