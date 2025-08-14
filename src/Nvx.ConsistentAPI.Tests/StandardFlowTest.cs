@@ -219,7 +219,9 @@ public class StandardFlowTest
     {
       var message = Guid.NewGuid().ToString();
       await setup.Command(new SendNotificationToUser(message, setup.Auth.ByName("john")), true);
-      var notifications = await setup.ReadModels<UserNotificationReadModel>(asUser: "john");
+      var notifications = await setup.ReadModels<UserNotificationReadModel>(
+        asUser: "john",
+        waitType: ConsistencyWaitType.Long);
       Assert.Single(notifications.Items);
       var notification = notifications.Items.First();
       Assert.Equal(message, notification.Message);

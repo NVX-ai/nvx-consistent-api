@@ -6,7 +6,7 @@ namespace Nvx.ConsistentAPI.Store.InMemory;
 
 public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 {
-  private const int TimesUntilCaughtUp = 200;
+  private const int TimesUntilCaughtUp = 750;
   private const int DelayPollingSubscriptions = 10;
   private readonly List<StoredEvent> events = [];
   private readonly SemaphoreSlim semaphore = new(1, 1);
