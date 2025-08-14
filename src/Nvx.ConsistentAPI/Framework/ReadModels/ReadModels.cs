@@ -66,6 +66,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
       : ReadModelProgress.InventerPercentageProgress(
         Convert.ToDecimal(currentPosition),
         Convert.ToDecimal(lastEventPosition));
+
     return Task.FromResult(
       new SingleReadModelInsights(
         DatabaseHandler<Shape>.TableName(typeof(Shape)),
