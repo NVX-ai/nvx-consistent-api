@@ -10,6 +10,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Nvx.ConsistentAPI.Framework;
+using Nvx.ConsistentAPI.Store.Events.Metadata;
 
 namespace Nvx.ConsistentAPI;
 
@@ -683,19 +684,17 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     }
   }
 
-  public async Task<Position> Checkpoint()
+  public async Task<ulong?> Checkpoint()
   {
     await using var connection = new SqlConnection(connectionString);
     const string sql = "SELECT [Checkpoint] FROM [ReadModelCheckpoints] WHERE [ModelName] = @ModelName";
     var value = await connection.QueryFirstOrDefaultAsync<string?>(sql, new { ModelName = tableName });
     if (value is null)
     {
-      return Position.Start;
+      return null;
     }
 
-    return Position.TryParse(value, out var position) && position != null
-      ? position.Value
-      : Position.Start;
+    return GlobalPosition.TryParse(value, out var position) ? position?.CommitPosition: null;
   }
 
   private string GenerateUpsertSql(bool isTraceable)

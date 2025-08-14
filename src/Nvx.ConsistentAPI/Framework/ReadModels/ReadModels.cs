@@ -174,12 +174,11 @@ public class ReadModelDefinition<Shape, EntityShape> :
         activity?.SetTag("read-model.hydration.kind", "direct");
         using var _ = new HydrationCountTracker();
         var checkpoint = await databaseHandler.Checkpoint();
-        lastProcessedEventPosition = lastCheckpointPosition =
-          checkpoint == Position.Start ? null : checkpoint.CommitPosition;
+        lastProcessedEventPosition = lastCheckpointPosition = checkpoint;
 
         var read = client.ReadAllAsync(
           Direction.Backwards,
-          checkpoint == Position.Start ? Position.End : checkpoint,
+          checkpoint is null ? Position.End : new Position(checkpoint.Value, checkpoint.Value),
           StreamFilter.Prefix(StreamPrefix, $"{InterestedEntityEntity.StreamPrefix}{StreamPrefix}"));
 
         await foreach (var message in read.Messages)

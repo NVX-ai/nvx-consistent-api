@@ -195,8 +195,10 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
         }
 
         var checkpointPosition = await databaseHandler.Checkpoint();
-        currentCheckpointPosition = checkpointPosition == Position.Start ? 0 : checkpointPosition.CommitPosition;
-        var checkpoint = checkpointPosition == Position.Start ? FromAll.Start : FromAll.After(checkpointPosition);
+        currentCheckpointPosition = checkpointPosition ?? 0;
+        var checkpoint = checkpointPosition is null
+          ? FromAll.Start
+          : FromAll.After(new Position(checkpointPosition.Value, checkpointPosition.Value));
 
         SyncState = new ReadModelSyncState(
           checkpoint == FromAll.Start ? 0 : checkpoint.ToUInt64().commitPosition,
