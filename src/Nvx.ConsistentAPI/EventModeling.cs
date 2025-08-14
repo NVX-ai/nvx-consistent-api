@@ -48,6 +48,7 @@ public interface EventModelingReadModelArtifact : Endpoint
   Task ApplyTo(
     WebApplication app,
     EventStoreClient esClient,
+    EventStore<EventModelEvent> store,
     Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
@@ -187,7 +188,7 @@ public class EventModel
 
     foreach (var readModel in ReadModels)
     {
-      await readModel.ApplyTo(app, esClient, fetcher, parser, emitter, settings, logger);
+      await readModel.ApplyTo(app, esClient, store, fetcher, parser, emitter, settings, logger);
     }
 
     runner.Initialize(RecurringTasks, fetcher, emitter, settings, logger);

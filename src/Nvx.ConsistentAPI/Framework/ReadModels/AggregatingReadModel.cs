@@ -57,6 +57,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public async Task ApplyTo(
     WebApplication app,
     EventStoreClient esClient,
+    EventStore<EventModelEvent> store,
     Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,

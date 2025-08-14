@@ -79,6 +79,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
   public async Task ApplyTo(
     WebApplication app,
     EventStoreClient esClient,
+    EventStore<EventModelEvent> store,
     Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
@@ -104,7 +105,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
         Defaulter,
         logger);
 
-    await Initialize(esClient, fetcher, parser, databaseHandler, settings, logger);
+    await Initialize(esClient, store, fetcher, parser, databaseHandler, settings, logger);
   }
 
   public Type ShapeType { get; } = typeof(Shape);
@@ -133,6 +134,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
   private async Task Subscribe(
     EventStoreClient client,
+    EventStore<EventModelEvent> store,
     Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     DatabaseHandler<Shape> databaseHandler,
@@ -142,7 +144,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
     {
       await databaseHandler.Reset(false);
       isUpToDate = false;
-      _ = Task.Run(() => Subscribe(client, fetcher, parser, databaseHandler, logger));
+      _ = Task.Run(() => Subscribe(client, store, fetcher, parser, databaseHandler, logger));
       return unit;
     };
 
@@ -311,6 +313,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
   private async Task Initialize(
     EventStoreClient client,
+    EventStore<EventModelEvent> store,
     Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     DatabaseHandler<Shape> databaseHandler,
@@ -323,7 +326,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
     }
 
     await databaseHandler.Initialize();
-    _ = Task.Run(() => Subscribe(client, fetcher, parser, databaseHandler, logger));
+    _ = Task.Run(() => Subscribe(client, store, fetcher, parser, databaseHandler, logger));
   }
 
   private async Task UpdateReadModel(
