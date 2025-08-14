@@ -74,9 +74,9 @@ internal class ConsistencyStateMachine(string url)
 {
   private const int BaseDelayMilliseconds = 250;
   private const int MaxDelayMilliseconds = 15_000;
+  private readonly ConcurrentBag<Guid> testsAcknowledged = [];
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private DateTime lastConsistentAt = DateTime.MinValue;
-
   private int testsWaiting;
 
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
@@ -94,17 +94,20 @@ internal class ConsistencyStateMachine(string url)
     return TimeSpan.FromMilliseconds(milliseconds);
   }
 
-  public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
+  public async Task WaitForConsistency(int timeout, ConsistencyWaitType type, Guid testId)
   {
     var startedAt = DateTime.UtcNow;
-    Interlocked.Increment(ref testsWaiting);
+    if (!testsAcknowledged.Contains(testId))
+    {
+      testsAcknowledged.Add(testId);
+      Interlocked.Increment(ref testsWaiting);
+    }
+
     var timer = Stopwatch.StartNew();
     while (timer.ElapsedMilliseconds < timeout && !await IsConsistent())
     {
       await Task.Delay(Random.Shared.Next(100, 500));
     }
-
-    Interlocked.Decrement(ref testsWaiting);
 
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
@@ -199,6 +202,7 @@ public class TestSetup : IAsyncDisposable
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
   private readonly ConsistencyStateMachine consistencyStateMachine;
+  private readonly Guid testId = Guid.NewGuid();
   private readonly int waitForCatchUpTimeout;
 
   internal TestSetup(
@@ -266,7 +270,7 @@ public class TestSetup : IAsyncDisposable
   public async Task WaitForConsistency(
     ConsistencyWaitType waitType = ConsistencyWaitType.Medium,
     int? timeoutMs = null) =>
-    await consistencyStateMachine.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, waitType);
+    await consistencyStateMachine.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, waitType, testId);
 
   public async Task<CommandAcceptedResult> Upload()
   {
