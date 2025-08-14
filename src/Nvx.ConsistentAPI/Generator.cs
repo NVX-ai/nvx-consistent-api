@@ -354,7 +354,8 @@ public static class Generator
             .File(
               Path.Combine(settings.LoggingSettings.LogsFolder, "log-.log"),
               rollingInterval: settings.LoggingSettings.LogFileRollInterval.ToSerilog(),
-              retainedFileTimeLimit: TimeSpan.FromDays(settings.LoggingSettings.LogDaysToKeep))
+              retainedFileTimeLimit: TimeSpan.FromDays(settings.LoggingSettings.LogDaysToKeep),
+              restrictedToMinimumLevel: Map(settings.LoggingSettings.LogLevel))
             .CreateLogger());
       });
     }
