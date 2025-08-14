@@ -47,6 +47,7 @@ internal static class InstanceTracking
         h.Url,
         h.Auth,
         h.Store,
+        h.Fetcher,
         h.Model,
         testSettings.WaitForCatchUpTimeout,
         h.ConsistencyStateMachine);
@@ -60,6 +61,7 @@ internal static class InstanceTracking
       holder.Url,
       holder.Auth,
       holder.Store,
+      holder.Fetcher,
       holder.Model,
       testSettings.WaitForCatchUpTimeout,
       holder.ConsistencyStateMachine);
@@ -169,6 +171,7 @@ internal record TestSetupHolder(
   string Url,
   TestAuth Auth,
   EventStore<EventModelEvent> Store,
+  Fetcher Fetcher,
   EventModel Model,
   int Count,
   ILogger Logger,
@@ -202,6 +205,7 @@ public class TestSetup : IAsyncDisposable
     string url,
     TestAuth auth,
     EventStore<EventModelEvent> store,
+    Fetcher fetcher,
     EventModel model,
     int waitForCatchUpTimeout,
     ConsistencyStateMachine consistencyStateMachine)
@@ -212,7 +216,10 @@ public class TestSetup : IAsyncDisposable
     Store = store;
     Model = model;
     this.consistencyStateMachine = consistencyStateMachine;
+    Fetcher = fetcher;
   }
+
+  public Fetcher Fetcher { get; }
 
   public string Url { get; }
   public TestAuth Auth { get; private set; }
@@ -653,6 +660,7 @@ public class TestSetup : IAsyncDisposable
       baseUrl,
       new TestAuth(GetTestUser("admin").Sub, GetTestUser("cando").Sub, n => GetTestUser(n).Sub),
       app.Store,
+      app.Fetcher,
       model,
       1,
       app.WebApplication.Services.GetRequiredService<ILogger<TestSetup>>(),
