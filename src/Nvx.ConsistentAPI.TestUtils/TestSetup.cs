@@ -17,7 +17,6 @@ using Microsoft.IdentityModel.Tokens;
 using Nvx.ConsistentAPI.Framework;
 using Nvx.ConsistentAPI.InternalTooling;
 using Nvx.ConsistentAPI.Store.Events;
-using Nvx.ConsistentAPI.Store.EventStoreDB;
 using Nvx.ConsistentAPI.Store.Store;
 using Testcontainers.Azurite;
 using Testcontainers.EventStoreDb;
@@ -469,8 +468,13 @@ public class TestSetup : IAsyncDisposable
       .PostAsync(requestContent);
   }
 
-  private static async Task<(EventStore<EventModelEvent> store, string esCs)> AwaitEventStore(TestSettings settings)
+  private static async Task<EventStoreSettings> AwaitEventStore(TestSettings settings)
   {
+    if (settings.StoreType == EventStoreType.InMemory)
+    {
+      return new EventStoreSettings.InMemory();
+    }
+
     var builder = new EventStoreDbBuilder()
       .WithImage(settings.EsDbImage)
       .WithReuse(settings.UsePersistentTestContainers)
@@ -500,7 +504,7 @@ public class TestSetup : IAsyncDisposable
       {
         await Task.Delay(25);
         _ = await client.ReadStreamAsync(Direction.Forwards, "meh", StreamPosition.Start).ReadState;
-        return (new EventStoreDbStore(esCs), esCs);
+        return new EventStoreSettings.EventStoreDb(esCs);
       }
       catch (Exception)
       {
@@ -607,7 +611,7 @@ public class TestSetup : IAsyncDisposable
     var esTask = AwaitEventStore(settings);
     var azuriteConnectionString = await azTask;
     var sqlCs = await sqlTask;
-    var (eventStoreClient, esCs) = await esTask;
+    var eventStoreSettings = await esTask;
 
     var sitePort = await GetFreePort();
     var baseUrl = $"http://localhost:{sitePort}";
@@ -616,7 +620,7 @@ public class TestSetup : IAsyncDisposable
       sitePort,
       new GeneratorSettings(
         sqlCs,
-        new EventStoreSettings.EventStoreDb(esCs),
+        eventStoreSettings,
         azuriteConnectionString,
         CreateTestSecurityKey(),
         GetTestUser("admin").Sub,
@@ -690,6 +694,12 @@ public class TestSetup : IAsyncDisposable
   private static SecurityKey[] CreateTestSecurityKey() => [SigningCredentials.Key];
 }
 
+public enum EventStoreType
+{
+  InMemory,
+  EventStoreDb
+}
+
 public class TestSettings
 {
   private readonly string? azuriteImage;
@@ -699,6 +709,7 @@ public class TestSettings
   public bool UsePersistentTestContainers { get; init; }
   public int WaitForCatchUpTimeout { get; init; } = 150_000;
   public int HydrationParallelism { get; init; } = 5;
+  public EventStoreType StoreType { get; init; } = EventStoreType.EventStoreDb;
 
   public string EsDbImage
   {
