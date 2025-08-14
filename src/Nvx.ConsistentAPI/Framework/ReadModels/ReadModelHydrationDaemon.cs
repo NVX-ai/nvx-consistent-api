@@ -152,9 +152,9 @@ internal class ReadModelHydrationDaemon(
 
   private async Task Hydrate()
   {
-    hydrationCountTracker = null;
     while (settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration))
     {
+      TryStartTracker();
       try
       {
         var checkpoint = await GetCheckpoint();
@@ -164,7 +164,6 @@ internal class ReadModelHydrationDaemon(
 
         await UpdateLastPosition(checkpoint?.CommitPosition);
         lastCheckpoint = lastPosition;
-        StartTracker();
 
         await foreach (var message in store.Subscribe(request))
         {
@@ -207,7 +206,7 @@ internal class ReadModelHydrationDaemon(
             }
             case ReadAllMessage<EventModelEvent>.FellBehind:
             {
-              StartTracker();
+              TryStartTracker();
               break;
             }
           }
@@ -219,25 +218,32 @@ internal class ReadModelHydrationDaemon(
       }
     }
 
-    return;
-
-    void ClearTracker()
-    {
-      hydrationCountTracker?.Dispose();
-      hydrationCountTracker = null;
-    }
-
-    void StartTracker()
-    {
-      ClearTracker();
-      hydrationCountTracker = new HydrationCountTracker(readModels.Length);
-    }
+    ClearTracker();
   }
+
+  private void ClearTracker(HydrationCountTracker? replacement = null)
+  {
+    hydrationCountTracker?.Dispose();
+    hydrationCountTracker = replacement;
+  }
+
+  private void TryStartTracker()
+  {
+    if (hydrationCountTracker is not null)
+    {
+      return;
+    }
+
+    StartTracker();
+  }
+
+  private void StartTracker() => ClearTracker(new HydrationCountTracker(readModels.Length));
 
   private async Task TryProcess(StrongId strongId, StoredEventMetadata metadata, EventModelEvent @event)
   {
     try
     {
+      TryStartTracker();
       // Skip processing if the event is known to not be the last of the stream.
       if (fetcher
           .GetCachedStreamRevision(@event.GetStreamName(), strongId)

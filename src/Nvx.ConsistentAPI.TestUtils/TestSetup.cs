@@ -638,7 +638,8 @@ public class TestSetup : IAsyncDisposable
         new LoggingSettings
         {
           LogsFolder = settings.LogsFolder,
-          LogFileRollInterval = LogFileRollInterval.Day
+          LogFileRollInterval = LogFileRollInterval.Day,
+          LogLevel = LogLevel.Warning
         },
         "TestApiToolingApiKey",
         FrameworkFeatures.All,
