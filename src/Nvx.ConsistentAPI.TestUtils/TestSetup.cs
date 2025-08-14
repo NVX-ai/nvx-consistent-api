@@ -74,15 +74,15 @@ internal class ConsistencyStateMachine(string url)
 {
   private const int BaseDelayMilliseconds = 250;
   private const int MaxDelayMilliseconds = 15_000;
-  private readonly ConcurrentBag<Guid> testsAcknowledged = [];
+  private readonly ConcurrentDictionary<Guid, DateTime> testsAcknowledged = [];
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private DateTime lastConsistentAt = DateTime.MinValue;
-  private int testsWaiting;
+  private int TestsWaiting => testsAcknowledged.Count(kvp => DateTime.UtcNow.AddSeconds(-15) < kvp.Value);
 
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
     const int maxSteps = MaxDelayMilliseconds / BaseDelayMilliseconds;
-    var steps = Math.Min(maxSteps, 1 + testsWaiting);
+    var steps = Math.Min(maxSteps, 1 + TestsWaiting);
     var increment = Math.Max(1, steps);
     var minimumDelayMs = waitType switch
     {
@@ -97,11 +97,7 @@ internal class ConsistencyStateMachine(string url)
   public async Task WaitForConsistency(int timeout, ConsistencyWaitType type, Guid testId)
   {
     var startedAt = DateTime.UtcNow;
-    if (!testsAcknowledged.Contains(testId))
-    {
-      testsAcknowledged.Add(testId);
-      Interlocked.Increment(ref testsWaiting);
-    }
+    testsAcknowledged.AddOrUpdate(testId, DateTime.UtcNow, (_, _) => DateTime.UtcNow);
 
     var timer = Stopwatch.StartNew();
     while (timer.ElapsedMilliseconds < timeout && !await IsConsistent())

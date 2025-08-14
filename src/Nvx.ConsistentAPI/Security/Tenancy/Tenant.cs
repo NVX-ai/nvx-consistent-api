@@ -25,8 +25,7 @@ public record RenameTenant(Guid Id, string NewName) : EventModelCommand<Tenant>
     Option<Tenant> tenant,
     Option<UserSecurity> user,
     FileUpload[] files
-  ) =>
-    new ExistingStream(new TenantRenamed(Id, NewName));
+  ) => this.Require(tenant, _ => new ExistingStream(new TenantRenamed(Id, NewName)));
 
   public IEnumerable<string> Validate() => [];
 }
@@ -39,8 +38,7 @@ public record EnableTenant(Guid Id) : EventModelCommand<Tenant>
     Option<Tenant> tenant,
     Option<UserSecurity> user,
     FileUpload[] files
-  ) =>
-    new ExistingStream(new TenantEnabled(Id));
+  ) => this.Require(tenant, _ => new ExistingStream(new TenantEnabled(Id)));
 
   public IEnumerable<string> Validate() => [];
 }
@@ -53,8 +51,7 @@ public record DisableTenant(Guid Id) : EventModelCommand<Tenant>
     Option<Tenant> tenant,
     Option<UserSecurity> user,
     FileUpload[] files
-  ) =>
-    new ExistingStream(new TenantDisabled(Id));
+  ) => this.Require(tenant, _ => new ExistingStream(new TenantDisabled(Id)));
 
   public IEnumerable<string> Validate() => [];
 }

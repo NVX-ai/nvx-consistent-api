@@ -235,8 +235,10 @@ public class StandardFlowTest
       var tenant3Id = Guid.NewGuid();
       var tenant1Name = Guid.NewGuid().ToString();
       var tenant2Name = Guid.NewGuid().ToString();
+      var tenant3Name = Guid.NewGuid().ToString();
       await setup.Command(new CreateTenant(tenant1Id, tenant1Name), true);
       await setup.Command(new CreateTenant(tenant2Id, tenant2Name), true);
+      await setup.Command(new CreateTenant(tenant3Id, tenant3Name), true);
       await setup.Command(new AddToTenant(setup.Auth.CandoSub), true, tenant1Id);
       await setup.Command(new AddToTenant(setup.Auth.CandoSub), true, tenant2Id);
       await setup.Command(new AssignTenantPermission(setup.Auth.CandoSub, "banana"), true, tenant3Id);
@@ -257,7 +259,7 @@ public class StandardFlowTest
       var currentUser = await setup.CurrentUser();
       Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant1Id && td.TenantName == tenant1Name);
       Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
-      Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant3Id && td.TenantName == "");
+      Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant3Id && td.TenantName == tenant3Name);
       Assert.Equal("banana", currentUser.TenantPermissions[tenant3Id].First());
 
       var newTenant1Name = Guid.NewGuid().ToString();
@@ -268,7 +270,7 @@ public class StandardFlowTest
       await setup.Command(new RenameTenant(tenant1Id, newTenant1Name), true);
       await setup.Command(new RenameTenant(tenant3Id, newTenant3Name), true);
 
-      var canDoAfterRename = await setup.CurrentUser();
+      var canDoAfterRename = await setup.CurrentUser(waitType: ConsistencyWaitType.Medium);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
       Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant3Id && td.TenantName == newTenant3Name);
