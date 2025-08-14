@@ -47,10 +47,8 @@ public interface EventModelingReadModelArtifact : Endpoint
 
   Task ApplyTo(
     WebApplication app,
-    EventStoreClient esClient,
     EventStore<EventModelEvent> store,
     Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
     GeneratorSettings settings,
     ILogger logger);
@@ -188,7 +186,7 @@ public class EventModel
 
     foreach (var readModel in ReadModels)
     {
-      await readModel.ApplyTo(app, esClient, store, fetcher, parser, emitter, settings, logger);
+      await readModel.ApplyTo(app, store, fetcher, emitter, settings, logger);
     }
 
     runner.Initialize(RecurringTasks, fetcher, emitter, settings, logger);
@@ -364,7 +362,7 @@ public class EventModel
 
 public record EventWithMetadata<E>(
   E Event,
-  Position Revision,
+  ulong Revision,
   Guid EventId,
   EventMetadata Metadata) where E : EventModelEvent
 {

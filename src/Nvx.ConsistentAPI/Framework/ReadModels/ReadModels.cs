@@ -1,4 +1,3 @@
-using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
@@ -78,10 +77,8 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
   public async Task ApplyTo(
     WebApplication app,
-    EventStoreClient esClient,
     EventStore<EventModelEvent> store,
     Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
     GeneratorSettings settings,
     ILogger logger)
