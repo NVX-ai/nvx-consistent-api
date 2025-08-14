@@ -6,6 +6,7 @@ namespace Nvx.ConsistentAPI.Store.InMemory;
 
 public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 {
+  private const int TimesUntilCaughtUp = 500;
   private readonly List<StoredEvent> events = [];
   private readonly SemaphoreSlim semaphore = new(1, 1);
 
@@ -168,7 +169,8 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
     await semaphore.WaitAsync(cancellationToken);
-    var emittedCaughtUp = false;
+    ulong timesWithoutNewEvents = 0;
+    var emittedFellBehind = false;
     var currentGlobalPosition = request.Position ?? events.Select(se => se.Metadata.GlobalPosition).LastOrDefault();
     semaphore.Release();
     var lanes = request.Swimlanes ?? [];
@@ -198,19 +200,22 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 
       if (nextEvent is null)
       {
-        if (!emittedCaughtUp)
+        timesWithoutNewEvents =
+          timesWithoutNewEvents == ulong.MaxValue ? TimesUntilCaughtUp - 1 : timesWithoutNewEvents + 1;
+        emittedFellBehind = false;
+        if (timesWithoutNewEvents == TimesUntilCaughtUp)
         {
-          emittedCaughtUp = true;
           yield return new ReadAllMessage<EventInterface>.CaughtUp();
         }
 
-        await Task.Delay(5, cancellationToken);
+        await Task.Delay(50, cancellationToken);
         continue;
       }
 
-      if (nextEvents.Length > 1 && emittedCaughtUp)
+      if (nextEvents.Length > 1 && !emittedFellBehind)
       {
-        emittedCaughtUp = false;
+        emittedFellBehind = true;
+        timesWithoutNewEvents = 0;
         yield return new ReadAllMessage<EventInterface>.FellBehind();
       }
 
@@ -231,7 +236,8 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
     await semaphore.WaitAsync(cancellationToken);
-    var emittedCaughtUp = false;
+    ulong timesWithoutNewEvents = 0;
+    var emittedFellBehind = false;
     long? currentStreamPosition = request.IsFromStart
       ? null
       : events
@@ -268,9 +274,11 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 
       if (nextEvent is null)
       {
-        if (!emittedCaughtUp)
+        timesWithoutNewEvents =
+          timesWithoutNewEvents == ulong.MaxValue ? TimesUntilCaughtUp - 1 : timesWithoutNewEvents + 1;
+        emittedFellBehind = false;
+        if (timesWithoutNewEvents == TimesUntilCaughtUp)
         {
-          emittedCaughtUp = true;
           yield return new ReadStreamMessage<EventInterface>.CaughtUp();
         }
 
@@ -278,9 +286,10 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
         continue;
       }
 
-      if (nextEvents.Length > 1 && emittedCaughtUp)
+      if (nextEvents.Length > 1 && !emittedFellBehind)
       {
-        emittedCaughtUp = false;
+        emittedFellBehind = true;
+        timesWithoutNewEvents = 0;
         yield return new ReadStreamMessage<EventInterface>.FellBehind();
       }
 
