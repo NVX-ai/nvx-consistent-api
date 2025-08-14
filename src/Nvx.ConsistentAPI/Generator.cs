@@ -19,21 +19,6 @@ using Swashbuckle.AspNetCore.SwaggerGen;
 
 namespace Nvx.ConsistentAPI;
 
-public record GeneratorSettings(
-  string ReadModelConnectionString,
-  string EventStoreConnectionString,
-  string BlobStorageConnectionString,
-  SecurityKey[] JwtPublicKeys,
-  string AdminId,
-  string? AzureSignalRConnectionString,
-  Option<Action<WebApplicationBuilder>> BuilderCustomizations,
-  Option<Action<SwaggerGenOptions>> SwaggerCustomizations,
-  Option<Action<WebApplication>> AppCustomizations,
-  LoggingSettings LoggingSettings,
-  string ToolingEndpointsApiKey,
-  FrameworkFeatures EnabledFeatures = FrameworkFeatures.All,
-  int ParallelHydration = 25);
-
 // ReSharper disable once ClassNeverInstantiated.Global
 internal class AllOperationsFilter(EventModel model) : IOperationFilter
 {
