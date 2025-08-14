@@ -168,6 +168,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
     await semaphore.WaitAsync(cancellationToken);
+    var emittedCaughtUp = false;
     var currentGlobalPosition = request.Position ?? events.Select(se => se.Metadata.GlobalPosition).LastOrDefault();
     semaphore.Release();
     var lanes = request.Swimlanes ?? [];
@@ -183,20 +184,34 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       }
 
       await semaphore.WaitAsync(cancellationToken);
-      var nextEvent = events
+      var nextEvents = events
         .Where(se => se.Metadata.GlobalPosition > currentGlobalPosition)
         .Select(se => new ReadAllMessage<EventInterface>.AllEvent(
           se.Swimlane,
           se.StreamId,
           se.Event,
           se.Metadata))
-        .FirstOrDefault();
+        .ToArray();
       semaphore.Release();
+
+      var nextEvent = nextEvents.FirstOrDefault();
 
       if (nextEvent is null)
       {
+        if (!emittedCaughtUp)
+        {
+          emittedCaughtUp = true;
+          yield return new ReadAllMessage<EventInterface>.CaughtUp();
+        }
+
         await Task.Delay(5, cancellationToken);
         continue;
+      }
+
+      if (nextEvents.Length > 1 && emittedCaughtUp)
+      {
+        emittedCaughtUp = false;
+        yield return new ReadAllMessage<EventInterface>.FellBehind();
       }
 
       currentGlobalPosition = nextEvent.Metadata.GlobalPosition;
@@ -216,6 +231,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
     await semaphore.WaitAsync(cancellationToken);
+    var emittedCaughtUp = false;
     long? currentStreamPosition = request.IsFromStart
       ? null
       : events
@@ -236,7 +252,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       }
 
       await semaphore.WaitAsync(cancellationToken);
-      var nextEvent = events
+      var nextEvents = events
         .Where(se => se.StreamId == request.Id)
         .Where(se => se.Swimlane == request.Swimlane)
         .Where(se => se.Metadata.StreamPosition > currentStreamPosition || currentStreamPosition == null)
@@ -245,13 +261,27 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           se.StreamId,
           se.Event,
           se.Metadata))
-        .FirstOrDefault();
+        .ToArray();
       semaphore.Release();
+
+      var nextEvent = nextEvents.FirstOrDefault();
 
       if (nextEvent is null)
       {
+        if (!emittedCaughtUp)
+        {
+          emittedCaughtUp = true;
+          yield return new ReadStreamMessage<EventInterface>.CaughtUp();
+        }
+
         await Task.Delay(5, cancellationToken);
         continue;
+      }
+
+      if (nextEvents.Length > 1 && emittedCaughtUp)
+      {
+        emittedCaughtUp = false;
+        yield return new ReadStreamMessage<EventInterface>.FellBehind();
       }
 
       currentStreamPosition = nextEvent.Metadata.StreamPosition;
