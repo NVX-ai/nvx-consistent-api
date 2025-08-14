@@ -1,12 +1,10 @@
 using System.Collections.ObjectModel;
-using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Nvx.ConsistentAPI.Framework.Projections;
 using Nvx.ConsistentAPI.Framework.StaticEndpoints;
 using Nvx.ConsistentAPI.InternalTooling;
-using Nvx.ConsistentAPI.Store.EventStoreDB;
 using Nvx.ConsistentAPI.Store.Store;
 using HashCode = System.HashCode;
 
@@ -151,7 +149,11 @@ public class EventModel
       InterestTriggers = InterestTriggers.Concat(other.InterestTriggers).ToArray()
     };
 
-  public async Task ApplyTo(WebApplication app, GeneratorSettings settings, ILogger logger, EventStoreDbStore store)
+  public async Task ApplyTo(
+    WebApplication app,
+    GeneratorSettings settings,
+    ILogger logger,
+    EventStore<EventModelEvent> store)
   {
     var emitter = new Emitter(store, logger);
 

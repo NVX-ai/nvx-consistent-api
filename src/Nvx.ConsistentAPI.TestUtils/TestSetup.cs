@@ -628,7 +628,7 @@ public class TestSetup : IAsyncDisposable
       sitePort,
       new GeneratorSettings(
         sqlCs,
-        esCs,
+        new EventStoreSettings.EventStoreDb(esCs),
         azuriteConnectionString,
         CreateTestSecurityKey(),
         GetTestUser("admin").Sub,

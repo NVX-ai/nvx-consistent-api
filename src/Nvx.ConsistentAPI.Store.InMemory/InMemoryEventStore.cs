@@ -6,19 +6,16 @@ namespace Nvx.ConsistentAPI.Store.InMemory;
 
 public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 {
-  // It is static so if it's instanced anywhere else in the system, the state is shared, this is meant to simulate
-  // storage.
-  private static readonly List<StoredEvent> Events = [];
-  // ReSharper disable once StaticMemberInGenericType
-  private static readonly SemaphoreSlim Semaphore = new(1, 1);
+  private readonly List<StoredEvent> events = [];
+  private readonly SemaphoreSlim semaphore = new(1, 1);
 
   public Task Initialize(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
   public AsyncResult<InsertionSuccess, InsertionFailure> Insert(InsertionPayload<EventInterface> payload)
   {
-    Semaphore.Wait();
-    var latestGlobalPosition = Events.Select(se => se.Metadata.GlobalPosition).LastOrDefault();
-    var latestStreamPosition = Events
+    semaphore.Wait();
+    var latestGlobalPosition = events.Select(se => se.Metadata.GlobalPosition).LastOrDefault();
+    var latestStreamPosition = events
       .LastOrDefault(se => se.StreamId == payload.StreamId && se.Swimlane == payload.Swimlane)
       ?.Metadata.StreamPosition;
 
@@ -26,16 +23,16 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
         || (payload.InsertionType is ExistingStream && latestStreamPosition == 0)
         || (payload.InsertionType is InsertAfter(var after) && after != latestStreamPosition))
     {
-      Semaphore.Release();
+      semaphore.Release();
       return new InsertionFailure.ConsistencyCheckFailed();
     }
 
     var nonExistingEvents =
       from insertion in payload.Insertions
-      where Events.All(e => e.Metadata.EventId != insertion.Metadata.EventId)
+      where events.All(e => e.Metadata.EventId != insertion.Metadata.EventId)
       select insertion;
 
-    Events.AddRange(
+    events.AddRange(
       from tuple in nonExistingEvents.Select((t, i) => (t, i: (long)i))
       let evt = tuple.t.Event
       let md = tuple.t.Metadata
@@ -54,9 +51,9 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           (latestStreamPosition ?? 0) + index + (latestStreamPosition.HasValue ? 1L : 0))));
 
     var success = new InsertionSuccess(
-      Events.Select(e => e.Metadata.GlobalPosition).LastOrDefault(),
-      Events.Select(e => e.Metadata.StreamPosition).LastOrDefault());
-    Semaphore.Release();
+      events.Select(e => e.Metadata.GlobalPosition).LastOrDefault(),
+      events.Select(e => e.Metadata.StreamPosition).LastOrDefault());
+    semaphore.Release();
     return success;
   }
 
@@ -66,12 +63,12 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
   {
     try
     {
-      await Semaphore.WaitAsync(cancellationToken);
+      await semaphore.WaitAsync(cancellationToken);
       yield return new ReadAllMessage<EventInterface>.ReadingStarted();
       ulong? index = request.Relative switch
       {
         RelativePosition.Start => 0,
-        RelativePosition.End => (ulong)Events.Count,
+        RelativePosition.End => (ulong)events.Count,
         _ => request.Direction switch
         {
           ReadDirection.Backwards => request.Position - 1,
@@ -82,7 +79,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       ulong? edge = request.Direction switch
       {
         ReadDirection.Backwards => null,
-        _ => (ulong)Events.Count + 1
+        _ => (ulong)events.Count + 1
       };
 
       var lanes = request.Swimlanes ?? [];
@@ -90,7 +87,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 
       while (index != edge)
       {
-        var storedEvent = Events.FirstOrDefault(e => e.Metadata.GlobalPosition == index);
+        var storedEvent = events.FirstOrDefault(e => e.Metadata.GlobalPosition == index);
         index = request.Direction switch
         {
           ReadDirection.Backwards => index == 0 ? null : index - 1,
@@ -116,7 +113,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     }
     finally
     {
-      Semaphore.Release();
+      semaphore.Release();
     }
   }
 
@@ -124,11 +121,11 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     ReadStreamRequest request,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    await Semaphore.WaitAsync(cancellationToken);
+    await semaphore.WaitAsync(cancellationToken);
     try
     {
       yield return new ReadStreamMessage<EventInterface>.ReadingStarted();
-      var streamEvents = Events
+      var streamEvents = events
         .Where(se => se.StreamId == request.Id)
         .Where(se => se.Swimlane == request.Swimlane);
 
@@ -161,7 +158,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     }
     finally
     {
-      Semaphore.Release();
+      semaphore.Release();
     }
   }
 
@@ -169,13 +166,13 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     SubscribeAllRequest request = default,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var currentGlobalPosition = request.Position ?? Events.Select(se => se.Metadata.GlobalPosition).LastOrDefault();
+    var currentGlobalPosition = request.Position ?? events.Select(se => se.Metadata.GlobalPosition).LastOrDefault();
     var lanes = request.Swimlanes ?? [];
     var hasSwimlanes = lanes.Length > 0;
     var hasStarted = false;
     while (true)
     {
-      await Semaphore.WaitAsync(cancellationToken);
+      await semaphore.WaitAsync(cancellationToken);
       try
       {
         if (!hasStarted)
@@ -184,7 +181,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           hasStarted = true;
         }
 
-        var nextEvent = Events
+        var nextEvent = events
           .Where(se => se.Metadata.GlobalPosition > currentGlobalPosition)
           .Select(se => new ReadAllMessage<EventInterface>.AllEvent(
             se.Swimlane,
@@ -210,7 +207,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       }
       finally
       {
-        Semaphore.Release();
+        semaphore.Release();
       }
     }
     // ReSharper disable once IteratorNeverReturns
@@ -222,7 +219,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
   {
     long? currentStreamPosition = request.IsFromStart
       ? null
-      : Events
+      : events
         .Where(se => se.StreamId == request.Id)
         .Where(se => se.Swimlane == request.Swimlane)
         .Select(se => se.Metadata.StreamPosition)
@@ -232,7 +229,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 
     while (true)
     {
-      await Semaphore.WaitAsync(cancellationToken);
+      await semaphore.WaitAsync(cancellationToken);
       try
       {
         if (!hasStarted)
@@ -241,7 +238,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           hasStarted = true;
         }
 
-        var nextEvent = Events
+        var nextEvent = events
           .Where(se => se.StreamId == request.Id)
           .Where(se => se.Swimlane == request.Swimlane)
           .Where(se => se.Metadata.StreamPosition > currentStreamPosition || currentStreamPosition == null)
@@ -263,7 +260,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       }
       finally
       {
-        Semaphore.Release();
+        semaphore.Release();
       }
     }
     // ReSharper disable once IteratorNeverReturns
@@ -271,14 +268,14 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 
   public async Task TruncateStream(string swimlane, StrongId id, long truncateBefore)
   {
-    await Semaphore.WaitAsync();
+    await semaphore.WaitAsync();
     try
     {
-      Events.RemoveAll(e => e.Swimlane == swimlane && e.StreamId == id && e.Metadata.StreamPosition < truncateBefore);
+      events.RemoveAll(e => e.Swimlane == swimlane && e.StreamId == id && e.Metadata.StreamPosition < truncateBefore);
     }
     finally
     {
-      Semaphore.Release();
+      semaphore.Release();
     }
   }
 

@@ -34,7 +34,7 @@ var app = await Generator.GetWebApp(
   null,
   new GeneratorSettings(
     sqlConnectionString,
-    eventStoreConnectionString,
+    new EventStoreSettings.EventStoreDb(eventStoreConnectionString),
     blobConnectionString,
     await GetPublicKeysAsync(),
     adminSubjectId,

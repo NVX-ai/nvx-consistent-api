@@ -6,7 +6,7 @@ namespace Nvx.ConsistentAPI;
 
 public record GeneratorSettings(
   string ReadModelConnectionString,
-  string EventStoreConnectionString,
+  EventStoreSettings EventStoreSettings,
   string BlobStorageConnectionString,
   SecurityKey[] JwtPublicKeys,
   string AdminId,

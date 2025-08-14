@@ -11,6 +11,8 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.Store.EventStoreDB;
+using Nvx.ConsistentAPI.Store.InMemory;
+using Nvx.ConsistentAPI.Store.Store;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
@@ -195,7 +197,9 @@ public static class Generator
       });
     }
 
-    var store = new EventStoreDbStore(settings.EventStoreConnectionString);
+    var store = settings.EventStoreSettings.Match(
+      EventStore<EventModelEvent> () => new InMemoryEventStore<EventModelEvent>(),
+      esDb => new EventStoreDbStore(esDb.ConnectionString));
     await store.Initialize();
 
     builder
