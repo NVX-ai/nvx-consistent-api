@@ -17,7 +17,7 @@ public static class Initializer
             .GetEnvironmentVariable("TEST_EVENT_STORE_TYPE")
             ?.ToLowerInvariant() switch
           {
-            "inMemory" => EventStoreType.InMemory,
+            "inmemory" => EventStoreType.InMemory,
             _ => EventStoreType.EventStoreDb
           }
     });
