@@ -310,7 +310,16 @@ internal class ReadModelHydrationDaemon(
             [StrongIdTypeName],
             [Swimlane]
           ) VALUES (
-            @StreamName, @EventId, @EventType, @HappenedAt, @ErrorMessage, @NextRetryFrom
+            @StreamName,
+            @EventId,
+            @EventType,
+            @HappenedAt,
+            @ErrorMessage,
+            @NextRetryFrom,
+            @SerializedId,
+            @StrongIdTypeNamespace,
+            @StrongIdTypeName,
+            @Swimlane
           )
           """,
           new
