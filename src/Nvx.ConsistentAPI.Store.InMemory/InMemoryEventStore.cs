@@ -27,7 +27,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           || (payload.InsertionType is ExistingStream && latestStreamPosition == null)
           || (payload.InsertionType is InsertAfter(var after) && after != latestStreamPosition))
       {
-        semaphore.Release();
+        SafeRelease();
         return new InsertionFailure.ConsistencyCheckFailed();
       }
 
@@ -54,14 +54,14 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
             latestGlobalPosition + (ulong)index + 1UL,
             (latestStreamPosition ?? 0) + index + (latestStreamPosition.HasValue ? 1L : 0))));
 
-      semaphore.Release();
+      SafeRelease();
       return new InsertionSuccess(
         events.Select(e => e.Metadata.GlobalPosition).LastOrDefault(),
         events.Select(e => e.Metadata.StreamPosition).LastOrDefault());
     }
     catch
     {
-      semaphore.Release();
+      SafeRelease();
       return new InsertionFailure.InsertionFailed();
     }
   }
@@ -88,7 +88,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       ReadDirection.Backwards => null,
       _ => (ulong)events.Count + 1
     };
-    semaphore.Release();
+    SafeRelease();
 
     var lanes = request.Swimlanes ?? [];
     var hasSwimlanes = lanes.Length > 0;
@@ -97,7 +97,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     {
       await semaphore.WaitAsync(cancellationToken);
       var storedEvent = events.FirstOrDefault(e => e.Metadata.GlobalPosition == index);
-      semaphore.Release();
+      SafeRelease();
       index = request.Direction switch
       {
         ReadDirection.Backwards => index == 0 ? null : index - 1,
@@ -133,7 +133,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
       .Where(se => se.StreamId == request.Id)
       .Where(se => se.Swimlane == request.Swimlane)
       .ToArray();
-    semaphore.Release();
+    SafeRelease();
 
     var orderedEvents = request.Direction switch
     {
@@ -167,35 +167,55 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     SubscribeAllRequest request = default,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    await semaphore.WaitAsync(cancellationToken);
     ulong timesWithoutNewEvents = 0;
     var emittedFellBehind = false;
-    var currentGlobalPosition = request.Position ?? events.Select(se => se.Metadata.GlobalPosition).LastOrDefault();
-    semaphore.Release();
+    var currentGlobalPosition = 0UL;
+    try
+    {
+      await semaphore.WaitAsync(cancellationToken);
+      currentGlobalPosition = request.Position ?? events.Select(se => se.Metadata.GlobalPosition).LastOrDefault();
+    }
+    catch
+    {
+      // ignore
+    }
+
+    SafeRelease();
+
     var lanes = request.Swimlanes ?? [];
     var hasSwimlanes = lanes.Length > 0;
     var hasStarted = false;
     while (true)
     {
-      // await semaphore.WaitAsync(cancellationToken);
       if (!hasStarted)
       {
         yield return new ReadAllMessage<EventInterface>.ReadingStarted();
         hasStarted = true;
       }
 
-      await semaphore.WaitAsync(cancellationToken);
-      var nextEvents = events
-        .Where(se => se.Metadata.GlobalPosition > currentGlobalPosition)
+      StoredEvent[] nextEvents = [];
+      try
+      {
+        await semaphore.WaitAsync(cancellationToken);
+        nextEvents = events
+          .Where(se => se.Metadata.GlobalPosition > currentGlobalPosition)
+          .ToArray();
+      }
+      catch
+      {
+        // ignored
+      }
+
+      SafeRelease();
+
+      var nextEvent = nextEvents
+        .Take(1)
         .Select(se => new ReadAllMessage<EventInterface>.AllEvent(
           se.Swimlane,
           se.StreamId,
           se.Event,
           se.Metadata))
-        .ToArray();
-      semaphore.Release();
-
-      var nextEvent = nextEvents.FirstOrDefault();
+        .FirstOrDefault();
 
       if (nextEvent is null)
       {
@@ -244,7 +264,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
         .Where(se => se.Swimlane == request.Swimlane)
         .Select(se => se.Metadata.StreamPosition)
         .LastOrDefault();
-    semaphore.Release();
+    SafeRelease();
 
     var hasStarted = false;
 
@@ -267,7 +287,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           se.Event,
           se.Metadata))
         .ToArray();
-      semaphore.Release();
+      SafeRelease();
 
       var nextEvent = nextEvents.FirstOrDefault();
 
@@ -307,7 +327,19 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
     }
     finally
     {
+      SafeRelease();
+    }
+  }
+
+  private void SafeRelease()
+  {
+    try
+    {
       semaphore.Release();
+    }
+    catch
+    {
+      //ignore
     }
   }
 
