@@ -6,7 +6,8 @@ namespace Nvx.ConsistentAPI.Store.InMemory;
 
 public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
 {
-  private const int TimesUntilCaughtUp = 500;
+  private const int TimesUntilCaughtUp = 200;
+  private const int DelayPollingSubscriptions = 10;
   private readonly List<StoredEvent> events = [];
   private readonly SemaphoreSlim semaphore = new(1, 1);
 
@@ -160,8 +161,6 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           break;
       }
     }
-
-    // semaphore.Release();
   }
 
   public async IAsyncEnumerable<ReadAllMessage<EventInterface>> Subscribe(
@@ -208,7 +207,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           yield return new ReadAllMessage<EventInterface>.CaughtUp();
         }
 
-        await Task.Delay(50, cancellationToken);
+        await Task.Delay(DelayPollingSubscriptions, cancellationToken);
         continue;
       }
 
@@ -282,7 +281,7 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
           yield return new ReadStreamMessage<EventInterface>.CaughtUp();
         }
 
-        await Task.Delay(5, cancellationToken);
+        await Task.Delay(DelayPollingSubscriptions, cancellationToken);
         continue;
       }
 

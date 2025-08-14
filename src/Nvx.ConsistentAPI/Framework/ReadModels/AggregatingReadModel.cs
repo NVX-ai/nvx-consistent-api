@@ -142,7 +142,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
     if (position is null)
     {
-      return SyncState.HasReachedEndOnce && isCaughtUp;
+      return SyncState.HasReachedEndOnce && SyncState.LastSync < DateTime.UtcNow.AddSeconds(5);
     }
 
     if (position <= SyncState.LastPosition)
