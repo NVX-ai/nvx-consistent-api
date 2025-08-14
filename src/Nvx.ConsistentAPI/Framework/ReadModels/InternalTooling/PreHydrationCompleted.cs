@@ -10,6 +10,7 @@ internal static class PreHydrationCompleted
 
   internal static void Endpoint(
     EventModelingReadModelArtifact[] readModels,
+    ReadModelHydrationDaemon centralDaemon,
     GeneratorSettings settings,
     Fetcher fetcher,
     Emitter emitter,
@@ -79,7 +80,7 @@ internal static class PreHydrationCompleted
         return true;
       }
 
-      var isCaughtUp = readModels.All(rm => rm.IsUpToDate());
+      var isCaughtUp = readModels.All(rm => rm.IsUpToDate()) && centralDaemon.IsUpToDate(null);
       if (isCaughtUp)
       {
         hydratedAt = DateTime.UtcNow;

@@ -43,9 +43,9 @@ public class Fetcher
     this.fetchers = fetchers.ToArray();
   }
 
-  internal Option<long> GetCachedStreamRevision(StrongId id) =>
+  internal Option<long> GetCachedStreamRevision(string streamName, StrongId id) =>
     fetchers
-      .SingleOrNone(f => f.CanProcessStream(id.StreamId()))
+      .SingleOrNone(f => f.CanProcessStream(streamName))
       .Bind(f => f.GetCachedStreamRevision(id));
 
   internal Option<ulong> GetCachedGlobalPosition(StrongId id) =>
