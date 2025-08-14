@@ -153,9 +153,7 @@ public class EventModel
 
   public async Task ApplyTo(WebApplication app, GeneratorSettings settings, ILogger logger, EventStoreDbStore store)
   {
-    var esClient = new EventStoreClient(EventStoreClientSettings.Create(settings.EventStoreConnectionString));
     var emitter = new Emitter(store, logger);
-    var parser = Parser();
 
     var swimlaneLookup =
       new ReadOnlyDictionary<Type, string>(Entities.ToDictionary(e => e.EntityType, e => e.StreamPrefix));
@@ -272,44 +270,6 @@ public class EventModel
             .Emit(() => new AnyState(new ApplicationPermissionAssigned(settings.AdminId, "admin")))
             .Async()
             .Map(_ => unit);
-    }
-  }
-
-  private static Func<ResolvedEvent, Option<EventModelEvent>> Compose(
-    params (string eventTypeName, Func<ResolvedEvent, Option<EventModelEvent>> parser)[] parsers
-  )
-  {
-    var parsersDictionary = parsers.ToDictionary(tpl => tpl.eventTypeName, tpl => tpl.parser);
-    return re => parsersDictionary.TryGetValue(re.Event.EventType, out var parser) ? parser(re) : None;
-  }
-
-  private static Func<ResolvedEvent, Option<EventModelEvent>> Parser()
-  {
-    return AllEventModelEventShapes().Select(ParserBuilder.Build).ToArray().Apply(Compose);
-
-    static IEnumerable<Type> AllEventModelEventShapes()
-    {
-      var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-      var result = new HashSet<Type>();
-
-      foreach (var assembly in assemblies)
-      {
-        // There is a bug with the test runner that prevents loading some types
-        // from system data while running tests.
-        if (assembly.FullName?.StartsWith("System.Data.") ?? false)
-        {
-          continue;
-        }
-
-        var types = assembly.GetTypes().Where(t => t.GetInterfaces().Contains(typeof(EventModelEvent)) && t.IsClass);
-
-        foreach (var type in types)
-        {
-          result.Add(type);
-        }
-      }
-
-      return result;
     }
   }
 
