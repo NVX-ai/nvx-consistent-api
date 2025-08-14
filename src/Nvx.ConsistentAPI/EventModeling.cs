@@ -149,7 +149,7 @@ public class EventModel
       InterestTriggers = InterestTriggers.Concat(other.InterestTriggers).ToArray()
     };
 
-  public async Task ApplyTo(
+  public async Task<Fetcher> ApplyTo(
     WebApplication app,
     GeneratorSettings settings,
     ILogger logger,
@@ -244,7 +244,7 @@ public class EventModel
       projectionDaemon,
       logger);
 
-    return;
+    return fetcher;
 
     static async Task TryActivateAdmin(Fetcher fetcher, GeneratorSettings settings, Emitter emitter)
     {

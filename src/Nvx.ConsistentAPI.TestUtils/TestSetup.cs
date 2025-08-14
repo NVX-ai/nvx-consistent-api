@@ -17,6 +17,8 @@ using Microsoft.IdentityModel.Tokens;
 using Nvx.ConsistentAPI.Framework;
 using Nvx.ConsistentAPI.InternalTooling;
 using Nvx.ConsistentAPI.Store.Events;
+using Nvx.ConsistentAPI.Store.EventStoreDB;
+using Nvx.ConsistentAPI.Store.Store;
 using Testcontainers.Azurite;
 using Testcontainers.EventStoreDb;
 using Testcontainers.MsSql;
@@ -45,7 +47,7 @@ internal static class InstanceTracking
       return new TestSetup(
         h.Url,
         h.Auth,
-        h.EventStoreClient,
+        h.Store,
         h.Model,
         testSettings.WaitForCatchUpTimeout,
         h.ConsistencyStateMachine);
@@ -58,7 +60,7 @@ internal static class InstanceTracking
     return new TestSetup(
       holder.Url,
       holder.Auth,
-      holder.EventStoreClient,
+      holder.Store,
       holder.Model,
       testSettings.WaitForCatchUpTimeout,
       holder.ConsistencyStateMachine);
@@ -167,7 +169,7 @@ internal class ConsistencyStateMachine(string url)
 internal record TestSetupHolder(
   string Url,
   TestAuth Auth,
-  EventStoreClient EventStoreClient,
+  EventStore<EventModelEvent> Store,
   EventModel Model,
   int Count,
   ILogger Logger,
@@ -200,7 +202,7 @@ public class TestSetup : IAsyncDisposable
   internal TestSetup(
     string url,
     TestAuth auth,
-    EventStoreClient eventStoreClient,
+    EventStore<EventModelEvent> store,
     EventModel model,
     int waitForCatchUpTimeout,
     ConsistencyStateMachine consistencyStateMachine)
@@ -208,14 +210,14 @@ public class TestSetup : IAsyncDisposable
     Url = url;
     this.waitForCatchUpTimeout = waitForCatchUpTimeout;
     Auth = auth;
-    EventStoreClient = eventStoreClient;
+    Store = store;
     Model = model;
     this.consistencyStateMachine = consistencyStateMachine;
   }
 
   public string Url { get; }
   public TestAuth Auth { get; private set; }
-  public EventStoreClient EventStoreClient { get; }
+  public EventStore<EventModelEvent> Store { get; }
   public EventModel Model { get; }
 
   public async ValueTask DisposeAsync()
@@ -239,27 +241,13 @@ public class TestSetup : IAsyncDisposable
             new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
           ])));
 
-  private static IEnumerable<EventData> ToEventData(IEnumerable<EventModelEvent> events, EventContext? context) =>
-    events.Select(e =>
-      new EventData(
-        Uuid.NewUuid(),
-        e.EventType,
-        e.ToBytes(),
-        new EventMetadata(
-            DateTime.UtcNow,
-            context?.CorrelationId,
-            context?.CausationId,
-            context?.RelatedUserSub,
-            null,
-            null)
-          .ToBytes()
-      ));
-
-  public async Task InsertEvents(params EventModelEvent[] evt) =>
-    await EventStoreClient.AppendToStreamAsync(
-      evt.GroupBy(e => e.GetStreamName()).Single().Key,
-      StreamState.Any,
-      ToEventData(evt, null));
+  public async Task InsertEvents(params EventModelEvent[] evt)
+  {
+    var firstEvent = evt.GroupBy(e => e.GetStreamName()).Single().First();
+    var swimlane = firstEvent.GetSwimLane();
+    var id = firstEvent.GetEntityId();
+    await Store.Insert(new InsertionPayload<EventModelEvent>(swimlane, id, evt));
+  }
 
   /// <summary>
   ///   Waits for the system to be in a consistent state.
@@ -481,7 +469,7 @@ public class TestSetup : IAsyncDisposable
       .PostAsync(requestContent);
   }
 
-  private static async Task<(EventStoreClient client, string esCs)> AwaitEventStore(TestSettings settings)
+  private static async Task<(EventStore<EventModelEvent> store, string esCs)> AwaitEventStore(TestSettings settings)
   {
     var builder = new EventStoreDbBuilder()
       .WithImage(settings.EsDbImage)
@@ -512,7 +500,7 @@ public class TestSetup : IAsyncDisposable
       {
         await Task.Delay(25);
         _ = await client.ReadStreamAsync(Direction.Forwards, "meh", StreamPosition.Start).ReadState;
-        return (client, esCs);
+        return (new EventStoreDbStore(esCs), esCs);
       }
       catch (Exception)
       {
@@ -591,13 +579,13 @@ public class TestSetup : IAsyncDisposable
 
     try
     {
+      return Go(GetRandomPort());
+
       int Go(int pn)
       {
         var isTaken = GetConnectionInfo().Any(ci => ci.LocalEndPoint.Port == pn);
         return isTaken ? Go(GetRandomPort()) : pn;
       }
-
-      return Go(GetRandomPort());
     }
     finally
     {
@@ -660,10 +648,10 @@ public class TestSetup : IAsyncDisposable
     return new TestSetupHolder(
       baseUrl,
       new TestAuth(GetTestUser("admin").Sub, GetTestUser("cando").Sub, n => GetTestUser(n).Sub),
-      eventStoreClient,
+      app.Store,
       model,
       1,
-      app.Services.GetRequiredService<ILogger<TestSetup>>(),
+      app.WebApplication.Services.GetRequiredService<ILogger<TestSetup>>(),
       new ConsistencyStateMachine(baseUrl));
   }
 

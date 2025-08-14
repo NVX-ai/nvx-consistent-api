@@ -168,7 +168,7 @@ public static class Generator
   /// <param name="eventModel">The event model for the application.</param>
   /// <param name="corsOrigins">The allowed CORS origins.</param>
   /// <returns>A Task that results in a ConsistentApp instance.</returns>
-  public static async Task<WebApplication> GetWebApp(
+  public static async Task<ConsistentApplication> GetWebApp(
     int? port,
     GeneratorSettings settings,
     EventModel eventModel,
@@ -376,7 +376,7 @@ public static class Generator
 
     var logger = app.Services.GetRequiredService<ILogger<WebApplication>>();
 
-    await merged.ApplyTo(app, settings, logger, store);
+    var fetcher = await merged.ApplyTo(app, settings, logger, store);
 
     settings.AppCustomizations.Iter(c => c(app));
 
@@ -409,7 +409,7 @@ public static class Generator
       });
     });
     app.UseSwaggerUI();
-    return app;
+    return new ConsistentApplication(app, store, fetcher);
 
     LogEventLevel Map(LogLevel level) => level switch
     {
