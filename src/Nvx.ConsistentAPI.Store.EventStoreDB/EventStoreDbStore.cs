@@ -79,6 +79,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       {
         switch (msg)
         {
+          case StreamMessage.SubscriptionConfirmation:
           case StreamMessage.Ok:
             yield return new ReadAllMessage<EventModelEvent>.ReadingStarted();
             break;
@@ -107,6 +108,12 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
             yield return new ReadAllMessage<EventModelEvent>.Checkpoint(pos.CommitPosition);
+            break;
+          case StreamMessage.CaughtUp:
+            yield return new ReadAllMessage<EventModelEvent>.CaughtUp();
+            break;
+          case StreamMessage.FellBehind:
+            yield return new ReadAllMessage<EventModelEvent>.FellBehind();
             break;
         }
       }
@@ -153,6 +160,10 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       {
         switch (msg)
         {
+          case StreamMessage.SubscriptionConfirmation:
+          case StreamMessage.Ok:
+            yield return new ReadStreamMessage<EventModelEvent>.ReadingStarted();
+            break;
           case StreamMessage.Event(var re):
             yield return parser(re)
               .Match(
@@ -172,6 +183,12 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
             yield return new ReadStreamMessage<EventModelEvent>.Checkpoint(pos.CommitPosition);
+            break;
+          case StreamMessage.FellBehind:
+            yield return new ReadStreamMessage<EventModelEvent>.FellBehind();
+            break;
+          case StreamMessage.CaughtUp:
+            yield return new ReadStreamMessage<EventModelEvent>.CaughtUp();
             break;
         }
       }
@@ -199,6 +216,8 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
       yield return message;
     }
 
+    yield break;
+
     async IAsyncEnumerable<ReadAllMessage<EventModelEvent>> DoRead()
     {
       await foreach (var msg in client
@@ -211,6 +230,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
         switch (msg)
         {
           case StreamMessage.Ok:
+          case StreamMessage.SubscriptionConfirmation:
             yield return new ReadAllMessage<EventModelEvent>.ReadingStarted();
             break;
           case StreamMessage.Event(var re):
@@ -232,6 +252,12 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
           case StreamMessage.AllStreamCheckpointReached(var pos):
             yield return new ReadAllMessage<EventModelEvent>.Checkpoint(pos.CommitPosition);
             break;
+          case StreamMessage.CaughtUp:
+            yield return new ReadAllMessage<EventModelEvent>.CaughtUp();
+            break;
+          case StreamMessage.FellBehind:
+            yield return new ReadAllMessage<EventModelEvent>.FellBehind();
+            break;
         }
       }
     }
@@ -247,6 +273,8 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     {
       yield return message;
     }
+
+    yield break;
 
     async IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> DoRead()
     {

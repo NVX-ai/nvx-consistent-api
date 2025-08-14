@@ -19,4 +19,8 @@ public abstract record ReadStreamMessage<EventInterface>
   public record Checkpoint(ulong GlobalPosition) : ReadStreamMessage<EventInterface>;
 
   public record Terminated(Exception Exception) : ReadStreamMessage<EventInterface>;
+
+  public record FellBehind : ReadStreamMessage<EventInterface>;
+
+  public record CaughtUp : ReadStreamMessage<EventInterface>;
 }
