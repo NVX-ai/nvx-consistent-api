@@ -263,7 +263,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                       holder.Etag = IdempotentUuid.Generate(evt.Event.Position.ToString()).ToString();
                     }
 
-                    await databaseHandler.UpdateCheckpoint(connection, evt.Event.Position.ToString(), transaction);
+                    await databaseHandler.UpdateCheckpoint(connection, evt.Event.Position.CommitPosition, transaction);
                     lastProcessedEventPosition = evt.Event.Position.CommitPosition;
                     await transaction.CommitAsync(SubCancelSource.Token);
 
@@ -291,7 +291,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
             {
               if (SyncState.LastSync < DateTime.UtcNow.AddSeconds(-syncDelay))
               {
-                await databaseHandler.UpdateCheckpoint(FromAll.After(pos).ToString());
+                await databaseHandler.UpdateCheckpoint(pos.CommitPosition);
                 SyncState = SyncState with { LastPosition = pos.CommitPosition, LastSync = DateTime.UtcNow };
                 lastProcessedEventPosition = pos.CommitPosition;
                 currentCheckpointPosition = pos.CommitPosition;

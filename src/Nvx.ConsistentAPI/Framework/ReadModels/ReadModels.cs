@@ -114,7 +114,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
     FoundEntity foundEntity,
     DatabaseHandlerFactory dbFactory,
     StrongId entityId,
-    string? checkpoint,
+    ulong? checkpoint,
     ILogger logger)
   {
     if (foundEntity is FoundEntity<EntityShape> thisEntity)
@@ -176,27 +176,34 @@ public class ReadModelDefinition<Shape, EntityShape> :
         var checkpoint = await databaseHandler.Checkpoint();
         lastProcessedEventPosition = lastCheckpointPosition = checkpoint;
 
+        string[] swimlanes = [StreamPrefix, $"{InterestedEntityEntity.StreamPrefix}{StreamPrefix}"];
+        var request = checkpoint.HasValue
+          ? ReadAllRequest.Before(
+            checkpoint.Value,
+            swimlanes)
+          : ReadAllRequest.End(swimlanes);
+
         var read = client.ReadAllAsync(
           Direction.Backwards,
           checkpoint is null ? Position.End : new Position(checkpoint.Value, checkpoint.Value),
           StreamFilter.Prefix(StreamPrefix, $"{InterestedEntityEntity.StreamPrefix}{StreamPrefix}"));
 
-        await foreach (var message in read.Messages)
+        await foreach (var message in store.Read(request))
         {
           switch (message)
           {
-            case StreamMessage.Event(var evt):
+            case ReadAllMessage<EventModelEvent>.AllEvent evt:
             {
-              if (streams.TryGetValue(evt.Event.EventStreamId, out var _))
+              if (streams.TryGetValue(evt.Event.GetStreamName(), out var _))
               {
-                lastProcessedEventPosition = evt.Event.Position.CommitPosition;
+                lastProcessedEventPosition = evt.Metadata.GlobalPosition;
                 continue;
               }
 
               await Handle(evt);
-              lastProcessedEventPosition = evt.Event.Position.CommitPosition;
+              lastProcessedEventPosition = evt.Metadata.GlobalPosition;
 
-              streams[evt.Event.EventStreamId] = DateTime.UtcNow;
+              streams[evt.Event.GetStreamName()] = DateTime.UtcNow;
               if (streams.Count > streamCacheSize - 1)
               {
                 foreach (var key in streams
@@ -211,10 +218,10 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
               break;
             }
-            case StreamMessage.AllStreamCheckpointReached(var pos):
+            case ReadAllMessage<EventModelEvent>.Checkpoint(var pos):
             {
-              await databaseHandler.UpdateCheckpoint(FromAll.After(pos).ToString());
-              lastCheckpointPosition = pos.CommitPosition;
+              await databaseHandler.UpdateCheckpoint(pos);
+              lastCheckpointPosition = pos;
               break;
             }
           }
@@ -232,73 +239,72 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
     return;
 
-    async Task Handle(ResolvedEvent re)
+    async Task Handle(ReadAllMessage<EventModelEvent>.AllEvent ae)
     {
       var attemptsMade = 0;
       while (true)
       {
         try
         {
-          await parser(re)
-            .Match(
-              async me =>
-              {
-                if (ReadModelHydrationDaemon.IsInterestEvent(me))
+          var me = ae.Event;
+          if (ReadModelHydrationDaemon.IsInterestEvent(me))
+          {
+            foreach (var t in me switch
+                     {
+                       InterestedEntityRegisteredInterest ie => ie
+                         .InterestedEntityId.GetStrongId()
+                         .Map(id => (id, ie.InterestedEntityStreamName)),
+                       InterestedEntityHadInterestRemoved ie => ie
+                         .InterestedEntityId.GetStrongId()
+                         .Map(id => (id, ie.InterestedEntityStreamName)),
+                       _ => None
+                     })
+            {
+              await fetcher
+                .DaemonFetch(t.id, t.InterestedEntityStreamName)
+                .Iter(async entity =>
                 {
-                  foreach (var t in me switch
-                           {
-                             InterestedEntityRegisteredInterest ie => ie
-                               .InterestedEntityId.GetStrongId()
-                               .Map(id => (id, ie.InterestedEntityStreamName)),
-                             InterestedEntityHadInterestRemoved ie => ie
-                               .InterestedEntityId.GetStrongId()
-                               .Map(id => (id, ie.InterestedEntityStreamName)),
-                             _ => None
-                           })
+                  if (entity is FoundEntity<EntityShape> foundEntity)
                   {
-                    await fetcher
-                      .DaemonFetch(t.id, t.InterestedEntityStreamName)
-                      .Iter(async entity =>
-                      {
-                        if (entity is FoundEntity<EntityShape> foundEntity)
-                        {
-                          await UpdateReadModel(
-                            t.id,
-                            re.Event.Position.ToString(),
-                            false,
-                            foundEntity,
-                            databaseHandler,
-                            logger);
-                        }
-                      });
+                    await UpdateReadModel(
+                      t.id,
+                      ae.Metadata.GlobalPosition,
+                      false,
+                      foundEntity,
+                      databaseHandler,
+                      logger);
                   }
+                });
+            }
 
-                  return;
-                }
+            return;
+          }
 
-                if (fetcher
-                    .GetCachedStreamRevision(me.GetEntityId())
-                    .Match(r => r >= re.Event.EventNumber.ToInt64(), () => false))
-                {
-                  return;
-                }
+          if (fetcher
+              .GetCachedStreamRevision(me.GetEntityId())
+              .Match(r => r >= ae.Metadata.StreamPosition, () => false))
+          {
+            return;
+          }
 
-                await UpdateReadModel(
-                  me.GetEntityId(),
-                  re.Event.Position.ToString(),
-                  true,
-                  fetcher,
-                  databaseHandler,
-                  logger);
-              },
-              () => Task.CompletedTask);
+          await UpdateReadModel(
+            me.GetEntityId(),
+            ae.Metadata.GlobalPosition,
+            true,
+            fetcher,
+            databaseHandler,
+            logger);
           break;
         }
         catch (Exception ex)
         {
           if (15 < attemptsMade)
           {
-            logger.LogError(ex, "Error handling {ShapeType} update {OriginalStreamId}", ShapeType, re.OriginalStreamId);
+            logger.LogError(
+              ex,
+              "Error handling {ShapeType} update {OriginalStreamId}",
+              ShapeType,
+              ae.Event.GetStreamName());
             throw;
           }
 
@@ -330,7 +336,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
   private async Task UpdateReadModel(
     StrongId id,
-    string? checkpoint,
+    ulong? checkpoint,
     bool isBackwards,
     Du<Fetcher, FoundEntity<EntityShape>> toProject,
     DatabaseHandler<Shape> databaseHandler,
@@ -357,7 +363,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
                 id)
               : unit.ToTask(),
             () => unit.ToTask());
-      holder.Etag = IdempotentUuid.Generate(checkpoint ?? Guid.NewGuid().ToString()).ToString();
+      holder.Etag = IdempotentUuid.Generate(checkpoint?.ToString() ?? Guid.NewGuid().ToString()).ToString();
     }
     catch (Exception ex) when (!ex.Message.Contains("Cannot insert duplicate key in object"))
     {

@@ -278,7 +278,7 @@ internal class ReadModelHydrationDaemon(
                   entity,
                   databaseHandlerFactory,
                   strongId,
-                  new GlobalPosition(metadata.GlobalPosition, metadata.GlobalPosition).ToString(),
+                  metadata.GlobalPosition,
                   logger);
                 return unit;
               })

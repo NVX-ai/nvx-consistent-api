@@ -64,7 +64,7 @@ public interface IdempotentReadModel
     FoundEntity foundEntity,
     DatabaseHandlerFactory dbFactory,
     StrongId entityId,
-    string? checkpoint,
+    ulong? checkpoint,
     ILogger logger);
 
   bool CanProject(EventModelEvent e);
