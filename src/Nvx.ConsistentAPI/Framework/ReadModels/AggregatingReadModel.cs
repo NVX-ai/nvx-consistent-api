@@ -37,9 +37,15 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStore<EventModelEvent> store)
   {
     var effectivePosition = 0UL;
-    await foreach (var solvedEvent in store.Read(ReadAllRequest.End(StreamPrefixes)).Events().Take(1))
+    foreach (var prefix in StreamPrefixes)
     {
-      effectivePosition = solvedEvent.Metadata.GlobalPosition;
+      // ReSharper disable once LoopCanBeConvertedToQuery
+      await foreach (var solvedEvent in store.Read(ReadAllRequest.End([prefix])).Events().Take(1))
+      {
+        effectivePosition = effectivePosition < solvedEvent.Metadata.GlobalPosition
+          ? solvedEvent.Metadata.GlobalPosition
+          : effectivePosition;
+      }
     }
 
     var currentPosition = lastProcessedEventPosition ?? currentCheckpointPosition ?? 0UL;
