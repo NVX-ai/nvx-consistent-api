@@ -543,7 +543,7 @@ internal class TodoProcessor
     try
     {
       const int batchSize = 2_500;
-      var threshold = DateTime.UtcNow.AddSeconds(-10);
+      var threshold = DateTime.UtcNow.AddSeconds(-25);
       var now = DateTime.UtcNow;
 
       var query = $"""

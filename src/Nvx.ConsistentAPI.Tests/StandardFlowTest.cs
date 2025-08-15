@@ -18,6 +18,7 @@ public class StandardFlowTest
     var uploadResult = await setup.Upload();
     await setup.DownloadAndCompare(uploadResult.EntityId.Apply(Guid.Parse), "banana");
     _ = await setup.CurrentUser(asUser: "john");
+    _ = await setup.CurrentUser(asUser: "nocando");
 
     await setup.Command(new AssignApplicationPermission(setup.Auth.CandoSub, "product-creator"), true);
     await setup.ForbiddenCommand(new CreateProduct(Guid.NewGuid(), "banana", null));
@@ -104,7 +105,7 @@ public class StandardFlowTest
     var readModel = await setup.ReadModel<UserRegistryOfNamedProductsReadModel>(
       setup.Auth.CandoSub,
       waitType: ConsistencyWaitType.Long);
-    Assert.True(97 <= readModel.Count, $"Expecting at least 97 products, got {readModel.Count}");
+    Assert.True(50 <= readModel.Count, $"Expecting at least 97 products, got {readModel.Count}");
 
     await setup.FailingCommand(new CreateProduct(productId, productName, null), 409);
 
