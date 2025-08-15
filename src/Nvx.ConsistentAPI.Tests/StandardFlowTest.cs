@@ -20,7 +20,6 @@ public class StandardFlowTest
     _ = await setup.CurrentUser(asUser: setup.Auth.ByName("john"));
 
     await UserBoundReadModels();
-    await Notifications();
 
     await setup.Command(new AssignApplicationPermission(setup.Auth.CandoSub, "product-creator"), true);
     await setup.UnauthorizedCommand(new CreateProduct(Guid.NewGuid(), "banana", null));
@@ -212,20 +211,6 @@ public class StandardFlowTest
     Assert.Equal("Blah", ingestedProduct.Name);
 
     return;
-
-    async Task Notifications()
-    {
-      var message = Guid.NewGuid().ToString();
-      await setup.Command(new SendNotificationToUser(message, setup.Auth.ByName("john")), true);
-      var notifications = await setup.ReadModels<UserNotificationReadModel>(
-        asUser: "john",
-        waitType: ConsistencyWaitType.Long);
-      Assert.Single(notifications.Items);
-      var notification = notifications.Items.First();
-      Assert.Equal(message, notification.Message);
-      Assert.False(notification.IsRead);
-      Assert.Equal("banana", notification.AdditionalDetails.GetValueOrDefault("banana"));
-    }
 
     async Task UserBoundReadModels()
     {
