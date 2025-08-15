@@ -33,8 +33,11 @@ internal static class PreHydrationCompleted
       if (internalToolingApiKeyHeader == settings.ToolingEndpointsApiKey)
       {
         // This endpoint is meant to be consumed by tooling that relies on status codes.
-        context.Response.StatusCode = IsCaughtUp() ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
-        await context.Response.WriteAsJsonAsync(new PreHydrationStatus(IsCaughtUp(), hydratedAt));
+        context.Response.StatusCode =
+          await IsCaughtUp()
+            ? StatusCodes.Status200OK
+            : StatusCodes.Status503ServiceUnavailable;
+        await context.Response.WriteAsJsonAsync(new PreHydrationStatus(await IsCaughtUp(), hydratedAt));
         return;
       }
 
@@ -43,8 +46,11 @@ internal static class PreHydrationCompleted
         .Iter(
           async _ =>
           {
-            context.Response.StatusCode = IsCaughtUp() ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
-            await context.Response.WriteAsJsonAsync(new PreHydrationStatus(IsCaughtUp(), hydratedAt));
+            context.Response.StatusCode =
+              await IsCaughtUp()
+                ? StatusCodes.Status200OK
+                : StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsJsonAsync(new PreHydrationStatus(await IsCaughtUp(), hydratedAt));
           },
           async e => await e.Respond(context));
     };
@@ -73,14 +79,15 @@ internal static class PreHydrationCompleted
       .ApplyAuth(new PermissionsRequireAll("admin"));
 
     return;
-    bool IsCaughtUp()
+
+    async Task<bool> IsCaughtUp()
     {
       if (hydratedAt.HasValue)
       {
         return true;
       }
 
-      var isCaughtUp = readModels.All(rm => rm.IsUpToDate()) && centralDaemon.IsUpToDate(null);
+      var isCaughtUp = readModels.All(rm => rm.IsUpToDate()) && await centralDaemon.IsUpToDate(null);
       if (isCaughtUp)
       {
         hydratedAt = DateTime.UtcNow;

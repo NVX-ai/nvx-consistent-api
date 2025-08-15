@@ -49,9 +49,10 @@ internal class ReadModelHydrationDaemon(
       await stateMachine.EventsBeingProcessedCount());
   }
 
-  public bool IsUpToDate(ulong? position) =>
-    hydrationCountTracker is null
-    || (position.HasValue && lastPosition.HasValue && position.Value <= lastPosition.Value);
+  public async Task<bool> IsUpToDate(ulong? position) =>
+    (hydrationCountTracker is null
+     || (position.HasValue && lastPosition.HasValue && position.Value <= lastPosition.Value))
+    && await stateMachine.EventsBeingProcessedCount() == 0;
 
   public async Task Initialize()
   {

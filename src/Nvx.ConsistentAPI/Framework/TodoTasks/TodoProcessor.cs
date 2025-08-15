@@ -299,17 +299,13 @@ internal class TodoProcessor
       try
       {
         // Await for all relevant read models to be up-to-date.
+        var position = TryParsePosition(t.todo.EventPosition)?.CommitPosition;
         if (t
-            .definition
-            .DependingReadModels
-            .All(drm =>
-              ReadModels
-                .Any(rm =>
-                  drm == rm.ShapeType
-                  && TryParsePosition(t.todo.EventPosition)
-                    .Apply(pos =>
-                      rm.IsUpToDate(pos?.CommitPosition)
-                      && HydrationDaemon.IsUpToDate(pos?.CommitPosition)))))
+              .definition
+              .DependingReadModels
+              .SelectMany(drm => ReadModels.Where(rm => rm.ShapeType == drm))
+              .All(rm => rm.IsUpToDate(position))
+            && await HydrationDaemon.IsUpToDate(position))
         {
           return await TryFetch()
             .Option
