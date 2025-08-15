@@ -223,6 +223,8 @@ internal class TodoProcessor
   private static readonly Type StrongStringType = typeof(StrongString);
   private static readonly Type StrongGuidType = typeof(StrongGuid);
 
+  private readonly SemaphoreSlim runningTodoSemaphore = new(1, 1);
+
   private readonly string tableName =
     DatabaseHandler<TodoEventModelReadModel>.TableName(typeof(TodoEventModelReadModel));
 
@@ -233,13 +235,13 @@ internal class TodoProcessor
   public required TodoTaskDefinition[] Tasks { private get; init; }
   public required ReadModelHydrationDaemon HydrationDaemon { private get; init; }
   internal required EventModelingReadModelArtifact[] ReadModels { get; init; }
-
-  // TODO: This is likely causing a handle leak, fix.
-  internal RunningTodoTaskInsight[] RunningTodoTasks { get; private set; } = [];
+  internal List<RunningTodoTaskInsight> RunningTodoTasks { get; } = [];
 
   internal async Task<RunningTodoTaskInsight[]> AboutToRunTasks()
   {
-    var currentlyRunning = RunningTodoTasks;
+    await runningTodoSemaphore.WaitAsync();
+    var currentlyRunning = RunningTodoTasks.ToArray();
+    runningTodoSemaphore.Release();
     return await GetAboutToRunTodos()
       .Map(ts => ts
         .Choose(todoReadModel =>
@@ -270,10 +272,13 @@ internal class TodoProcessor
         )
         .ToArray();
 
-      RunningTodoTasks = matchedTodos
-        .GroupBy(t => t.todoTaskDefinition.Type)
-        .Select(g => new RunningTodoTaskInsight(g.Key, g.Select(t => t.todoReadModel.RelatedEntityId).ToArray()))
-        .ToArray();
+      await runningTodoSemaphore.WaitAsync();
+      RunningTodoTasks.Clear();
+      RunningTodoTasks.AddRange(
+        matchedTodos
+          .GroupBy(t => t.todoTaskDefinition.Type)
+          .Select(g => new RunningTodoTaskInsight(g.Key, g.Select(t => t.todoReadModel.RelatedEntityId).ToArray())));
+      runningTodoSemaphore.Release();
 
       using var _ = new BatchTodoCountTracker(matchedTodos.Length);
       await matchedTodos.Select(ProcessOne).Parallel(10);
