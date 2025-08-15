@@ -20,6 +20,6 @@ public class ValidationRulesTests
     await setup.Command(new RemoveValidationRule("create-product", "[\"error\"]"), true);
     await setup.Command(new RemoveValidationRule("create-product", "[\"error 2\"]"), true);
     await setup.Command(new RemoveValidationRule("create-product", "[\"error 3\"]"), true);
-    await setup.Command(new CreateProduct(Guid.NewGuid(), "banana", null));
+    await setup.Command(new CreateProduct(Guid.NewGuid(), "banana", null), true);
   }
 }
