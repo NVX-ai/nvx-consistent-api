@@ -235,7 +235,15 @@ internal class TodoProcessor
   public required TodoTaskDefinition[] Tasks { private get; init; }
   public required ReadModelHydrationDaemon HydrationDaemon { private get; init; }
   internal required EventModelingReadModelArtifact[] ReadModels { get; init; }
-  internal List<RunningTodoTaskInsight> RunningTodoTasks { get; } = [];
+  private List<RunningTodoTaskInsight> RunningTodoTasks { get; } = [];
+
+  internal async Task<RunningTodoTaskInsight[]> GetRunning()
+  {
+    await runningTodoSemaphore.WaitAsync();
+    var running = RunningTodoTasks.ToArray();
+    runningTodoSemaphore.Release();
+    return running;
+  }
 
   internal async Task<RunningTodoTaskInsight[]> AboutToRunTasks()
   {

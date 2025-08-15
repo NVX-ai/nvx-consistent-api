@@ -80,6 +80,23 @@ public record CreateProduct(Guid ProductId, string Name, AttachedFile? Photo) : 
   public IEnumerable<string> Validate() => [];
 }
 
+public record CreateProductWithValidationRule(Guid ProductId, string Name, AttachedFile? Photo) : EventModelCommand<Product>
+{
+  public Option<StrongId> TryGetEntityId(Option<UserSecurity> user) => new StrongGuid(ProductId);
+
+  public Result<EventInsertion, ApiError> Decide(
+    Option<Product> entity,
+    Option<UserSecurity> user,
+    FileUpload[] files
+  ) =>
+    entity.Match<Result<EventInsertion, ApiError>>(
+      _ => new ConflictError("Tried to create an already existing product"),
+      () => new CreateStream(new ProductCreated(ProductId, Name))
+    );
+
+  public IEnumerable<string> Validate() => [];
+}
+
 public record SendProductToStores(Guid ProductId, Guid[] StoreIds) : EventModelCommand<StoreFrontProduct>
 {
   public static EventModelingCommandArtifact Definition =>
@@ -730,6 +747,12 @@ public static class TestEventModel
         new CommandDefinition<CreateProduct, Product>
         {
           Description = "Adds a new product to the catalogue.",
+          Auth = new PermissionsRequireOne("product-creator"),
+          AreaTag = "ProductStock"
+        },
+        new CommandDefinition<CreateProductWithValidationRule, Product>
+        {
+          Description = "Adds a new product to the catalogue, but it has validation rules.",
           Auth = new PermissionsRequireOne("product-creator"),
           UsesValidationRules = true,
           AreaTag = "ProductStock"
