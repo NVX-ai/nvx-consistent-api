@@ -78,6 +78,7 @@ internal class ConsistencyStateMachine(string url)
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private DateTime lastConsistentAt = DateTime.MinValue;
   private int TestsWaiting => testsAcknowledged.Count(kvp => DateTime.UtcNow.AddSeconds(-15) < kvp.Value);
+  private DateTime lastConsistencyOutputAt = DateTime.MinValue;
 
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
@@ -142,9 +143,20 @@ internal class ConsistencyStateMachine(string url)
           && daemonInsights.IsFullyIdle
           && (hasCheckRunLongEnough || isLastEventOldEnough);
 
+
         if (isConsistent)
         {
           lastConsistentAt = daemonInsights.LastEventEmittedAt;
+        }
+        else if (lastConsistencyOutputAt < DateTime.UtcNow.AddSeconds(-5))
+        {
+          Console.WriteLine($"Not consistent. CaughtUp: {status.IsCaughtUp}. " +
+                            $"DaemonsIdle: {daemonInsights.AreDaemonsIdle}. " +
+                            $"ReadModelsUpToDate: {daemonInsights.AreReadModelsUpToDate}. " +
+                            $"FullyIdle: {daemonInsights.IsFullyIdle}. " +
+                            $"StartedAt: {startedAt}, " +
+                            $"LastEventAt: {daemonInsights.LastEventEmittedAt}.");
+          lastConsistencyOutputAt = DateTime.UtcNow;
         }
 
         return isConsistent;
