@@ -34,7 +34,7 @@ var app = await Generator.GetWebApp(
   null,
   new GeneratorSettings(
     sqlConnectionString,
-    eventStoreConnectionString,
+    new EventStoreSettings.EventStoreDb(eventStoreConnectionString),
     blobConnectionString,
     await GetPublicKeysAsync(),
     adminSubjectId,
@@ -47,7 +47,9 @@ var app = await Generator.GetWebApp(
       LogsFolder = "logs",
       TracingOpenTelemetryEndpoint = "http://localhost:4317/"
     },
-    "TestApiToolingApiKey"
+    "TestApiToolingApiKey",
+    FrameworkFeatures.All,
+    25
   ),
   TestModel.GetModel(),
   ["http://localhost:4200"]);

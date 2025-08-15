@@ -1,6 +1,4 @@
-﻿using EventStore.Client;
-
-namespace Nvx.ConsistentAPI;
+﻿namespace Nvx.ConsistentAPI;
 
 public partial record ProcessorEntity(
   Guid Id,
@@ -12,7 +10,7 @@ public partial record ProcessorEntity(
   string JsonData,
   string Type,
   string? SerializedRelatedEntityId,
-  Position? EventPosition,
+  ulong? EventPosition,
   int AttemptCount,
   int TimesWaitedForReadModel
 ) : EventModelEntity<ProcessorEntity>,
@@ -56,7 +54,7 @@ public partial record ProcessorEntity(
                   entity.Type,
                   entity.LockedUntil,
                   entity.SerializedRelatedEntityId,
-                  entity.EventPosition,
+                  entity.EventPosition?.ToString(),
                   entity.AttemptCount
                 )
               ]
@@ -93,7 +91,7 @@ public partial record ProcessorEntity(
         Type = tc.Type,
         RelatedEntityId = tc.RelatedEntityId,
         SerializedRelatedEntityId = tc.SerializedRelatedEntityId,
-        EventPosition = metadata.Position
+        EventPosition = metadata.GlobalPosition
       });
 
   public ValueTask<ProcessorEntity> Fold(
@@ -139,7 +137,7 @@ public partial record ProcessorEntity(
         JsonData = evt.JsonData,
         Type = evt.Type,
         SerializedRelatedEntityId = evt.SerializedRelatedEntityId,
-        EventPosition = evt.EventPosition
+        EventPosition = evt.EventPosition?.CommitPosition
       });
 
   public static string GetStreamName(Guid id) => $"{StreamPrefix}{id}";
@@ -155,7 +153,7 @@ public partial record ProcessorEntity(
       string.Empty,
       string.Empty,
       string.Empty,
-      Position.Start,
+      null,
       0,
       0
     );

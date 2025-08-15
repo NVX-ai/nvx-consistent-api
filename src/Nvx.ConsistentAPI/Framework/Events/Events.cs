@@ -1,44 +1,6 @@
-using EventStore.Client;
-using Nvx.ConsistentAPI.Framework;
-
 namespace Nvx.ConsistentAPI;
 
-public record EventMetadata(
-  DateTime CreatedAt,
-  string? CorrelationId,
-  string? CausationId,
-  string? RelatedUserSub,
-  Position? Position)
-{
-  public byte[] ToBytes() => EventSerialization.ToBytes(this);
-
-  public static EventMetadata TryParse(ResolvedEvent re)
-  {
-    try
-    {
-      var deserialized = EventSerialization.Deserialize<EventMetadata>(re.Event.Metadata.ToArray());
-      return deserialized is not null
-        ? deserialized with { Position = re.OriginalEvent.Position }
-        : new EventMetadata(re.Event.Created, null, null, null, re.OriginalEvent.Position);
-    }
-    catch
-    {
-      return new EventMetadata(re.Event.Created, null, null, null, re.OriginalEvent.Position);
-    }
-  }
-}
-
 public interface EventModelSnapshotEvent : EventModelEvent;
-
-public interface EventModelEvent
-{
-  public string EventType => GetType().Apply(Naming.ToSpinalCase);
-  string GetStreamName();
-
-  public byte[] ToBytes() => EventSerialization.ToBytes(this);
-
-  StrongId GetEntityId();
-}
 
 public interface EventInsertion
 {
@@ -75,27 +37,4 @@ public record ExistingStream(long ExpectedRevision, params EventModelEvent[] Eve
 public record MultiStream(params EventModelEvent[] Events) : EventInsertion
 {
   public EventInsertion WithRevision(long revision) => this;
-}
-
-public static class ParserBuilder
-{
-  public static (string, Func<ResolvedEvent, Option<EventModelEvent>>) Build(Type eventType)
-  {
-    return (Naming.ToSpinalCase(eventType), Parse);
-
-    Option<EventModelEvent> Parse(ResolvedEvent re)
-    {
-      try
-      {
-        return EventSerialization
-          .Deserialize(re.Event.Data, eventType)
-          .Apply(Optional)
-          .Map(o => (EventModelEvent)o);
-      }
-      catch
-      {
-        return None;
-      }
-    }
-  }
 }

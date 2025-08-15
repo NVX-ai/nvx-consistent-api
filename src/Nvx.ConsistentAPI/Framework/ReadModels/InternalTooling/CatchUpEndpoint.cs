@@ -4,11 +4,11 @@ using Microsoft.OpenApi.Models;
 
 namespace Nvx.ConsistentAPI.InternalTooling;
 
-internal static class CatchUp
+internal static class CatchUpEndpoint
 {
   internal const string Route = "/read-models-hydration/hydration-status";
 
-  internal static void Endpoint(
+  internal static void Apply(
     EventModelingReadModelArtifact[] readModels,
     ReadModelHydrationDaemon centralDaemon,
     GeneratorSettings settings,
@@ -32,7 +32,7 @@ internal static class CatchUp
       if (internalToolingApiKeyHeader == settings.ToolingEndpointsApiKey)
       {
         context.Response.StatusCode = StatusCodes.Status200OK;
-        await context.Response.WriteAsJsonAsync(new HydrationStatus(IsCaughtUp()));
+        await context.Response.WriteAsJsonAsync(new HydrationStatus(await IsCaughtUp()));
         return;
       }
 
@@ -42,7 +42,7 @@ internal static class CatchUp
           async _ =>
           {
             context.Response.StatusCode = StatusCodes.Status200OK;
-            await context.Response.WriteAsJsonAsync(new HydrationStatus(IsCaughtUp()));
+            await context.Response.WriteAsJsonAsync(new HydrationStatus(await IsCaughtUp()));
           },
           async e => await e.Respond(context));
     };
@@ -70,6 +70,6 @@ internal static class CatchUp
       .ApplyAuth(new PermissionsRequireAll("admin"));
 
     return;
-    bool IsCaughtUp() => readModels.All(rm => rm.IsUpToDate()) && centralDaemon.IsUpToDate(null);
+    async Task<bool> IsCaughtUp() => readModels.All(rm => rm.IsUpToDate()) && await centralDaemon.IsUpToDate(null);
   }
 }

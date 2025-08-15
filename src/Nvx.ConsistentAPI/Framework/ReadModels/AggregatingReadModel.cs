@@ -5,6 +5,8 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.InternalTooling;
+using Nvx.ConsistentAPI.Store.Events;
+using Nvx.ConsistentAPI.Store.Store;
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable AutoPropertyCanBeMadeGetOnly.Global
@@ -30,15 +32,20 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public required string AreaTag { private get; init; }
   public BuildCustomFilter CustomFilterBuilder { get; init; } = (_, _, _) => new CustomFilter(null, [], null);
   public ReadModelDefaulter<Shape> Defaulter { get; init; } = (_, _, _) => None;
-  private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false, false);
+  private ReadModelSyncState SyncState { get; set; } = new(0, DateTime.MinValue, false, false);
 
-  public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
+  public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStore<EventModelEvent> store)
   {
-    var effectivePosition = lastEventPosition;
-    var prefixFilter = EventTypeFilter.Prefix(StreamPrefixes);
-    await foreach (var msg in eventStoreClient.ReadAllAsync(Direction.Backwards, Position.End, prefixFilter).Take(1))
+    var effectivePosition = 0UL;
+    foreach (var prefix in StreamPrefixes)
     {
-      effectivePosition = msg.Event.Position.CommitPosition;
+      // ReSharper disable once LoopCanBeConvertedToQuery
+      await foreach (var solvedEvent in store.Read(ReadAllRequest.End([prefix])).Events().Take(1))
+      {
+        effectivePosition = effectivePosition < solvedEvent.Metadata.GlobalPosition
+          ? solvedEvent.Metadata.GlobalPosition
+          : effectivePosition;
+      }
     }
 
     var currentPosition = lastProcessedEventPosition ?? currentCheckpointPosition ?? 0UL;
@@ -55,9 +62,8 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
   public async Task ApplyTo(
     WebApplication app,
-    EventStoreClient esClient,
+    EventStore<EventModelEvent> store,
     Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
     GeneratorSettings settings,
     ILogger logger)
@@ -103,9 +109,8 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
         handler.AllColumnsTablePrefixed);
 
       _ = Task.Run(() => SubscribeToStream(
-        esClient,
+        store,
         fetcher,
-        parser,
         handler,
         settings.ReadModelConnectionString,
         tableDetails,
@@ -134,7 +139,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
   public AuthOptions Auth { get; init; } = new Everyone();
 
-  public bool IsUpToDate(Position? position)
+  public bool IsUpToDate(ulong? position)
   {
     if (SyncState.IsBeingHydratedByAnotherInstance)
     {
@@ -143,29 +148,27 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
     if (position is null)
     {
-      return SyncState.HasReachedEndOnce;
+      return (SyncState.HasReachedEndOnce && SyncState.LastSync < DateTime.UtcNow.AddSeconds(-5))
+             || SyncState.LastSync < DateTime.UtcNow.AddSeconds(-25);
     }
 
-    if (FromAll.After(position.Value) <= SyncState.LastPosition)
+    if (position <= SyncState.LastPosition)
     {
       return true;
     }
 
-    return SyncState.LastSync < DateTime.UtcNow.AddSeconds(5);
+    return SyncState.LastSync < DateTime.UtcNow.AddSeconds(-10);
   }
 
   private async Task SubscribeToStream(
-    EventStoreClient client,
+    EventStore<EventModelEvent> store,
     Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     DatabaseHandler<Shape> databaseHandler,
     string connectionString,
     TableDetails tableDetails,
     ILogger logger)
   {
     var syncDelay = Random.Shared.Next(300, 600);
-    var prefixFilter = StreamFilter.Prefix(StreamPrefixes);
-    var filterOptions = new SubscriptionFilterOptions(prefixFilter);
     reset = async () =>
     {
       await SubCancelSource.CancelAsync();
@@ -193,14 +196,20 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
         }
 
         var checkpointPosition = await databaseHandler.Checkpoint();
-        currentCheckpointPosition = checkpointPosition == Position.Start ? 0 : checkpointPosition.CommitPosition;
-        var checkpoint = checkpointPosition == Position.Start ? FromAll.Start : FromAll.After(checkpointPosition);
+        currentCheckpointPosition = checkpointPosition ?? 0;
+        var checkpoint = checkpointPosition is null
+          ? FromAll.Start
+          : FromAll.After(new Position(checkpointPosition.Value, checkpointPosition.Value));
 
-        SyncState = new ReadModelSyncState(checkpoint, DateTime.UtcNow, checkpoint != FromAll.Start, false);
-        await using var subscription = client
-          .SubscribeToAll(checkpoint, filterOptions: filterOptions, cancellationToken: SubCancelSource.Token);
+        SyncState =
+          new ReadModelSyncState(checkpointPosition ?? 0, DateTime.UtcNow, checkpoint != FromAll.Start, false);
 
-        await foreach (var message in subscription.Messages)
+        var request = checkpointPosition is null
+          ? SubscribeAllRequest.Start(StreamPrefixes)
+          : SubscribeAllRequest.After(checkpointPosition.Value, StreamPrefixes);
+
+
+        await foreach (var message in store.Subscribe(request, SubCancelSource.Token))
         {
           if (!IsIdempotent && !await databaseHandler.TryRefreshLock(processId, SubCancelSource.Token))
           {
@@ -210,80 +219,81 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
           switch (message)
           {
-            case StreamMessage.Event(var evt):
+            case ReadAllMessage<EventModelEvent>.AllEvent evt:
             {
-              var parsed = parser(evt);
-              var relevantAggregators = Aggregators.Where(a => a.Processes(parsed)).ToArray();
+              var relevantAggregators = Aggregators.Where(a => a.Processes(Some(evt.Event))).ToArray();
               var canBeAggregated = relevantAggregators.Length != 0;
               isProcessing = true;
-              await parsed
-                .Async()
-                .Iter(async e =>
+
+              await using var connection = new SqlConnection(connectionString);
+              await connection.OpenAsync(SubCancelSource.Token);
+              await using var transaction = await connection.BeginTransactionAsync(SubCancelSource.Token);
+              try
+              {
+                var metadata = EventMetadata.From(evt.Metadata);
+                var aggregatedEvent =
+                  new EventWithMetadata<EventModelEvent>(
+                    evt.Event,
+                    evt.Metadata.GlobalPosition,
+                    evt.Metadata.EventId,
+                    metadata);
+
+                var ids = new List<string>();
+
+                foreach (var aggregator in relevantAggregators)
                 {
-                  await using var connection = new SqlConnection(connectionString);
-                  await connection.OpenAsync(SubCancelSource.Token);
-                  await using var transaction = await connection.BeginTransactionAsync(SubCancelSource.Token);
-                  try
-                  {
-                    var metadata = EventMetadata.TryParse(evt);
-                    var aggregatedEvent =
-                      new EventWithMetadata<EventModelEvent>(e, evt.Event.Position, evt.Event.EventId, metadata);
+                  ids.AddRange(
+                    await aggregator.Aggregate(
+                      aggregatedEvent,
+                      fetcher,
+                      connection,
+                      transaction,
+                      tableDetails));
+                }
 
-                    var ids = new List<string>();
+                if (canBeAggregated)
+                {
+                  holder.Etag = IdempotentUuid.Generate(evt.Metadata.GlobalPosition.ToString()).ToString();
+                }
 
-                    foreach (var aggregator in relevantAggregators)
-                    {
-                      ids.AddRange(
-                        await aggregator.Aggregate(
-                          aggregatedEvent,
-                          fetcher,
-                          connection,
-                          transaction,
-                          tableDetails));
-                    }
+                await databaseHandler.UpdateCheckpoint(connection, evt.Metadata.GlobalPosition, transaction);
+                lastProcessedEventPosition = evt.Metadata.GlobalPosition;
+                await transaction.CommitAsync(SubCancelSource.Token);
 
-                    if (canBeAggregated)
-                    {
-                      holder.Etag = IdempotentUuid.Generate(evt.Event.Position.ToString()).ToString();
-                    }
+                await ids
+                  .Distinct()
+                  .Select<string, Func<Task<Unit>>>(id =>
+                    async () => await databaseHandler.UpdateArrayColumnsFor(id))
+                  .Parallel();
+              }
+              catch (OperationCanceledException)
+              {
+                await transaction.RollbackAsync(CancellationToken.None);
+                throw;
+              }
 
-                    await databaseHandler.UpdateCheckpoint(connection, evt.Event.Position.ToString(), transaction);
-                    lastProcessedEventPosition = evt.Event.Position.CommitPosition;
-                    await transaction.CommitAsync(SubCancelSource.Token);
-
-                    await ids
-                      .Distinct()
-                      .Select<string, Func<Task<Unit>>>(id =>
-                        async () => await databaseHandler.UpdateArrayColumnsFor(id))
-                      .Parallel();
-                  }
-                  catch (OperationCanceledException)
-                  {
-                    await transaction.RollbackAsync(CancellationToken.None);
-                    throw;
-                  }
-                });
               SyncState = SyncState with
               {
-                LastPosition = FromAll.After(evt.OriginalEvent.Position), LastSync = DateTime.UtcNow
+                LastPosition = evt.Metadata.GlobalPosition,
+                LastSync = DateTime.UtcNow
               };
               isProcessing = false;
               break;
             }
-            case StreamMessage.AllStreamCheckpointReached(var pos):
+            case ReadAllMessage<EventModelEvent>.Checkpoint(var pos):
             {
               if (SyncState.LastSync < DateTime.UtcNow.AddSeconds(-syncDelay))
               {
-                await databaseHandler.UpdateCheckpoint(FromAll.After(pos).ToString());
-                SyncState = SyncState with { LastPosition = FromAll.After(pos), LastSync = DateTime.UtcNow };
-                lastProcessedEventPosition = pos.CommitPosition;
-                currentCheckpointPosition = pos.CommitPosition;
+                await databaseHandler.UpdateCheckpoint(pos);
+                SyncState = SyncState with { LastPosition = pos, LastSync = DateTime.UtcNow };
+                lastProcessedEventPosition = pos;
+                currentCheckpointPosition = pos;
               }
 
               isProcessing = false;
               break;
             }
-            case StreamMessage.CaughtUp:
+            case ReadAllMessage<EventModelEvent>.CaughtUp:
             {
               SyncState = SyncState with { HasReachedEndOnce = true };
               ClearTracker();
@@ -291,7 +301,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
               isCaughtUp = true;
               break;
             }
-            case StreamMessage.FellBehind:
+            case ReadAllMessage<EventModelEvent>.FellBehind:
             {
               StartTracker();
               isCaughtUp = false;

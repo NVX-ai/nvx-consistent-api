@@ -16,6 +16,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Nvx.ConsistentAPI.Framework;
 using Nvx.ConsistentAPI.InternalTooling;
+using Nvx.ConsistentAPI.Store.Events;
+using Nvx.ConsistentAPI.Store.Store;
 using Testcontainers.Azurite;
 using Testcontainers.EventStoreDb;
 using Testcontainers.MsSql;
@@ -44,7 +46,8 @@ internal static class InstanceTracking
       return new TestSetup(
         h.Url,
         h.Auth,
-        h.EventStoreClient,
+        h.Store,
+        h.Fetcher,
         h.Model,
         testSettings.WaitForCatchUpTimeout,
         h.ConsistencyStateMachine);
@@ -57,7 +60,8 @@ internal static class InstanceTracking
     return new TestSetup(
       holder.Url,
       holder.Auth,
-      holder.EventStoreClient,
+      holder.Store,
+      holder.Fetcher,
       holder.Model,
       testSettings.WaitForCatchUpTimeout,
       holder.ConsistencyStateMachine);
@@ -70,15 +74,16 @@ internal class ConsistencyStateMachine(string url)
 {
   private const int BaseDelayMilliseconds = 250;
   private const int MaxDelayMilliseconds = 15_000;
+  private readonly ConcurrentDictionary<Guid, DateTime> testsAcknowledged = [];
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private DateTime lastConsistentAt = DateTime.MinValue;
-
-  private int testsWaiting;
+  private int TestsWaiting => testsAcknowledged.Count(kvp => DateTime.UtcNow.AddSeconds(-15) < kvp.Value);
+  private DateTime lastConsistencyOutputAt = DateTime.MinValue;
 
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
     const int maxSteps = MaxDelayMilliseconds / BaseDelayMilliseconds;
-    var steps = Math.Min(maxSteps, 1 + testsWaiting);
+    var steps = Math.Min(maxSteps, 1 + TestsWaiting);
     var increment = Math.Max(1, steps);
     var minimumDelayMs = waitType switch
     {
@@ -90,17 +95,16 @@ internal class ConsistencyStateMachine(string url)
     return TimeSpan.FromMilliseconds(milliseconds);
   }
 
-  public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
+  public async Task WaitForConsistency(int timeout, ConsistencyWaitType type, Guid testId)
   {
     var startedAt = DateTime.UtcNow;
-    Interlocked.Increment(ref testsWaiting);
+    testsAcknowledged.AddOrUpdate(testId, DateTime.UtcNow, (_, _) => DateTime.UtcNow);
+
     var timer = Stopwatch.StartNew();
     while (timer.ElapsedMilliseconds < timeout && !await IsConsistent())
     {
       await Task.Delay(Random.Shared.Next(100, 500));
     }
-
-    Interlocked.Decrement(ref testsWaiting);
 
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
@@ -109,10 +113,7 @@ internal class ConsistencyStateMachine(string url)
     {
       var startedAgo = DateTime.UtcNow - startedAt;
       var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
-      var lastConsistentAtAgo = DateTime.UtcNow - lastConsistentAt;
-      var isLastConsistencyOldEnough = lastConsistentAtAgo > GetMinimumDelayForCheck(type);
-      return startedAt < lastConsistentAt
-             && (hasCheckRunLongEnough || isLastConsistencyOldEnough);
+      return startedAt < lastConsistentAt && hasCheckRunLongEnough;
     }
 
     async Task<bool> IsConsistent()
@@ -126,7 +127,7 @@ internal class ConsistencyStateMachine(string url)
           return true;
         }
 
-        var status = await $"{url}{CatchUp.Route}"
+        var status = await $"{url}{CatchUpEndpoint.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<HydrationStatus>();
 
@@ -135,17 +136,27 @@ internal class ConsistencyStateMachine(string url)
           .GetJsonAsync<DaemonsInsights>();
         var startedAgo = DateTime.UtcNow - startedAt;
         var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
-        var lastEventEmittedAgo = DateTime.UtcNow - daemonInsights.LastEventEmittedAt;
-        var isLastEventOldEnough = lastEventEmittedAgo > GetMinimumDelayForCheck(type);
+        var isLastEventOldEnough = daemonInsights.LastEventEmittedAt > startedAt;
 
         var isConsistent =
           status.IsCaughtUp
           && daemonInsights.IsFullyIdle
           && (hasCheckRunLongEnough || isLastEventOldEnough);
 
+
         if (isConsistent)
         {
           lastConsistentAt = daemonInsights.LastEventEmittedAt;
+        }
+        else if (lastConsistencyOutputAt < DateTime.UtcNow.AddSeconds(-5))
+        {
+          Console.WriteLine($"CaughtUp: {status.IsCaughtUp}. " +
+                            $"DaemonsIdle: {daemonInsights.AreDaemonsIdle}. " +
+                            $"ReadModelsUpToDate: {daemonInsights.AreReadModelsUpToDate}. " +
+                            $"FullyIdle: {daemonInsights.IsFullyIdle}. " +
+                            $"StartedAt: {startedAt}, " +
+                            $"LastEventAt: {daemonInsights.LastEventEmittedAt}.");
+          lastConsistencyOutputAt = DateTime.UtcNow;
         }
 
         return isConsistent;
@@ -166,7 +177,8 @@ internal class ConsistencyStateMachine(string url)
 internal record TestSetupHolder(
   string Url,
   TestAuth Auth,
-  EventStoreClient EventStoreClient,
+  EventStore<EventModelEvent> Store,
+  Fetcher Fetcher,
   EventModel Model,
   int Count,
   ILogger Logger,
@@ -194,12 +206,14 @@ public class TestSetup : IAsyncDisposable
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
   private readonly ConsistencyStateMachine consistencyStateMachine;
+  private readonly Guid testId = Guid.NewGuid();
   private readonly int waitForCatchUpTimeout;
 
   internal TestSetup(
     string url,
     TestAuth auth,
-    EventStoreClient eventStoreClient,
+    EventStore<EventModelEvent> store,
+    Fetcher fetcher,
     EventModel model,
     int waitForCatchUpTimeout,
     ConsistencyStateMachine consistencyStateMachine)
@@ -207,14 +221,17 @@ public class TestSetup : IAsyncDisposable
     Url = url;
     this.waitForCatchUpTimeout = waitForCatchUpTimeout;
     Auth = auth;
-    EventStoreClient = eventStoreClient;
+    Store = store;
     Model = model;
     this.consistencyStateMachine = consistencyStateMachine;
+    Fetcher = fetcher;
   }
+
+  public Fetcher Fetcher { get; }
 
   public string Url { get; }
   public TestAuth Auth { get; private set; }
-  public EventStoreClient EventStoreClient { get; }
+  public EventStore<EventModelEvent> Store { get; }
   public EventModel Model { get; }
 
   public async ValueTask DisposeAsync()
@@ -238,11 +255,13 @@ public class TestSetup : IAsyncDisposable
             new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
           ])));
 
-  public async Task InsertEvents(params EventModelEvent[] evt) =>
-    await EventStoreClient.AppendToStreamAsync(
-      evt.GroupBy(e => e.GetStreamName()).Single().Key,
-      StreamState.Any,
-      Emitter.ToEventData(evt, null));
+  public async Task InsertEvents(params EventModelEvent[] evt)
+  {
+    var firstEvent = evt.GroupBy(e => e.GetStreamName()).Single().First();
+    var swimlane = firstEvent.GetSwimLane();
+    var id = firstEvent.GetEntityId();
+    await Store.Insert(new InsertionPayload<EventModelEvent>(swimlane, id, evt));
+  }
 
   /// <summary>
   ///   Waits for the system to be in a consistent state.
@@ -255,7 +274,7 @@ public class TestSetup : IAsyncDisposable
   public async Task WaitForConsistency(
     ConsistencyWaitType waitType = ConsistencyWaitType.Medium,
     int? timeoutMs = null) =>
-    await consistencyStateMachine.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, waitType);
+    await consistencyStateMachine.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, waitType, testId);
 
   public async Task<CommandAcceptedResult> Upload()
   {
@@ -464,8 +483,13 @@ public class TestSetup : IAsyncDisposable
       .PostAsync(requestContent);
   }
 
-  private static async Task<(EventStoreClient client, string esCs)> AwaitEventStore(TestSettings settings)
+  private static async Task<EventStoreSettings> AwaitEventStore(TestSettings settings)
   {
+    if (settings.StoreType == EventStoreType.InMemory)
+    {
+      return new EventStoreSettings.InMemory();
+    }
+
     var builder = new EventStoreDbBuilder()
       .WithImage(settings.EsDbImage)
       .WithReuse(settings.UsePersistentTestContainers)
@@ -495,7 +519,7 @@ public class TestSetup : IAsyncDisposable
       {
         await Task.Delay(25);
         _ = await client.ReadStreamAsync(Direction.Forwards, "meh", StreamPosition.Start).ReadState;
-        return (client, esCs);
+        return new EventStoreSettings.EventStoreDb(esCs);
       }
       catch (Exception)
       {
@@ -574,13 +598,13 @@ public class TestSetup : IAsyncDisposable
 
     try
     {
+      return Go(GetRandomPort());
+
       int Go(int pn)
       {
         var isTaken = GetConnectionInfo().Any(ci => ci.LocalEndPoint.Port == pn);
         return isTaken ? Go(GetRandomPort()) : pn;
       }
-
-      return Go(GetRandomPort());
     }
     finally
     {
@@ -602,7 +626,7 @@ public class TestSetup : IAsyncDisposable
     var esTask = AwaitEventStore(settings);
     var azuriteConnectionString = await azTask;
     var sqlCs = await sqlTask;
-    var (eventStoreClient, esCs) = await esTask;
+    var eventStoreSettings = await esTask;
 
     var sitePort = await GetFreePort();
     var baseUrl = $"http://localhost:{sitePort}";
@@ -611,7 +635,7 @@ public class TestSetup : IAsyncDisposable
       sitePort,
       new GeneratorSettings(
         sqlCs,
-        esCs,
+        eventStoreSettings,
         azuriteConnectionString,
         CreateTestSecurityKey(),
         GetTestUser("admin").Sub,
@@ -622,7 +646,8 @@ public class TestSetup : IAsyncDisposable
         new LoggingSettings
         {
           LogsFolder = settings.LogsFolder,
-          LogFileRollInterval = LogFileRollInterval.Day
+          LogFileRollInterval = LogFileRollInterval.Day,
+          LogLevel = LogLevel.Warning
         },
         "TestApiToolingApiKey",
         FrameworkFeatures.All,
@@ -643,10 +668,11 @@ public class TestSetup : IAsyncDisposable
     return new TestSetupHolder(
       baseUrl,
       new TestAuth(GetTestUser("admin").Sub, GetTestUser("cando").Sub, n => GetTestUser(n).Sub),
-      eventStoreClient,
+      app.Store,
+      app.Fetcher,
       model,
       1,
-      app.Services.GetRequiredService<ILogger<TestSetup>>(),
+      app.WebApplication.Services.GetRequiredService<ILogger<TestSetup>>(),
       new ConsistencyStateMachine(baseUrl));
   }
 
@@ -685,6 +711,12 @@ public class TestSetup : IAsyncDisposable
   private static SecurityKey[] CreateTestSecurityKey() => [SigningCredentials.Key];
 }
 
+public enum EventStoreType
+{
+  InMemory,
+  EventStoreDb
+}
+
 public class TestSettings
 {
   private readonly string? azuriteImage;
@@ -694,17 +726,18 @@ public class TestSettings
   public bool UsePersistentTestContainers { get; init; }
   public int WaitForCatchUpTimeout { get; init; } = 150_000;
   public int HydrationParallelism { get; init; } = 5;
+  public EventStoreType StoreType { get; init; } = EventStoreType.EventStoreDb;
 
   public string EsDbImage
   {
-    get => esDbImage ?? EventStoreDefaultConnectionString;
+    get => esDbImage ?? EventStoreDefaultImage;
     // ReSharper disable once UnusedMember.Global
     init => esDbImage = value;
   }
 
   public string MsSqlDbImage
   {
-    get => msSqlDbImage ?? MsSqlDefaultConnectionString;
+    get => msSqlDbImage ?? MsSqlDefaultImage;
     // ReSharper disable once UnusedMember.Global
     init => msSqlDbImage = value;
   }
@@ -716,13 +749,13 @@ public class TestSettings
     init => azuriteImage = value;
   }
 
-  private static string EventStoreDefaultConnectionString =>
+  private static string EventStoreDefaultImage =>
     RuntimeInformation.ProcessArchitecture == Architecture.Arm64
     && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
       ? "eventstore/eventstore:23.10.0-alpha-arm64v8"
       : "eventstore/eventstore:23.10.0-jammy";
 
-  private static string MsSqlDefaultConnectionString =>
+  private static string MsSqlDefaultImage =>
     RuntimeInformation.ProcessArchitecture == Architecture.Arm64
     && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
       ? "mcr.microsoft.com/mssql/server:2019-CU28-ubuntu-20.04"

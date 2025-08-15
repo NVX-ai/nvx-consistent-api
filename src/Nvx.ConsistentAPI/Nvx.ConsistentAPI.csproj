@@ -8,7 +8,7 @@
         <WarningsAsErrors>nullable</WarningsAsErrors>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>Nvx.ConsistentAPI</PackageId>
-        <Version>1.0.12</Version>
+        <Version>2.0.0-rc</Version>
         <Authors>NVX.ai, Eighty Data, and Consistently Eventful</Authors>
         <Description>Event Modeling framework</Description>
         <LangVersion>13</LangVersion>
@@ -56,6 +56,9 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Nvx.ConsistentAPI.Analyzers\Nvx.ConsistentAPI.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+        <ProjectReference Include="..\Nvx.ConsistentAPI.Store.EventStoreDB\Nvx.ConsistentAPI.Store.EventStoreDB.csproj"/>
+        <ProjectReference Include="..\Nvx.ConsistentAPI.Store.InMemory\Nvx.ConsistentAPI.Store.InMemory.csproj" />
+        <ProjectReference Include="..\Nvx.ConsistentAPI.Store\Nvx.ConsistentAPI.Store.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

@@ -1,6 +1,4 @@
-﻿using EventStore.Client;
-
-namespace Nvx.ConsistentAPI.TenantUsers;
+﻿namespace Nvx.ConsistentAPI.TenantUsers;
 
 public class UserAddedToTenantProjection :
   ProjectionDefinition<AddedToTenant, UserWasAddedToTenant, UserSecurity, TenantUsersEntity, StrongGuid>
@@ -13,14 +11,14 @@ public class UserAddedToTenantProjection :
     UserSecurity e,
     Option<TenantUsersEntity> projectionEntity,
     StrongGuid projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     new UserWasAddedToTenant(eventToProject.TenantId, eventToProject.Sub);
 
   public override IEnumerable<StrongGuid> GetProjectionIds(
     AddedToTenant sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
+    Guid sourceEventId) =>
     [new(sourceEvent.TenantId)];
 }
 
@@ -35,14 +33,14 @@ public class UserAddedToTenantFeedbackProjection :
     TenantUsersEntity e,
     Option<UserSecurity> projectionEntity,
     StrongString projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     new TenantDetailsReceived(eventToProject.UserId, e.TenantId, e.TenantName);
 
   public override IEnumerable<StrongString> GetProjectionIds(
     UserWasAddedToTenant sourceEvent,
     TenantUsersEntity sourceEntity,
-    Uuid sourceEventId) =>
+    Guid sourceEventId) =>
     [new(sourceEvent.UserId)];
 }
 
@@ -57,14 +55,14 @@ public class UserRemovedFromTenantProjection :
     UserSecurity e,
     Option<TenantUsersEntity> projectionEntity,
     StrongGuid projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     new UserWasRemovedFromTenant(eventToProject.TenantId, eventToProject.Sub);
 
   public override IEnumerable<StrongGuid> GetProjectionIds(
     RemovedFromTenant sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
+    Guid sourceEventId) =>
     [new(sourceEvent.TenantId)];
 }
 
@@ -79,14 +77,14 @@ public class TenantNameUpdatedProjection :
     Tenant e,
     Option<TenantUsersEntity> projectionEntity,
     StrongGuid projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     new TenantNameWasChanged(eventToProject.Id, eventToProject.NewName);
 
   public override IEnumerable<StrongGuid> GetProjectionIds(
     TenantRenamed sourceEvent,
     Tenant sourceEntity,
-    Uuid sourceEventId) =>
+    Guid sourceEventId) =>
     [new(sourceEvent.Id)];
 }
 
@@ -101,14 +99,14 @@ public class TenantCreatedProjection :
     Tenant e,
     Option<TenantUsersEntity> projectionEntity,
     StrongGuid projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     new TenantNameWasChanged(eventToProject.Id, eventToProject.Name);
 
   public override IEnumerable<StrongGuid> GetProjectionIds(
     TenantCreated sourceEvent,
     Tenant sourceEntity,
-    Uuid sourceEventId) =>
+    Guid sourceEventId) =>
     [new(sourceEvent.Id)];
 }
 
@@ -123,12 +121,12 @@ public class TenantNameSetFeedbackProjection :
     TenantUsersEntity e,
     Option<UserSecurity> projectionEntity,
     StrongString projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) => new TenantDetailsReceived(projectionId.Value, e.TenantId, eventToProject.NewName);
 
   public override IEnumerable<StrongString> GetProjectionIds(
     TenantNameWasChanged sourceEvent,
     TenantUsersEntity sourceEntity,
-    Uuid sourceEventId) =>
+    Guid sourceEventId) =>
     sourceEntity.Users.Select(u => new StrongString(u)).ToArray();
 }

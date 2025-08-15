@@ -61,7 +61,8 @@ public record InterestedEntityId(string InterestedEntityStreamName) : StrongId
 public partial record InterestedEntityEntity(
   string InterestedEntityStreamName,
   string[] ConcernedStreamNames,
-  string[] OriginatingEventIds)
+  string[] OriginatingEventIds,
+  (string name, StrongId id)[] ConcernedStreams)
   : EventModelEntity<InterestedEntityEntity>,
     Folds<InterestedEntityRegisteredInterest, InterestedEntityEntity>,
     Folds<InterestedEntityHadInterestRemoved, InterestedEntityEntity>
@@ -84,7 +85,10 @@ public partial record InterestedEntityEntity(
       this with
       {
         ConcernedStreamNames = [.. ConcernedStreamNames.Where(s => s != evt.ConcernedEntityStreamName)],
-        OriginatingEventIds = OriginatingEventIds.Append(evt.OriginatingEventId).Distinct().ToArray()
+        OriginatingEventIds = OriginatingEventIds.Append(evt.OriginatingEventId).Distinct().ToArray(),
+        ConcernedStreams = ConcernedStreams
+          .Where(s => s.name != evt.ConcernedEntityStreamName)
+          .ToArray()
       });
 
   public ValueTask<InterestedEntityEntity> Fold(
@@ -95,11 +99,19 @@ public partial record InterestedEntityEntity(
       this with
       {
         ConcernedStreamNames = ConcernedStreamNames.Append(evt.ConcernedEntityStreamName).Distinct().ToArray(),
-        OriginatingEventIds = OriginatingEventIds.Append(evt.OriginatingEventId).ToArray()
+        OriginatingEventIds = OriginatingEventIds.Append(evt.OriginatingEventId).ToArray(),
+        ConcernedStreams =
+        evt
+          .ConcernedEntityId.GetStrongId()
+          .Map(id => ConcernedStreams
+            .Append((name: evt.ConcernedEntityStreamName, id))
+            .DistinctBy(s => s.name)
+            .ToArray())
+          .DefaultValue(ConcernedStreams)
       });
 
   public static string GetStreamName(InterestedEntityId entityId) => $"{StreamPrefix}{entityId}";
 
   public static InterestedEntityEntity Defaulted(InterestedEntityId id) =>
-    new(id.InterestedEntityStreamName, [], []);
+    new(id.InterestedEntityStreamName, [], [], []);
 }

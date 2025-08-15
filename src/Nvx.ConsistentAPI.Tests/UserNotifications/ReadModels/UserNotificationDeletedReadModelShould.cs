@@ -26,7 +26,7 @@ public class UserNotificationDeletedReadModelShould
           sender.Sub,
           DateTime.UtcNow,
           null),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
 
     Assert.Empty(
@@ -34,7 +34,7 @@ public class UserNotificationDeletedReadModelShould
         .FromEntity(
           await entity.Fold(
             new NotificationRestored(notificationId),
-            new EventMetadata(DateTime.UtcNow, null, null, null, null),
+            new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
             null!)));
   }
 }

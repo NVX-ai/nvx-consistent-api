@@ -13,7 +13,7 @@ public class TodoProcessorCompletedToSnapshot
     ProcessorEntity e,
     Option<ProcessorEntity> projectionEntity,
     StrongGuid projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     new TodoModelSnapshot(
       eventToProject.Id,
@@ -25,10 +25,10 @@ public class TodoProcessorCompletedToSnapshot
       e.JsonData,
       e.Type,
       e.SerializedRelatedEntityId,
-      e.EventPosition);
+      e.EventPosition is { } pos ? new Position(pos, pos) : null);
 
   public override IEnumerable<StrongGuid> GetProjectionIds(
     TodoCompleted sourceEvent,
     ProcessorEntity sourceEntity,
-    Uuid sourceEventId) => [new(sourceEvent.Id)];
+    Guid sourceEventId) => [new(sourceEvent.Id)];
 }

@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 
-namespace Nvx.ConsistentAPI;
+namespace Nvx.ConsistentAPI.Store.Events;
 
 public static partial class Naming
 {

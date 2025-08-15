@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.Framework;
+using Nvx.ConsistentAPI.Store.Events;
 
 namespace Nvx.ConsistentAPI;
 
