@@ -112,10 +112,7 @@ internal class ConsistencyStateMachine(string url)
     {
       var startedAgo = DateTime.UtcNow - startedAt;
       var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
-      var lastConsistentAtAgo = DateTime.UtcNow - lastConsistentAt;
-      var isLastConsistencyOldEnough = lastConsistentAtAgo > GetMinimumDelayForCheck(type);
-      return startedAt < lastConsistentAt
-             && (hasCheckRunLongEnough || isLastConsistencyOldEnough);
+      return startedAt < lastConsistentAt && hasCheckRunLongEnough;
     }
 
     async Task<bool> IsConsistent()
@@ -138,8 +135,7 @@ internal class ConsistencyStateMachine(string url)
           .GetJsonAsync<DaemonsInsights>();
         var startedAgo = DateTime.UtcNow - startedAt;
         var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
-        var lastEventEmittedAgo = DateTime.UtcNow - daemonInsights.LastEventEmittedAt;
-        var isLastEventOldEnough = lastEventEmittedAgo > GetMinimumDelayForCheck(type);
+        var isLastEventOldEnough = daemonInsights.LastEventEmittedAt > startedAt;
 
         var isConsistent =
           status.IsCaughtUp
