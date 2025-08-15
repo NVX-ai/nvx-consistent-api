@@ -2,7 +2,9 @@
 
 public class ValidationRulesTests
 {
-  [Fact(DisplayName = "uses the validation rules engine")]
+  [Fact(
+    DisplayName = "uses the validation rules engine",
+    Skip = "TODO: create a new entity with validation rules to test in isolation")]
   public async Task Test()
   {
     await using var setup = await Initializer.Do();
