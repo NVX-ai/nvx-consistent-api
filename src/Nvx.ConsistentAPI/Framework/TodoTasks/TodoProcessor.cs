@@ -543,7 +543,7 @@ internal class TodoProcessor
     try
     {
       const int batchSize = 2_500;
-      var aMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
+      var threshold = DateTime.UtcNow.AddSeconds(-10);
       var now = DateTime.UtcNow;
 
       var query = $"""
@@ -560,16 +560,16 @@ internal class TodoProcessor
                           [RetryCount]
                       FROM [{tableName}]
                       WHERE
-                          ([StartsAt] <= @aMinuteAgo) AND
+                          ([StartsAt] <= @threshold) AND
                           [ExpiresAt] > @now AND
-                          ([LockedUntil] IS NULL OR [LockedUntil] < @aMinuteAgo)
+                          ([LockedUntil] IS NULL OR [LockedUntil] < @threshold)
                       ORDER BY [StartsAt] ASC
                    """;
 
       await using var connection = new SqlConnection(Settings.ReadModelConnectionString);
       return await connection.QueryAsync<TodoEventModelReadModel>(
         query,
-        new { BatchSize = batchSize, aMinuteAgo, now });
+        new { BatchSize = batchSize, threshold, now });
     }
     catch (Exception ex)
     {

@@ -127,7 +127,7 @@ internal static class DaemonsInsight
       ? await readModels
         .Select<EventModelingReadModelArtifact, Func<Task<SingleReadModelInsights>>>(rm =>
           async () => await rm.Insights(lastEventPosition, store))
-        .Parallel(1)
+        .Parallel(3)
         .Map(i =>
           i
             .Where(s => s.PercentageComplete < 100)
