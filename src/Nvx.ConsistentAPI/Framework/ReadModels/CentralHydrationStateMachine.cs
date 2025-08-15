@@ -14,11 +14,15 @@ internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger 
     try
     {
       await clearanceSemaphore.WaitAsync();
-      return hydrationTasks.Count(t => !t.task.IsCompleted);
+      var running = hydrationTasks.Count(t => !t.task.IsCompleted);
+      var queued = settings.ParallelHydration - hydrationSemaphore.CurrentCount;
+      clearanceSemaphore.Release();
+      return queued + running;
     }
-    finally
+    catch
     {
       clearanceSemaphore.Release();
+      return 0;
     }
   }
 
@@ -35,13 +39,12 @@ internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger 
       {
         await clearanceSemaphore.WaitAsync();
         await Task.WhenAll(hydrationTasks.Select(t => t.task));
+        hydrationTasks.Clear();
+        clearanceSemaphore.Release();
       }
       catch (Exception ex)
       {
         logger.LogWarning(ex, "Error on hydration, they have an internal retry mechanism, so this is not critical");
-      }
-      finally
-      {
         hydrationTasks.Clear();
         clearanceSemaphore.Release();
       }
@@ -59,8 +62,9 @@ internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger 
     try
     {
       await tryProcess(strongId, metadata, evt);
+      hydrationSemaphore.Release();
     }
-    finally
+    catch
     {
       hydrationSemaphore.Release();
     }
@@ -73,15 +77,14 @@ internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger 
       await clearanceSemaphore.WaitAsync();
       await Task.WhenAll(hydrationTasks.Select(t => t.task));
       await checkpoint(position);
+      hydrationTasks.Clear();
+      clearanceSemaphore.Release();
     }
     catch (Exception ex)
     {
-      logger.LogWarning(ex, "Error on hydration, they have an internal retry mechanism, so this is not critical");
-    }
-    finally
-    {
       hydrationTasks.Clear();
       clearanceSemaphore.Release();
+      logger.LogWarning(ex, "Error on hydration, they have an internal retry mechanism, so this is not critical");
     }
   }
 }
