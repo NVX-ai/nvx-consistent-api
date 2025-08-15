@@ -142,7 +142,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
     if (position is null)
     {
-      return SyncState.HasReachedEndOnce && SyncState.LastSync < DateTime.UtcNow.AddSeconds(5);
+      return SyncState.HasReachedEndOnce && SyncState.LastSync < DateTime.UtcNow.AddSeconds(-5);
     }
 
     if (position <= SyncState.LastPosition)
@@ -150,7 +150,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       return true;
     }
 
-    return SyncState.LastSync < DateTime.UtcNow.AddSeconds(5);
+    return SyncState.LastSync < DateTime.UtcNow.AddSeconds(-5);
   }
 
   private async Task SubscribeToStream(
