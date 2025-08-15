@@ -150,7 +150,7 @@ internal class ConsistencyStateMachine(string url)
         }
         else if (lastConsistencyOutputAt < DateTime.UtcNow.AddSeconds(-5))
         {
-          Console.WriteLine($"Not consistent. CaughtUp: {status.IsCaughtUp}. " +
+          Console.WriteLine($"CaughtUp: {status.IsCaughtUp}. " +
                             $"DaemonsIdle: {daemonInsights.AreDaemonsIdle}. " +
                             $"ReadModelsUpToDate: {daemonInsights.AreReadModelsUpToDate}. " +
                             $"FullyIdle: {daemonInsights.IsFullyIdle}. " +
