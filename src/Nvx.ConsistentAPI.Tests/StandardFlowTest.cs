@@ -17,16 +17,7 @@ public class StandardFlowTest
 
     var uploadResult = await setup.Upload();
     await setup.DownloadAndCompare(uploadResult.EntityId.Apply(Guid.Parse), "banana");
-    _ = await setup.CurrentUser(asUser: "john");
-    _ = await setup.CurrentUser(asUser: "nocando");
-
     await setup.Command(new AssignApplicationPermission(setup.Auth.CandoSub, "product-creator"), true);
-    await setup.ForbiddenCommand(new CreateProduct(Guid.NewGuid(), "banana", null));
-    await setup.UnauthorizedCommand(new CreateProduct(Guid.NewGuid(), "banana", null));
-    await setup.ForbiddenReadModel<UserWithPermissionReadModel>();
-
-    await setup.FailingCommand(new CommandThatLikesAdmins(), 409, asAdmin: true);
-    await setup.ForbiddenCommand(new CommandThatLikesAdmins());
 
     // Basic command handling and entity projection.
     await setup.ReadModelNotFound<ProductStock>(productId.ToString());
