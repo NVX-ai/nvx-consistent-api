@@ -127,7 +127,7 @@ internal class ConsistencyStateMachine(string url)
           return true;
         }
 
-        var status = await $"{url}{CatchUp.Route}"
+        var status = await $"{url}{CatchUpEndpoint.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<HydrationStatus>();
 

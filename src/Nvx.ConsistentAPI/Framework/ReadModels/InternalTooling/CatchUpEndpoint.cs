@@ -4,11 +4,11 @@ using Microsoft.OpenApi.Models;
 
 namespace Nvx.ConsistentAPI.InternalTooling;
 
-internal static class CatchUp
+internal static class CatchUpEndpoint
 {
   internal const string Route = "/read-models-hydration/hydration-status";
 
-  internal static void Endpoint(
+  internal static void Configure(
     EventModelingReadModelArtifact[] readModels,
     ReadModelHydrationDaemon centralDaemon,
     GeneratorSettings settings,
