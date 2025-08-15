@@ -8,7 +8,7 @@ internal static class CatchUpEndpoint
 {
   internal const string Route = "/read-models-hydration/hydration-status";
 
-  internal static void Configure(
+  internal static void Apply(
     EventModelingReadModelArtifact[] readModels,
     ReadModelHydrationDaemon centralDaemon,
     GeneratorSettings settings,

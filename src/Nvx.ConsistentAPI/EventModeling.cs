@@ -229,7 +229,7 @@ public class EventModel
     var dcbDaemon = new DynamicConsistencyBoundaryDaemon(store, InterestTriggers, logger);
     dcbDaemon.Initialize();
 
-    CatchUpEndpoint.Configure(ReadModels, hydrationDaemon, settings, fetcher, emitter, app);
+    CatchUpEndpoint.Apply(ReadModels, hydrationDaemon, settings, fetcher, emitter, app);
     PreHydrationCompleted.Endpoint(ReadModels, hydrationDaemon, settings, fetcher, emitter, app);
     DaemonsInsight.Endpoint(
       ReadModels,
