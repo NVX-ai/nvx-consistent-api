@@ -691,8 +691,17 @@ public static class TestEventModel
     var task = new TodoTaskDefinition<ProductNamedTaskData, Product, ProductCreated, StrongGuid>
     {
       Type = "announce-new-product",
-      Action = (d, _, _, _, _) => Task.FromResult(
-        First<EventInsertion, TodoOutcome>(new AnyState(new UserNamedOneProduct(d.UserSub, d.Id, d.UserSub)))),
+      Action = (d, _, _, _, _) =>
+      {
+        // Fail 3% of the time.
+        if (Random.Next() % 33 == 0)
+        {
+          throw new Exception("Kaboom");
+        }
+
+        return Task.FromResult(
+          First<EventInsertion, TodoOutcome>(new AnyState(new UserNamedOneProduct(d.UserSub, d.Id, d.UserSub))));
+      },
       Originator = (created, _, md) => new ProductNamedTaskData(
         created.ProductId,
         created.Name,
