@@ -13,7 +13,7 @@ public abstract record ReadStreamMessage<EventInterface>
     byte[] Event,
     byte[] Metadata,
     ulong GlobalPosition,
-    ulong StreamPosition)
+    long StreamPosition)
     : ReadStreamMessage<EventInterface>;
 
   public record Checkpoint(ulong GlobalPosition) : ReadStreamMessage<EventInterface>;

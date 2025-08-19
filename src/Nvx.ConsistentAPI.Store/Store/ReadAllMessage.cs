@@ -11,7 +11,7 @@ public abstract record ReadAllMessage<EventInterface>
     string InlinedStrongId,
     byte[] EventMetadata,
     ulong GlobalPosition,
-    ulong StreamPosition) : ReadAllMessage<EventInterface>;
+    long StreamPosition) : ReadAllMessage<EventInterface>;
 
   public record Checkpoint(ulong GlobalPosition) : ReadAllMessage<EventInterface>;
 

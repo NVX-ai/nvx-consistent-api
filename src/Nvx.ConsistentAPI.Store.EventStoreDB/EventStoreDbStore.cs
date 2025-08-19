@@ -104,7 +104,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                   re.Event.EventStreamId,
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
-                  re.Event.EventNumber.ToUInt64()));
+                  re.Event.EventNumber.ToInt64()));
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
             yield return new ReadAllMessage<EventModelEvent>.Checkpoint(pos.CommitPosition);
@@ -178,7 +178,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                   re.Event.Data.ToArray(),
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
-                  re.Event.EventNumber.ToUInt64()));
+                  re.Event.EventNumber.ToInt64()));
             position = re.Event.EventNumber;
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
@@ -246,7 +246,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                   re.Event.EventStreamId,
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
-                  re.Event.EventNumber.ToUInt64()));
+                  re.Event.EventNumber.ToInt64()));
             position = FromAll.After(re.Event.Position);
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
@@ -308,7 +308,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                   re.Event.Data.ToArray(),
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
-                  re.Event.EventNumber.ToUInt64()));
+                  re.Event.EventNumber.ToInt64()));
             position = FromStream.After(re.Event.EventNumber);
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
@@ -423,7 +423,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     }
   }
 
-  internal static IEnumerable<EventData> ToEventData(
+  private static IEnumerable<EventData> ToEventData(
     (EventModelEvent Event, EventInsertionMetadataPayload Metadata)[] insertions) =>
     insertions.Select(i =>
       new EventData(

@@ -25,7 +25,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.Store.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.Store.InMemory", "Nvx.ConsistentAPI.Store.InMemory\Nvx.ConsistentAPI.Store.InMemory.csproj", "{210B8EFB-F0EA-473A-A100-7244991BA50C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.Store.MSSQL", "Nvx.ConsistentAPI.Store.MSSQL\Nvx.ConsistentAPI.Store.MSSQL.csproj", "{9C12A4B6-9D21-4433-BE81-C9DE55E76745}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nvx.ConsistentAPI.Store.MsSql", "Nvx.ConsistentAPI.Store.MsSql\Nvx.ConsistentAPI.Store.MsSql.csproj", "{9C12A4B6-9D21-4433-BE81-C9DE55E76745}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
