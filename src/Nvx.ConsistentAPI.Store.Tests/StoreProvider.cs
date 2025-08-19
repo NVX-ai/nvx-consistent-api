@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using DeFuncto;
 using DeFuncto.Extensions;
+using DotNet.Testcontainers.Containers;
 using Newtonsoft.Json;
 using Nvx.ConsistentAPI.Store.EventStoreDB;
 using Nvx.ConsistentAPI.Store.InMemory;
@@ -43,15 +44,21 @@ public static class StoreProvider
 
   public static TheoryData<StoreBackend> Stores => [..Enum.GetValues<StoreBackend>()];
 
-  public static async Task<EventStore<EventModelEvent>> GetStore(StoreBackend backend) =>
-    backend switch
+  public static async Task<TestStore> GetStore(StoreBackend backend)
+  {
+    var (store, container) = backend switch
     {
       StoreBackend.EventStoreDb => await EsDbStore(),
       StoreBackend.MsSql => await MsSqlStore(),
-      _ => new InMemoryEventStore<EventModelEvent>()
+      _ => (new InMemoryEventStore<EventModelEvent>(), null)
     };
+    return new TestStore(container)
+    {
+      Store = store
+    };
+  }
 
-  private static async Task<EventStore<EventModelEvent>> MsSqlStore()
+  private static async Task<(EventStore<EventModelEvent>, DockerContainer)> MsSqlStore()
   {
     var container = new MsSqlBuilder().WithImage(MsSqlDefaultImage).Build();
     await container.StartAsync();
@@ -60,10 +67,10 @@ public static class StoreProvider
       Deserialize,
       Serialize);
     await store.Initialize();
-    return store;
+    return (store, container);
   }
 
-  private static async Task<EventStore<EventModelEvent>> EsDbStore()
+  private static async Task<(EventStore<EventModelEvent>, DockerContainer)> EsDbStore()
   {
     var container = new EventStoreDbBuilder()
       .WithImage(EventStoreDefaultImage)
@@ -79,7 +86,7 @@ public static class StoreProvider
       try
       {
         await store.Initialize();
-        return store;
+        return (store, container);
       }
       catch
       {
@@ -125,4 +132,21 @@ public record MyOtherEvent(Guid Id) : EventModelEvent
 {
   public string GetSwimLane() => "MyOtherTestSwimLane";
   public StrongId GetEntityId() => new MyEventId(Id);
+}
+
+public sealed class TestStore(DockerContainer? container) : IAsyncDisposable
+{
+  public required EventStore<EventModelEvent> Store { get; init; }
+  private DockerContainer? Container => container;
+
+  public async ValueTask DisposeAsync()
+  {
+    if (container != null)
+    {
+      await container.DisposeAsync();
+    }
+  }
+
+  public void Deconstruct(out EventStore<EventModelEvent> store, out DockerContainer? cnt) =>
+    (store, cnt) = (Store, Container);
 }

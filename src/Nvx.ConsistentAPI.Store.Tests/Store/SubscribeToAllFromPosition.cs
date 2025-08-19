@@ -10,7 +10,8 @@ public class SubscribeToAllFromPosition
   [MemberData(nameof(Stores))]
   public async Task Test13(StoreBackend backend)
   {
-    var eventStore = await StoreProvider.GetStore(backend);
+    await using var testStore = await StoreProvider.GetStore(backend);
+    var eventStore = testStore.Store;
     const string swimlane = "MyTestSwimLane";
     const string otherSwimlane = "MyOtherTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());

@@ -10,7 +10,8 @@ public class SubscribeToStreamFromNowOn
   [MemberData(nameof(Stores))]
   public async Task Test16(StoreBackend backend)
   {
-    var eventStore = await StoreProvider.GetStore(backend);
+    await using var testStore = await StoreProvider.GetStore(backend);
+    var eventStore = testStore.Store;
     const string swimlane = "MyTestSwimLane";
     var streamId = new MyEventId(Guid.NewGuid());
     var events = Enumerable
