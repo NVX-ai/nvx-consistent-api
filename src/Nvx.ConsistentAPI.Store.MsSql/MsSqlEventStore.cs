@@ -164,7 +164,7 @@ public class MsSqlEventStore<EventInterface>(
     var currentPosition = (long?)request.Position ?? await GetMaxGlobalPosition();
     currentPosition++;
     var hasNotifiedReadingStarted = false;
-    var isLastCatchUpNotificationCaughtUp = false;
+    var lastNotifiedSyncStatus = NotifiedSyncStatus.None;
 
     var messageBatch = new List<ReadAllMessage<EventInterface>>(BatchSize);
     while (!cancellationToken.IsCancellationRequested)
@@ -190,20 +190,20 @@ public class MsSqlEventStore<EventInterface>(
 
       if (messageBatch.Count == 0)
       {
-        if (!isLastCatchUpNotificationCaughtUp)
+        if (lastNotifiedSyncStatus != NotifiedSyncStatus.CaughtUp)
         {
           yield return new ReadAllMessage<EventInterface>.CaughtUp();
-          isLastCatchUpNotificationCaughtUp = true;
+          lastNotifiedSyncStatus = NotifiedSyncStatus.CaughtUp;
         }
 
         await Task.Delay(pollingDelay, cancellationToken);
         continue;
       }
 
-      if (messageBatch.Count == BatchSize && isLastCatchUpNotificationCaughtUp)
+      if (messageBatch.Count == BatchSize && lastNotifiedSyncStatus != NotifiedSyncStatus.Behind)
       {
         yield return new ReadAllMessage<EventInterface>.FellBehind();
-        isLastCatchUpNotificationCaughtUp = false;
+        lastNotifiedSyncStatus = NotifiedSyncStatus.Behind;
       }
 
 
@@ -228,6 +228,13 @@ public class MsSqlEventStore<EventInterface>(
         };
       }
     }
+  }
+
+  private enum NotifiedSyncStatus
+  {
+    CaughtUp,
+    Behind,
+    None
   }
 
   public AsyncResult<InsertionSuccess, InsertionFailure> Insert(InsertionPayload<EventInterface> payload)

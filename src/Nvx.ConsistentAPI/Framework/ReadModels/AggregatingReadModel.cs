@@ -195,6 +195,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
           continue;
         }
 
+        SyncState = SyncState with { IsBeingHydratedByAnotherInstance = false };
         var checkpointPosition = await databaseHandler.Checkpoint();
         currentCheckpointPosition = checkpointPosition ?? 0;
         var checkpoint = checkpointPosition is null
