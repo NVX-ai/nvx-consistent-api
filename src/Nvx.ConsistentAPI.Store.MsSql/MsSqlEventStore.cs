@@ -32,7 +32,7 @@ public class MsSqlEventStore<EventInterface>(
     );
     """;
 
-  private const int BatchSize = 10;
+  private const int BatchSize = 500;
 
   private readonly TimeSpan pollingDelay = TimeSpan.FromMilliseconds(500);
 
