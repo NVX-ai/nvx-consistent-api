@@ -23,20 +23,20 @@ jobs:
         run: dotnet restore ./src/Nvx.ConsistentAPI.sln
       - name: Build Framework
         run: dotnet build -c Release --no-restore ./src/Nvx.ConsistentAPI/Nvx.ConsistentAPI.csproj
-      - name: Test
+      - name: Framework tests with Event Store DB as event store backend
         working-directory: ./src/Nvx.ConsistentAPI.Tests
         run: dotnet test --no-restore
-      - name: Test in memory store
+      - name: Framework tests with an in memory event store
         working-directory: ./src/Nvx.ConsistentAPI.Tests
         env:
           TEST_EVENT_STORE_TYPE: "inMemory"
         run: dotnet test --no-restore
-      - name: Test with ms sql store
+      - name: Framework tests with MS SQL as event store backend
         working-directory: ./src/Nvx.ConsistentAPI.Tests
         env:
           TEST_EVENT_STORE_TYPE: "msSql"
         run: dotnet test --no-restore
-      - name: Event Store tests
+      - name: Event Store tests, all backends
         working-directory: ./src/Nvx.ConsistentAPI.Store.Tests
         run: dotnet test --no-restore
       - name: Package Framework
