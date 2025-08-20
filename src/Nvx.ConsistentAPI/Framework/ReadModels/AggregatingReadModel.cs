@@ -224,6 +224,11 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
             {
               var relevantAggregators = Aggregators.Where(a => a.Processes(Some(evt.Event))).ToArray();
               var canBeAggregated = relevantAggregators.Length != 0;
+              if (!canBeAggregated)
+              {
+                lastProcessedEventPosition = evt.Metadata.GlobalPosition;
+                continue;
+              }
               isProcessing = true;
 
               await using var connection = new SqlConnection(connectionString);
@@ -313,7 +318,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       }
       catch (OperationCanceledException)
       {
-        SubCancelSource = new CancellationTokenSource();
+        // Ignore
       }
       catch (Exception ex)
       {
@@ -326,6 +331,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
         ClearTracker();
         await databaseHandler.ReleaseLock(processId);
         await Task.Delay(250);
+        SubCancelSource = SubCancelSource.IsCancellationRequested ? new CancellationTokenSource() : SubCancelSource;
       }
     }
     // ReSharper disable once FunctionNeverReturns
