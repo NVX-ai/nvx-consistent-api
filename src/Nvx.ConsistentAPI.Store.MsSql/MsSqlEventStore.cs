@@ -447,7 +447,7 @@ public class MsSqlEventStore<EventInterface>(
     SubscribeStreamRequest request,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var position = request.IsFromStart ? -1 : await GetMaxStreamPosition(request.Swimlane, request.Id.StreamId());
+    var position = request.IsFromStart ? -1 : await GetMaxStreamPosition(request.Swimlane, request.Id.StreamId()) + 1;
 
     var messageBatch = new List<ReadStreamMessage<EventInterface>>(BatchSize);
 
@@ -493,8 +493,8 @@ public class MsSqlEventStore<EventInterface>(
       {
         position = message switch
         {
-          ReadStreamMessage<EventInterface>.SolvedEvent e => e.Metadata.StreamPosition,
-          ReadStreamMessage<EventInterface>.ToxicEvent te => te.StreamPosition,
+          ReadStreamMessage<EventInterface>.SolvedEvent e => e.Metadata.StreamPosition + 1,
+          ReadStreamMessage<EventInterface>.ToxicEvent te => te.StreamPosition + 1,
           _ => position
         };
 
