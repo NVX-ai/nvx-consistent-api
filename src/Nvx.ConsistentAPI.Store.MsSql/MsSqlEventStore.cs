@@ -388,13 +388,13 @@ public class MsSqlEventStore<EventInterface>(
     var direction = request.Direction == ReadDirection.Forwards ? "ASC" : "DESC";
     var positionFilter = request.Position switch
     {
-      RelativePosition.Start => "1 = 1",
-      RelativePosition.End => "1 = 1",
+      RelativePosition.Start => string.Empty,
+      RelativePosition.End => string.Empty,
       _ => request.Direction switch
       {
-        ReadDirection.Forwards => "StreamPosition > @StreamPosition",
-        ReadDirection.Backwards => "StreamPosition < @StreamPosition",
-        _ => "1 = 1"
+        ReadDirection.Forwards => "AND StreamPosition > @StreamPosition",
+        ReadDirection.Backwards => "AND StreamPosition < @StreamPosition",
+        _ => string.Empty
       }
     };
 
@@ -419,7 +419,7 @@ public class MsSqlEventStore<EventInterface>(
         $"""
             SELECT EventId, GlobalPosition, StreamPosition, InlinedStreamId, Swimlane, EventType, EventData, Metadata
             FROM Events
-            WHERE Swimlane = @Swimlane AND InlinedStreamId = @StreamId AND {positionFilter}
+            WHERE Swimlane = @Swimlane AND InlinedStreamId = @StreamId {positionFilter}
             ORDER BY GlobalPosition {direction}
             OFFSET @Offset ROWS
             FETCH NEXT @Count ROWS ONLY;
@@ -474,6 +474,7 @@ public class MsSqlEventStore<EventInterface>(
         break;
       }
 
+      // Technical debt: If the stream gets truncating during a read, this will repeat events.
       offset += BatchSize;
     }
   }
