@@ -247,13 +247,19 @@ public class MsSqlEventStore<EventInterface>(
         {
           try
           {
+            var eventIdParams = new DynamicParameters();
+            foreach (var t in payloadEventIds.Select((id, idx) => (id, idx)))
+            {
+              eventIdParams.Add($"@EventId{t.idx}", t.id);
+            }
+
             var alreadyExistingIds = await connection.QueryAsync<Guid>(
-              """
-              SELECT EventId
-              FROM Events
-              WHERE EventId IN @EventIds
-              """,
-              new { EventIds = payloadEventIds });
+              $"""
+               SELECT EventId
+               FROM Events
+               WHERE EventId IN ({string.Join(',', payloadEventIds.Select((_, i) => $"@EventId{i}"))})
+               """,
+              eventIdParams);
 
             var insertions = payload.Insertions.Where(i => !alreadyExistingIds.Contains(i.Metadata.EventId)).ToArray();
 
