@@ -73,7 +73,7 @@ public class MsSqlEventStore<EventInterface>(
       request.Direction switch
       {
         ReadDirection.Backwards => "GlobalPosition < @Position",
-        _ => "GlobalPosition > @Position"
+        _ => "GlobalPosition >= @Position"
       };
 
     var position =
@@ -83,12 +83,11 @@ public class MsSqlEventStore<EventInterface>(
         RelativePosition.End => long.MaxValue,
         _ => request.Direction switch
         {
-          ReadDirection.Forwards => (long)(request.Position.HasValue ? request.Position.Value - 1 : 0L),
+          ReadDirection.Forwards => (long)(request.Position ?? 0L),
           ReadDirection.Backwards => (long)(request.Position ?? long.MaxValue),
           _ => 0L
         }
       };
-
 
     var swimlaneFilters = request.Swimlanes is null || request.Swimlanes.Length == 0
       ? ""
