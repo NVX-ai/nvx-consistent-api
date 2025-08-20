@@ -7,7 +7,6 @@ Event Modelling Framework, built and maintained by NVX.ai.
 1. Abstract the event store.
     1. Make the Event Store DB generic.
     1. Move the EventModelEvent interface back to the core project, out of the store.
-    1. Implement a MS-SQL event store — there's an implementation for this already, if it can be integrated with minimal/no changes, if not, delay.
 1. Deprecate the aggregating read models.
 1. Gossip table for hydrations.
 1. Attach an event model hash to the global checkpoint, so hydration is not adversarial.

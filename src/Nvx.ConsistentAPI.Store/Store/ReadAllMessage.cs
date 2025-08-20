@@ -7,8 +7,7 @@ public abstract record ReadAllMessage<EventInterface>
   public record AllEvent(string Swimlane, StrongId StrongId, EventInterface Event, StoredEventMetadata Metadata) : ReadAllMessage<EventInterface>;
 
   public record ToxicAllEvent(
-    string Swimlane,
-    string InlinedStrongId,
+    string StreamIdentifier,
     byte[] EventMetadata,
     ulong GlobalPosition,
     long StreamPosition) : ReadAllMessage<EventInterface>;

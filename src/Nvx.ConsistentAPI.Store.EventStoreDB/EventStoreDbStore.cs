@@ -101,7 +101,6 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                     re.Event.EventNumber.ToInt64())),
                 () => new ReadAllMessage<EventModelEvent>.ToxicAllEvent(
                   re.Event.EventStreamId,
-                  re.Event.EventStreamId,
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
                   re.Event.EventNumber.ToInt64()));
@@ -174,7 +173,6 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                   CreateStoredEventMetadata(re)),
                 () => new ReadStreamMessage<EventModelEvent>.ToxicEvent(
                   re.Event.EventStreamId,
-                  null,
                   re.Event.Data.ToArray(),
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
@@ -243,7 +241,6 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                   CreateStoredEventMetadata(re)),
                 () => new ReadAllMessage<EventModelEvent>.ToxicAllEvent(
                   re.Event.EventStreamId,
-                  re.Event.EventStreamId,
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
                   re.Event.EventNumber.ToInt64()));
@@ -304,7 +301,6 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                   CreateStoredEventMetadata(re)),
                 () => new ReadStreamMessage<EventModelEvent>.ToxicEvent(
                   re.Event.EventStreamId,
-                  null,
                   re.Event.Data.ToArray(),
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,

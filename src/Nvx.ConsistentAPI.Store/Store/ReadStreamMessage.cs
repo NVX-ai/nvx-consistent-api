@@ -8,8 +8,7 @@ public abstract record ReadStreamMessage<EventInterface>
     : ReadStreamMessage<EventInterface>;
 
   public record ToxicEvent(
-    string Swimlane,
-    StrongId? Id,
+    string StreamIdentifier,
     byte[] Event,
     byte[] Metadata,
     ulong GlobalPosition,

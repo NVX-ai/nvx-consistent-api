@@ -142,8 +142,7 @@ public class MsSqlEventStore<EventInterface>(
               record.StreamPosition)) as ReadAllMessage<EventInterface>;
         yield return evt.DefaultValue(ReadAllMessage<EventInterface> () =>
           new ReadAllMessage<EventInterface>.ToxicAllEvent(
-            record.Swimlane,
-            record.InlinedStreamId,
+            $"{record.Swimlane}{record.InlinedStreamId}",
             record.Metadata,
             (ulong)record.GlobalPosition,
             record.StreamPosition));
@@ -463,8 +462,7 @@ public class MsSqlEventStore<EventInterface>(
                 (ulong)record.GlobalPosition,
                 record.StreamPosition)) as ReadStreamMessage<EventInterface>)
           .DefaultValue(ReadStreamMessage<EventInterface> () => new ReadStreamMessage<EventInterface>.ToxicEvent(
-            record.Swimlane,
-            request.Id,
+            $"{record.Swimlane}{request.Id.StreamId()}",
             record.EventData,
             record.Metadata,
             (ulong)record.GlobalPosition,
