@@ -485,17 +485,12 @@ public class TestSetup : IAsyncDisposable
 
   private static async Task<EventStoreSettings> AwaitEventStore(TestSettings settings)
   {
-    if (settings.StoreType == EventStoreType.InMemory)
+    return settings.StoreType switch
     {
-      return new EventStoreSettings.InMemory();
-    }
-
-    if (settings.StoreType == EventStoreType.EventStoreDb)
-    {
-      return await EventStoreDbStore();
-    }
-
-    return await MsSqlStore();
+      EventStoreType.InMemory => new EventStoreSettings.InMemory(),
+      EventStoreType.MsSql => await MsSqlStore(),
+      _ => await EventStoreDbStore()
+    };
 
     async Task<EventStoreSettings> MsSqlStore()
     {
