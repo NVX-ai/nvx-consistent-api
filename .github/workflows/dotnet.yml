@@ -31,6 +31,11 @@ jobs:
         env:
           TEST_EVENT_STORE_TYPE: "inMemory"
         run: dotnet test --no-restore
+      - name: Test with ms sql store
+        working-directory: ./src/Nvx.ConsistentAPI.Tests
+        env:
+          TEST_EVENT_STORE_TYPE: "msSql"
+        run: dotnet test --no-restore
       - name: Event Store tests
         working-directory: ./src/Nvx.ConsistentAPI.Store.Tests
         run: dotnet test --no-restore
