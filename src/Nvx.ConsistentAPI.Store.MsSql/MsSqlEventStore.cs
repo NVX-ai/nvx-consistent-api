@@ -392,8 +392,8 @@ public class MsSqlEventStore<EventInterface>(
       RelativePosition.End => string.Empty,
       _ => request.Direction switch
       {
-        ReadDirection.Forwards => "AND StreamPosition > @StreamPosition",
-        ReadDirection.Backwards => "AND StreamPosition < @StreamPosition",
+        ReadDirection.Forwards => "AND StreamPosition >= @StreamPosition",
+        ReadDirection.Backwards => "AND StreamPosition <= @StreamPosition",
         _ => string.Empty
       }
     };
@@ -402,12 +402,7 @@ public class MsSqlEventStore<EventInterface>(
     {
       RelativePosition.Start => 0,
       RelativePosition.End => long.MaxValue,
-      _ => request.Direction switch
-      {
-        ReadDirection.Forwards when request.StreamPosition.HasValue => request.StreamPosition - 1,
-        ReadDirection.Backwards when request.StreamPosition.HasValue => request.StreamPosition + 1,
-        _ => request.StreamPosition
-      }
+      _ => request.StreamPosition
     };
 
     var offset = 0;
