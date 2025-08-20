@@ -764,8 +764,8 @@ public class TestSettings
   private static string AzuriteDefaultConnectionString =>
     RuntimeInformation.ProcessArchitecture == Architecture.Arm64
     && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-      ? "mcr.microsoft.com/azure-storage/azurite:3.35.0-arm64"
-      : "mcr.microsoft.com/azure-storage/azurite:3.35.0";
+      ? "mcr.microsoft.com/azure-storage/azurite:3.34.0-arm64"
+      : "mcr.microsoft.com/azure-storage/azurite:3.34.0";
 }
 
 public enum ConsistencyWaitType

@@ -24,7 +24,7 @@ services:
       - "2113:2113"
       - "1113:1113"
   azurite:
-    image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+    image: mcr.microsoft.com/azure-storage/azurite:3.34.0
     restart: unless-stopped
     ports:
       - 10000:10000
