@@ -455,13 +455,6 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
 
       foreach (var assembly in assemblies)
       {
-        // There is a bug with the test runner that prevents loading some types
-        // from system data while running tests.
-        if (assembly.FullName?.StartsWith("System.Data.") ?? false)
-        {
-          continue;
-        }
-
         var types = assembly.GetTypes().Where(t => t.GetInterfaces().Contains(typeof(EventModelEvent)) && t.IsClass);
 
         foreach (var type in types)

@@ -451,13 +451,6 @@ public static class Generator
 
     foreach (var assembly in assemblies)
     {
-      // There is a bug with the test runner that prevents loading some types
-      // from system data while running tests.
-      if (assembly.FullName?.StartsWith("System.Data.") ?? false)
-      {
-        continue;
-      }
-
       foldTypes.AddRange(
         assembly
           .GetTypes()
