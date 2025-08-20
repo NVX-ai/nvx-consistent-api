@@ -31,6 +31,7 @@ public class StreamTruncation
       }
     }
 
+    // No, it's not just EventCount/2, because dividing an integer by two rounds down, and this rounds up.
     Assert.Equal((ulong) (StoreProvider.EventCount - StoreProvider.EventCount / 2), readAfterTruncate);
   }
 }
