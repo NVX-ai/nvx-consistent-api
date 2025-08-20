@@ -490,42 +490,111 @@ public class TestSetup : IAsyncDisposable
       return new EventStoreSettings.InMemory();
     }
 
-    var builder = new EventStoreDbBuilder()
-      .WithImage(settings.EsDbImage)
-      .WithReuse(settings.UsePersistentTestContainers)
-      .WithAutoRemove(!settings.UsePersistentTestContainers);
-
-    if (settings.UsePersistentTestContainers)
+    if (settings.StoreType == EventStoreType.EventStoreDb)
     {
-      builder = builder
-        .WithName("consistent-api-integration-test-es")
-        .WithEnvironment("EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP", "true")
-        .WithPortBinding(3112, 2113);
-    }
-    else
-    {
-      builder = builder.WithEnvironment("EVENTSTORE_MEM_DB", "True");
+      return await EventStoreDbStore();
     }
 
-    var esContainer = builder.Build();
+    return await MsSqlStore();
 
-    await esContainer.StartAsync();
-    var esCs = esContainer.GetConnectionString();
-    var client = new EventStoreClient(EventStoreClientSettings.Create(esCs));
-    var timer = Stopwatch.StartNew();
-    while (true)
+    async Task<EventStoreSettings> MsSqlStore()
     {
-      try
+      var builder = new MsSqlBuilder()
+        .WithImage(settings.MsSqlDbImage)
+        .WithReuse(settings.UsePersistentTestContainers)
+        .WithAutoRemove(!settings.UsePersistentTestContainers);
+
+      if (settings.UsePersistentTestContainers)
       {
-        await Task.Delay(25);
-        _ = await client.ReadStreamAsync(Direction.Forwards, "meh", StreamPosition.Start).ReadState;
-        return new EventStoreSettings.EventStoreDb(esCs);
+        builder = builder.WithName("consistent-api-integration-test-mssql-event-store").WithPortBinding(1434, 1433);
       }
-      catch (Exception)
+
+      var msSqlContainer = builder.Build();
+
+      await msSqlContainer.StartAsync();
+      var cs = msSqlContainer.GetConnectionString();
+      var timer = Stopwatch.StartNew();
+
+
+      while (!settings.UsePersistentTestContainers)
       {
-        if (timer.ElapsedMilliseconds >= 10_000)
+        try
         {
-          throw new Exception("Could not connect to EventStore.");
+          await msSqlContainer.ExecScriptAsync("ALTER SERVER CONFIGURATION SET MEMORY_OPTIMIZED TEMPDB_METADATA = ON;");
+          await msSqlContainer.ExecAsync(["sudo systemctl restart mssql-server"]);
+          break;
+        }
+        catch (Exception)
+        {
+          if (timer.ElapsedMilliseconds >= 10_000)
+          {
+            throw new Exception("Could not connect to SQL Server event store.");
+          }
+
+          await Task.Delay(25);
+        }
+      }
+
+      while (true)
+      {
+        try
+        {
+          await using var connection = new SqlConnection(cs);
+          _ = await connection.QueryFirstAsync<DateTime>("SELECT GETDATE();");
+
+          return new EventStoreSettings.MsSql(cs);
+        }
+        catch (Exception)
+        {
+          if (timer.ElapsedMilliseconds >= 10_000)
+          {
+            throw new Exception("Could not connect to SQL Server event store.");
+          }
+
+          await Task.Delay(25);
+        }
+      }
+    }
+
+    async Task<EventStoreSettings> EventStoreDbStore()
+    {
+      var builder = new EventStoreDbBuilder()
+        .WithImage(settings.EsDbImage)
+        .WithReuse(settings.UsePersistentTestContainers)
+        .WithAutoRemove(!settings.UsePersistentTestContainers);
+
+      if (settings.UsePersistentTestContainers)
+      {
+        builder = builder
+          .WithName("consistent-api-integration-test-es")
+          .WithEnvironment("EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP", "true")
+          .WithPortBinding(3112, 2113);
+      }
+      else
+      {
+        builder = builder.WithEnvironment("EVENTSTORE_MEM_DB", "True");
+      }
+
+      var esContainer = builder.Build();
+
+      await esContainer.StartAsync();
+      var esCs = esContainer.GetConnectionString();
+      var client = new EventStoreClient(EventStoreClientSettings.Create(esCs));
+      var timer = Stopwatch.StartNew();
+      while (true)
+      {
+        try
+        {
+          await Task.Delay(25);
+          _ = await client.ReadStreamAsync(Direction.Forwards, "meh", StreamPosition.Start).ReadState;
+          return new EventStoreSettings.EventStoreDb(esCs);
+        }
+        catch (Exception)
+        {
+          if (timer.ElapsedMilliseconds >= 10_000)
+          {
+            throw new Exception("Could not connect to EventStore.");
+          }
         }
       }
     }
@@ -714,7 +783,8 @@ public class TestSetup : IAsyncDisposable
 public enum EventStoreType
 {
   InMemory,
-  EventStoreDb
+  EventStoreDb,
+  MsSql
 }
 
 public class TestSettings
