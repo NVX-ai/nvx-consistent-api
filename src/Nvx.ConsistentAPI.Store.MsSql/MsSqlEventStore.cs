@@ -32,7 +32,7 @@ public class MsSqlEventStore<EventInterface>(
     );
     """;
 
-  private const int BatchSize = 500;
+  private const int BatchSize = 10;
 
   private readonly TimeSpan pollingDelay = TimeSpan.FromMilliseconds(500);
 
@@ -79,13 +79,13 @@ public class MsSqlEventStore<EventInterface>(
     var position =
       request.Relative switch
       {
-        RelativePosition.Start => 0UL,
-        RelativePosition.End => ulong.MaxValue,
+        RelativePosition.Start => 0L,
+        RelativePosition.End => long.MaxValue,
         _ => request.Direction switch
         {
-          ReadDirection.Forwards => request.Position,
-          ReadDirection.Backwards => request.Position,
-          _ => 0UL
+          ReadDirection.Forwards => (long)(request.Position.HasValue ? request.Position.Value - 1 : 0L),
+          ReadDirection.Backwards => (long)(request.Position ?? long.MaxValue),
+          _ => 0L
         }
       };
 
@@ -103,12 +103,14 @@ public class MsSqlEventStore<EventInterface>(
            WHERE {positionFilter}{swimlaneFilters}
            ORDER BY GlobalPosition {direction};
          """;
-      var records = await connection.QueryAsync<FullEventRecord>(
-        query,
-        new
-        {
-          Position = (long?)position
-        }).Map(r => r.ToArray());
+      var records = await connection
+        .QueryAsync<FullEventRecord>(
+          query,
+          new
+          {
+            Position = (long?)position
+          })
+        .Map(r => r.ToArray());
 
       if (!hasNotifiedReadingStarted)
       {
@@ -138,14 +140,14 @@ public class MsSqlEventStore<EventInterface>(
               m.EmittedAt,
               (ulong)record.GlobalPosition,
               record.StreamPosition)) as ReadAllMessage<EventInterface>;
-        yield return evt.DefaultValue(
-          ReadAllMessage<EventInterface> () => new ReadAllMessage<EventInterface>.ToxicAllEvent(
+        yield return evt.DefaultValue(ReadAllMessage<EventInterface> () =>
+          new ReadAllMessage<EventInterface>.ToxicAllEvent(
             record.Swimlane,
             record.InlinedStreamId,
             record.Metadata,
             (ulong)record.GlobalPosition,
             record.StreamPosition));
-        position = (ulong)record.GlobalPosition;
+        position = record.GlobalPosition;
       }
 
       if (records.Length < BatchSize)
@@ -159,13 +161,18 @@ public class MsSqlEventStore<EventInterface>(
     SubscribeAllRequest request = default,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var currentPosition = request.Position ?? await GetMaxGlobalPosition();
+    var currentPosition = (long?)request.Position ?? await GetMaxGlobalPosition();
+    currentPosition++;
     var hasNotifiedReadingStarted = false;
 
     var messageBatch = new List<ReadAllMessage<EventInterface>>(BatchSize);
     while (!cancellationToken.IsCancellationRequested)
     {
-      var readRequest = new ReadAllRequest(currentPosition, null, ReadDirection.Forwards, request.Swimlanes ?? []);
+      var readRequest = new ReadAllRequest(
+        (ulong?)currentPosition,
+        request.Position == 0 && !hasNotifiedReadingStarted ? RelativePosition.Start : null,
+        ReadDirection.Forwards,
+        request.Swimlanes ?? []);
       messageBatch.Clear();
 
       try
@@ -201,9 +208,8 @@ public class MsSqlEventStore<EventInterface>(
 
         currentPosition = message switch
         {
-          ReadAllMessage<EventInterface>.AllEvent e => e.Metadata.GlobalPosition,
-          ReadAllMessage<EventInterface>.Checkpoint cp => cp.GlobalPosition,
-          ReadAllMessage<EventInterface>.ToxicAllEvent te => te.GlobalPosition,
+          ReadAllMessage<EventInterface>.AllEvent e => (long)e.Metadata.GlobalPosition + 1,
+          ReadAllMessage<EventInterface>.ToxicAllEvent te => (long)te.GlobalPosition + 1,
           _ => currentPosition
         };
       }
@@ -257,46 +263,48 @@ public class MsSqlEventStore<EventInterface>(
                 latestStreamEvent?.StreamPosition ?? 0);
             }
 
-            long? insertAfter = payload.InsertionType switch
+            var offset = payload.InsertionType switch
             {
-              InsertAfter(var pos) => pos,
-              _ => null
+              InsertAfter(var pos) => pos + 1,
+              _ => latestStreamEvent?.StreamPosition switch
+              {
+                { } le => le + 1,
+                null => 0
+              }
             };
 
-            var insertionRecords = insertions.Select(
-                (i, idx) => serializer(i.Event).Apply(
-                  et => new EventInsertionRecord(
-                    i.Metadata.EventId,
-                    (insertAfter ?? latestStreamEvent?.StreamPosition ?? 0) + idx + 1,
-                    payload.StreamId.StreamId(),
-                    payload.Swimlane,
-                    et.typeName,
-                    et.data,
-                    Encoding.UTF8.GetBytes(
-                      JsonConvert.SerializeObject(
-                        new StoredMetadata(
-                          i.Metadata.RelatedUserSub,
-                          i.Metadata.CorrelationId ?? insertionDefaultCorrelationId,
-                          i.Metadata.CausationId,
-                          i.Metadata.CreatedAt))))))
+            var insertionRecords = insertions
+              .Select((i, idx) => serializer(i.Event)
+                .Apply(et => new EventInsertionRecord(
+                  i.Metadata.EventId,
+                  offset + idx,
+                  payload.StreamId.StreamId(),
+                  payload.Swimlane,
+                  et.typeName,
+                  et.data,
+                  Encoding.UTF8.GetBytes(
+                    JsonConvert.SerializeObject(
+                      new StoredMetadata(
+                        i.Metadata.RelatedUserSub,
+                        i.Metadata.CorrelationId ?? insertionDefaultCorrelationId,
+                        i.Metadata.CausationId,
+                        i.Metadata.CreatedAt))))))
               .ToArray();
 
             var valueParams = insertionRecords
-              .Select(
-                (_, i) =>
-                  $"(@EventId{i}, @StreamPosition{i}, @InlinedStreamId, @Swimlane, @EventType{i}, @EventData{i}, @Metadata{i})")
+              .Select((_, i) =>
+                $"(@EventId{i}, @StreamPosition{i}, @InlinedStreamId, @Swimlane, @EventType{i}, @EventData{i}, @Metadata{i})")
               .Apply(strings => string.Join(", ", strings));
 
             var values = insertionRecords
-              .SelectMany<EventInsertionRecord, KeyValuePair<string, object>>(
-                (r, i) =>
-                [
-                  new KeyValuePair<string, object>($"EventId{i}", r.EventId),
-                  new KeyValuePair<string, object>($"StreamPosition{i}", r.StreamPosition),
-                  new KeyValuePair<string, object>($"EventType{i}", r.EventType),
-                  new KeyValuePair<string, object>($"EventData{i}", r.EventData),
-                  new KeyValuePair<string, object>($"Metadata{i}", r.Metadata)
-                ])
+              .SelectMany<EventInsertionRecord, KeyValuePair<string, object>>((r, i) =>
+              [
+                new KeyValuePair<string, object>($"EventId{i}", r.EventId),
+                new KeyValuePair<string, object>($"StreamPosition{i}", r.StreamPosition),
+                new KeyValuePair<string, object>($"EventType{i}", r.EventType),
+                new KeyValuePair<string, object>($"EventData{i}", r.EventData),
+                new KeyValuePair<string, object>($"Metadata{i}", r.Metadata)
+              ])
               .Append(new KeyValuePair<string, object>("InlinedStreamId", payload.StreamId.StreamId()))
               .Append(new KeyValuePair<string, object>("Swimlane", payload.Swimlane))
               .ToDictionary();
@@ -359,8 +367,8 @@ public class MsSqlEventStore<EventInterface>(
       RelativePosition.End => long.MaxValue,
       _ => request.Direction switch
       {
-        ReadDirection.Forwards when request.StreamPosition.HasValue => request.StreamPosition,
-        ReadDirection.Backwards when request.StreamPosition.HasValue => request.StreamPosition,
+        ReadDirection.Forwards when request.StreamPosition.HasValue => request.StreamPosition - 1,
+        ReadDirection.Backwards when request.StreamPosition.HasValue => request.StreamPosition + 1,
         _ => request.StreamPosition
       }
     };
@@ -380,16 +388,18 @@ public class MsSqlEventStore<EventInterface>(
             FETCH NEXT @Count ROWS ONLY;
          """;
 
-      var records = await connection.QueryAsync<FullEventRecord>(
-        query,
-        new
-        {
-          request.Swimlane,
-          StreamId = request.Id.StreamId(),
-          StreamPosition = streamPosition,
-          Count = BatchSize,
-          Offset = offset
-        }).Map(r => r.ToArray());
+      var records = await connection
+        .QueryAsync<FullEventRecord>(
+          query,
+          new
+          {
+            request.Swimlane,
+            StreamId = request.Id.StreamId(),
+            StreamPosition = streamPosition,
+            Count = BatchSize,
+            Offset = offset
+          })
+        .Map(r => r.ToArray());
 
       if (!hasNotifiedReadingStarted)
       {
@@ -414,14 +424,13 @@ public class MsSqlEventStore<EventInterface>(
                 m.EmittedAt,
                 (ulong)record.GlobalPosition,
                 record.StreamPosition)) as ReadStreamMessage<EventInterface>)
-          .DefaultValue(
-            ReadStreamMessage<EventInterface> () => new ReadStreamMessage<EventInterface>.ToxicEvent(
-              record.Swimlane,
-              request.Id,
-              record.EventData,
-              record.Metadata,
-              (ulong)record.GlobalPosition,
-              record.StreamPosition));
+          .DefaultValue(ReadStreamMessage<EventInterface> () => new ReadStreamMessage<EventInterface>.ToxicEvent(
+            record.Swimlane,
+            request.Id,
+            record.EventData,
+            record.Metadata,
+            (ulong)record.GlobalPosition,
+            record.StreamPosition));
       }
 
       if (records.Length < BatchSize)
@@ -447,7 +456,12 @@ public class MsSqlEventStore<EventInterface>(
     while (!cancellationToken.IsCancellationRequested)
     {
       var readRequest =
-        new ReadStreamRequest(request.Swimlane, request.Id, null, ReadDirection.Forwards, position);
+        new ReadStreamRequest(
+          request.Swimlane,
+          request.Id,
+          request.IsFromStart && !hasNotifiedReadingStarted ? RelativePosition.Start : null,
+          ReadDirection.Forwards,
+          position);
 
       messageBatch.Clear();
 
@@ -480,7 +494,6 @@ public class MsSqlEventStore<EventInterface>(
         position = message switch
         {
           ReadStreamMessage<EventInterface>.SolvedEvent e => e.Metadata.StreamPosition,
-          ReadStreamMessage<EventInterface>.Checkpoint => position,
           ReadStreamMessage<EventInterface>.ToxicEvent te => te.StreamPosition,
           _ => position
         };
@@ -490,12 +503,21 @@ public class MsSqlEventStore<EventInterface>(
     }
   }
 
-  public Task TruncateStream(string swimlane, StrongId id, long truncateBefore) => throw new NotImplementedException();
-
-  private async Task<ulong> GetMaxGlobalPosition()
+  public async Task TruncateStream(string swimlane, StrongId id, long truncateBefore)
   {
     await using var connection = new SqlConnection(connectionString);
-    return await connection.QueryFirstAsync<ulong>("SELECT COALESCE(MAX(GlobalPosition), -1) FROM Events");
+    await connection.ExecuteAsync(
+      """
+      DELETE FROM Events
+      WHERE Swimlane = @Swimlane AND InlinedStreamId = @StreamId AND StreamPosition < @TruncateBefore
+      """,
+      new { Swimlane = swimlane, StreamId = id.StreamId(), TruncateBefore = truncateBefore });
+  }
+
+  private async Task<long> GetMaxGlobalPosition()
+  {
+    await using var connection = new SqlConnection(connectionString);
+    return await connection.QueryFirstAsync<long>("SELECT COALESCE(MAX(GlobalPosition), -1) FROM Events");
   }
 
   private async Task<long> GetMaxStreamPosition(string swimlane, string inlinedStreamId)

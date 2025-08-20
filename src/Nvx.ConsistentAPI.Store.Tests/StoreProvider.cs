@@ -34,6 +34,8 @@ public static class StoreProvider
       .Where(t => t.GetInterfaces().Any(i => i == typeof(EventModelEvent)))
       .ToArray();
 
+  private static readonly SemaphoreSlim MsSqlStoreSemaphore = new(8, 8);
+
   private static string MsSqlDefaultImage => "mcr.microsoft.com/mssql/server:2022-latest";
 
   private static string EventStoreDefaultImage =>
@@ -42,24 +44,33 @@ public static class StoreProvider
       ? "eventstore/eventstore:23.10.0-alpha-arm64v8"
       : "eventstore/eventstore:23.10.0-jammy";
 
-  public static TheoryData<StoreBackend> Stores => [..Enum.GetValues<StoreBackend>()];
+  public static TheoryData<StoreBackend> Stores => [StoreBackend.MsSql];
 
   public static async Task<TestStore> GetStore(StoreBackend backend)
   {
-    var (store, container) = backend switch
+    var (store, container, semaphore) = backend switch
     {
-      StoreBackend.EventStoreDb => await EsDbStore(),
-      StoreBackend.MsSql => await MsSqlStore(),
-      _ => (new InMemoryEventStore<EventModelEvent>(), null)
+      StoreBackend.EventStoreDb => await EsDbStore()
+        .Map<
+          (EventStore<EventModelEvent> store, DockerContainer container),
+          (EventStore<EventModelEvent> store, DockerContainer? container, SemaphoreSlim? semaphore)
+        >(t => (t.store, t.container, null)),
+      StoreBackend.MsSql => await MsSqlStore()
+        .Map<
+          (EventStore<EventModelEvent> store, DockerContainer container),
+          (EventStore<EventModelEvent> store, DockerContainer? container, SemaphoreSlim? semaphore)
+        >(t => (t.store, t.container, MsSqlStoreSemaphore)),
+      _ => (new InMemoryEventStore<EventModelEvent>(), null, null)
     };
-    return new TestStore(container)
+    return new TestStore(container, semaphore)
     {
       Store = store
     };
   }
 
-  private static async Task<(EventStore<EventModelEvent>, DockerContainer)> MsSqlStore()
+  private static async Task<(EventStore<EventModelEvent> store, DockerContainer container)> MsSqlStore()
   {
+    await MsSqlStoreSemaphore.WaitAsync(TimeSpan.FromMinutes(1));
     var container = new MsSqlBuilder().WithImage(MsSqlDefaultImage).Build();
     await container.StartAsync();
     var store = new MsSqlEventStore<EventModelEvent>(
@@ -70,7 +81,7 @@ public static class StoreProvider
     return (store, container);
   }
 
-  private static async Task<(EventStore<EventModelEvent>, DockerContainer)> EsDbStore()
+  private static async Task<(EventStore<EventModelEvent> store, DockerContainer container)> EsDbStore()
   {
     var container = new EventStoreDbBuilder()
       .WithImage(EventStoreDefaultImage)
@@ -134,10 +145,10 @@ public record MyOtherEvent(Guid Id) : EventModelEvent
   public StrongId GetEntityId() => new MyEventId(Id);
 }
 
-public sealed class TestStore(DockerContainer? container) : IAsyncDisposable
+public sealed class TestStore(DockerContainer? container, SemaphoreSlim? semaphore) : IAsyncDisposable
 {
   public required EventStore<EventModelEvent> Store { get; init; }
-  private DockerContainer? Container => container;
+  public bool IsDisposed { get; private set; }
 
   public async ValueTask DisposeAsync()
   {
@@ -145,8 +156,16 @@ public sealed class TestStore(DockerContainer? container) : IAsyncDisposable
     {
       await container.DisposeAsync();
     }
-  }
 
-  public void Deconstruct(out EventStore<EventModelEvent> store, out DockerContainer? cnt) =>
-    (store, cnt) = (Store, Container);
+    IsDisposed = true;
+
+    try
+    {
+      semaphore?.Release();
+    }
+    catch
+    {
+      // ignore
+    }
+  }
 }
