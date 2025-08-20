@@ -18,6 +18,7 @@ public static class Initializer
             ?.ToLowerInvariant() switch
           {
             "inmemory" => EventStoreType.InMemory,
+            "mssql" => EventStoreType.MsSql,
             _ => EventStoreType.EventStoreDb
           }
     });
