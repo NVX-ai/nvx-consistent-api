@@ -21,7 +21,7 @@ public class MsSqlEventStore<EventInterface>(
         EventId UNIQUEIDENTIFIER NOT NULL,
         GlobalPosition BIGINT IDENTITY(1,1) NOT NULL,
         StreamPosition BIGINT NOT NULL,
-        InlinedStreamId NVARCHAR(4000) NOT NULL,
+        InlinedStreamId NVARCHAR(255) NOT NULL,
         Swimlane NVARCHAR(255) NOT NULL,
         EventType NVARCHAR(255) NOT NULL,
         EventData VARBINARY(MAX) NOT NULL,
@@ -164,7 +164,6 @@ public class MsSqlEventStore<EventInterface>(
     var currentPosition = (long?)request.Position ?? await GetMaxGlobalPosition();
     currentPosition++;
     var hasNotifiedReadingStarted = false;
-    var isLastCatchUpNotificationCaughtUp = false;
 
     var messageBatch = new List<ReadAllMessage<EventInterface>>(BatchSize);
     while (!cancellationToken.IsCancellationRequested)
@@ -190,22 +189,9 @@ public class MsSqlEventStore<EventInterface>(
 
       if (messageBatch.Count == 0)
       {
-        if (!isLastCatchUpNotificationCaughtUp)
-        {
-          yield return new ReadAllMessage<EventInterface>.CaughtUp();
-          isLastCatchUpNotificationCaughtUp = true;
-        }
-
         await Task.Delay(pollingDelay, cancellationToken);
         continue;
       }
-
-      if (messageBatch.Count == BatchSize && isLastCatchUpNotificationCaughtUp)
-      {
-        yield return new ReadAllMessage<EventInterface>.FellBehind();
-        isLastCatchUpNotificationCaughtUp = false;
-      }
-
 
       foreach (var message in messageBatch)
       {
@@ -241,7 +227,6 @@ public class MsSqlEventStore<EventInterface>(
         await using var connection = new SqlConnection(connectionString);
         var payloadEventIds = payload.Insertions.Select(i => i.Metadata.EventId).ToArray();
         var insertionDefaultCorrelationId = Guid.NewGuid().ToString();
-        var consistencyRetryCount = 0;
 
         while (true)
         {
@@ -348,16 +333,6 @@ public class MsSqlEventStore<EventInterface>(
             && payload.InsertionType is not AnyStreamState)
           {
             return new InsertionFailure.ConsistencyCheckFailed();
-          }
-          catch (SqlException ex) when (
-            ex.Number == 2627
-            && ex.Message.Contains("UK_Events_Stream")
-            && payload.InsertionType is AnyStreamState
-            && consistencyRetryCount < 100)
-          {
-            // try again
-            consistencyRetryCount++;
-            await Task.Delay(consistencyRetryCount + 1);
           }
         }
       }
