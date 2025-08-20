@@ -12,6 +12,7 @@ using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.Store.EventStoreDB;
 using Nvx.ConsistentAPI.Store.InMemory;
+using Nvx.ConsistentAPI.Store.MsSql;
 using Nvx.ConsistentAPI.Store.Store;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -199,7 +200,11 @@ public static class Generator
 
     var store = settings.EventStoreSettings.Match(
       EventStore<EventModelEvent> () => new InMemoryEventStore<EventModelEvent>(),
-      esDb => new EventStoreDbStore(esDb.ConnectionString));
+      esDb => new EventStoreDbStore(esDb.ConnectionString),
+      ms => new MsSqlEventStore<EventModelEvent>(
+        ms.ConnectionString,
+        EventModelEventSerialization.Deserialize,
+        EventModelEventSerialization.Serialize));
     await store.Initialize();
 
     builder

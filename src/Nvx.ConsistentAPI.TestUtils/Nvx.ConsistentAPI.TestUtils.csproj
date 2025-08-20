@@ -14,15 +14,15 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="BouncyCastle.Cryptography" Version="2.5.1"/>
+        <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
         <PackageReference Include="DeFuncto.Core" Version="1.1.2"/>
         <PackageReference Include="Docker.Dotnet" Version="3.125.15"/>
         <PackageReference Include="Flurl.Http" Version="4.0.2"/>
-        <PackageReference Include="Microsoft.Azure.SignalR" Version="1.30.2"/>
-        <PackageReference Include="Schick.Keycloak.RestApiClient" Version="26.1.2"/>
-        <PackageReference Include="Testcontainers.Azurite" Version="4.3.0"/>
-        <PackageReference Include="Testcontainers.EventStoreDb" Version="4.3.0"/>
-        <PackageReference Include="Testcontainers.MsSql" Version="4.3.0"/>
+        <PackageReference Include="Microsoft.Azure.SignalR" Version="1.31.0" />
+        <PackageReference Include="Schick.Keycloak.RestApiClient" Version="26.2.0" />
+        <PackageReference Include="Testcontainers.Azurite" Version="4.6.0" />
+        <PackageReference Include="Testcontainers.EventStoreDb" Version="4.6.0" />
+        <PackageReference Include="Testcontainers.MsSql" Version="4.6.0" />
         <PackageReference Include="xunit" Version="2.9.3"/>
     </ItemGroup>
 
