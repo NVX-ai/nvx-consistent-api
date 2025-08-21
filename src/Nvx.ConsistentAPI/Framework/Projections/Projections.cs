@@ -112,7 +112,7 @@ public abstract class
             {
               var result = await store.Insert(
                 new InsertionPayload<EventModelEvent>(
-                  @event.GetSwimLane(),
+                  @event.GetSwimlane(),
                   @event.GetEntityId(),
                   new AnyStreamState(),
                   [
@@ -135,7 +135,7 @@ public abstract class
               foreach (var insertionSuccess in result.Option)
               {
                 await store.TruncateStream(
-                  @event.GetSwimLane(),
+                  @event.GetSwimlane(),
                   @event.GetEntityId(),
                   insertionSuccess.StreamPosition);
               }

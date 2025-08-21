@@ -353,7 +353,7 @@ internal class ReadModelHydrationDaemon(
             SerializedId = Serialization.Serialize(strongId),
             StrongIdTypeNamespace = strongId.GetType().Namespace ?? string.Empty,
             StrongIdTypeName = strongId.GetType().Name,
-            Swimlane = @event.GetSwimLane()
+            Swimlane = @event.GetSwimlane()
           });
       }
       catch (Exception dbEx)

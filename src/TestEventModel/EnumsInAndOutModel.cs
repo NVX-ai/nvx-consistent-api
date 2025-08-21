@@ -42,7 +42,7 @@ public record SaveEntityWithEnum(OneEnum EnumValue) : EventModelCommand<EntityWi
 
 public record EntityWithEnumSaved(Guid EntityId, OneEnum EnumValue) : EventModelEvent
 {
-  public string GetSwimLane() => EntityWithEnum.StreamPrefix;
+  public string GetSwimlane() => EntityWithEnum.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(EntityId);
 }
 

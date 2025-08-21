@@ -39,7 +39,7 @@ public partial record EntityWithFiles(string Id, MyFile[] Files)
 
 public record SavedEntityWithFiles(string Id, MyFile[] Files) : EventModelEvent
 {
-  public string GetSwimLane() => EntityWithFiles.StreamPrefix;
+  public string GetSwimlane() => EntityWithFiles.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }
 

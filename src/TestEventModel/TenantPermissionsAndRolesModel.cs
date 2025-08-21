@@ -44,7 +44,7 @@ public partial record PermissionsAndRolesEntity(Guid Id, Guid TenantId) : EventM
 
 public record PermissionsAndRolesEvent(Guid Id, Guid TenantId) : EventModelEvent
 {
-  public string GetSwimLane() => PermissionsAndRolesEntity.StreamPrefix;
+  public string GetSwimlane() => PermissionsAndRolesEntity.StreamPrefix;
   public StrongId GetEntityId() => new PermissionsAndRolesEntityId(Id);
 }
 

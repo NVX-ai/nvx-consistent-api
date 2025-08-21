@@ -14,20 +14,59 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+        <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2"/>
         <PackageReference Include="DeFuncto.Core" Version="1.1.2"/>
         <PackageReference Include="Docker.Dotnet" Version="3.125.15"/>
         <PackageReference Include="Flurl.Http" Version="4.0.2"/>
-        <PackageReference Include="Microsoft.Azure.SignalR" Version="1.31.0" />
-        <PackageReference Include="Schick.Keycloak.RestApiClient" Version="26.2.0" />
-        <PackageReference Include="Testcontainers.Azurite" Version="4.6.0" />
-        <PackageReference Include="Testcontainers.EventStoreDb" Version="4.6.0" />
-        <PackageReference Include="Testcontainers.MsSql" Version="4.6.0" />
+        <PackageReference Include="Microsoft.Azure.SignalR" Version="1.31.0"/>
+        <PackageReference Include="Schick.Keycloak.RestApiClient" Version="26.2.0"/>
+        <PackageReference Include="Testcontainers.Azurite" Version="4.6.0"/>
+        <PackageReference Include="Testcontainers.EventStoreDb" Version="4.6.0"/>
+        <PackageReference Include="Testcontainers.MsSql" Version="4.6.0"/>
         <PackageReference Include="xunit" Version="2.9.3"/>
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Nvx.ConsistentAPI\Nvx.ConsistentAPI.csproj"/>
+        <ProjectReference
+                Include="..\Nvx.ConsistentAPI.Store\Nvx.ConsistentAPI.Store.csproj"
+                PrivateAssets="All"/>
+        <ProjectReference
+                Include="..\Nvx.ConsistentAPI.Store.InMemory\Nvx.ConsistentAPI.Store.InMemory.csproj"
+                PrivateAssets="All"/>
+        <ProjectReference
+                Include="..\Nvx.ConsistentAPI.Store.MsSql\Nvx.ConsistentAPI.Store.MsSql.csproj"
+                PrivateAssets="All"/>
+        <ProjectReference
+                Include="..\Nvx.ConsistentAPI.Store.EventStoreDB\Nvx.ConsistentAPI.Store.EventStoreDB.csproj"
+                PrivateAssets="All"/>
     </ItemGroup>
+
+    <PropertyGroup>
+        <TargetsForTfmSpecificBuildOutput>
+            $(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage
+        </TargetsForTfmSpecificBuildOutput>
+    </PropertyGroup>
+
+    <Target Name="CopyProjectReferencesToPackage" DependsOnTargets="BuildOnlySettings;ResolveReferences">
+        <ItemGroup>
+            <!-- Filter out unnecessary files -->
+            <_ReferenceCopyLocalPaths
+                    Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'ProjectReference')->WithMetadataValue('PrivateAssets', 'All'))"/>
+        </ItemGroup>
+
+        <!-- Print batches for debug purposes -->
+        <Message
+                Text="Batch for .nupkg: ReferenceCopyLocalPaths = @(_ReferenceCopyLocalPaths), ReferenceCopyLocalPaths.DestinationSubDirectory = %(_ReferenceCopyLocalPaths.DestinationSubDirectory) Filename = %(_ReferenceCopyLocalPaths.Filename) Extension = %(_ReferenceCopyLocalPaths.Extension)"
+                Importance="High"
+                Condition="'@(_ReferenceCopyLocalPaths)' != ''"/>
+
+        <ItemGroup>
+            <!-- Add file to package with consideration of sub folder. If empty, the root folder is chosen. -->
+            <BuildOutputInPackage
+                    Include="@(_ReferenceCopyLocalPaths)"
+                    TargetPath="%(_ReferenceCopyLocalPaths.DestinationSubDirectory)"/>
+        </ItemGroup>
+    </Target>
 
 </Project>
