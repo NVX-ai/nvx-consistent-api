@@ -171,6 +171,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
         var checkpoint = await databaseHandler.Checkpoint();
         lastProcessedEventPosition = lastCheckpointPosition = checkpoint;
 
+        // TODO: Deal with the prefix/swimlane dichotomy
         string[] swimlanes = [StreamPrefix, $"{InterestedEntityEntity.StreamPrefix}{StreamPrefix}"];
         var request = checkpoint.HasValue
           ? ReadAllRequest.Before(
