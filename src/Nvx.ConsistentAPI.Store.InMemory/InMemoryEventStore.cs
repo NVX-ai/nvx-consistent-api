@@ -75,45 +75,49 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
   {
     yield return new ReadAllMessage<EventInterface>.ReadingStarted();
     await semaphore.WaitAsync(cancellationToken);
-    ulong? index = request.Relative switch
+    ulong index = request.Relative switch
     {
       RelativePosition.Start => 0,
-      RelativePosition.End => (ulong)events.Count,
+      RelativePosition.End => events.Max(e => e.Metadata.GlobalPosition),
       _ => request.Direction switch
       {
-        ReadDirection.Backwards => request.Position - 1,
-        _ => request.Position
+        ReadDirection.Backwards => (request.Position ?? events.Max(e => e.Metadata.GlobalPosition)) - 1,
+        _ => request.Position ?? 0
       }
     };
 
-    ulong? edge = request.Direction switch
+    var edge = request.Direction switch
     {
-      ReadDirection.Backwards => null,
-      _ => (ulong)events.Count + 1
+      ReadDirection.Backwards => 0UL,
+      _ => events.Max(e => e.Metadata.GlobalPosition)
     };
     SafeRelease();
 
     var lanes = request.Swimlanes ?? [];
     var hasSwimlanes = lanes.Length > 0;
 
-    while (index != edge)
+    while (request.Direction switch
+           {
+             ReadDirection.Forwards => index <= edge,
+             _ => index >= edge
+           })
     {
       await semaphore.WaitAsync(cancellationToken);
       var storedEvent = events.FirstOrDefault(e => e.Metadata.GlobalPosition == index);
       SafeRelease();
-      index = request.Direction switch
-      {
-        ReadDirection.Backwards => index == 0 ? null : index - 1,
-        _ => index + 1
-      };
 
-      if (storedEvent is null)
+      if (storedEvent is null || (hasSwimlanes && !lanes.Contains(storedEvent.Swimlane)))
       {
-        continue;
-      }
+        if (request.Direction == ReadDirection.Backwards && index == 0)
+        {
+          break;
+        }
 
-      if (hasSwimlanes && !lanes.Contains(storedEvent.Swimlane))
-      {
+        index = request.Direction switch
+        {
+          ReadDirection.Backwards => index - 1,
+          _ => index + 1
+        };
         continue;
       }
 
@@ -122,6 +126,16 @@ public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
         storedEvent.StreamId,
         storedEvent.Event,
         storedEvent.Metadata);
+      if (request.Direction == ReadDirection.Backwards && index == 0)
+      {
+        break;
+      }
+
+      index = request.Direction switch
+      {
+        ReadDirection.Backwards => index - 1,
+        _ => index + 1
+      };
     }
   }
 
