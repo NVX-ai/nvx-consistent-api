@@ -94,6 +94,7 @@ internal class ReadModelHydrationDaemon(
       await DoInitialize();
       _ = Task.Run(Hydrate);
       _ = Task.Run(RetryFailedHydrations);
+      _ = Task.Run(HydrateTodos);
 
       isInitialized = true;
     }
@@ -166,6 +167,36 @@ internal class ReadModelHydrationDaemon(
     await lastPositionSemaphore.WaitAsync();
     lastPosition = pos > lastPosition || lastPosition is null ? pos : lastPosition;
     lastPositionSemaphore.Release();
+  }
+
+  private async Task HydrateTodos()
+  {
+    var readModel = readModels.SingleOrDefault(rm => rm.CanProject(ProcessorEntity.StreamPrefix));
+    if (readModel is null)
+    {
+      return;
+    }
+    while (settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration))
+    {
+      try
+      {
+
+        await foreach (var evt in store
+                         .Subscribe(SubscribeAllRequest.FromNowOn(ProcessorEntity.StreamPrefix))
+                         .Events())
+        {
+          await fetcher
+            .Fetch<ProcessorEntity>(evt.StrongId)
+            .Map(FoundEntity<ProcessorEntity>.From)
+            .Async()
+            .Iter(async e => await readModel.TryProcess(e, databaseHandlerFactory, evt.StrongId, null, logger));
+        }
+      }
+      catch
+      {
+        await Task.Delay(250);
+      }
+    }
   }
 
   private async Task Hydrate()
