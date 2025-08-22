@@ -74,6 +74,7 @@ internal class ConsistencyStateMachine
 {
   private const int BaseDelayMilliseconds = 500;
   private const int MaxDelayMilliseconds = 25_000;
+  private readonly ILogger logger;
   private readonly ConcurrentDictionary<Guid, DateTime> testsAcknowledged = [];
   private readonly string url;
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
@@ -82,9 +83,10 @@ internal class ConsistencyStateMachine
   private DateTime lastEventEmittedAt = DateTime.MinValue;
   private ulong lastEventPosition = ulong.MinValue;
 
-  public ConsistencyStateMachine(string url, EventStore<EventModelEvent> store)
+  public ConsistencyStateMachine(string url, EventStore<EventModelEvent> store, ILogger logger)
   {
     this.url = url;
+    this.logger = logger;
     _ = Task.Run(() => Subscribe(store));
   }
 
@@ -182,16 +184,17 @@ internal class ConsistencyStateMachine
         }
         else if (lastConsistencyOutputAt < DateTime.UtcNow.AddSeconds(-5))
         {
-          Console.WriteLine(
-            $"CaughtUp: {status.IsCaughtUp} - "
-            + $"DaemonsIdle: {daemonInsights.AreDaemonsIdle} - "
-            + $"ReadModels: {daemonInsights.AreReadModelsUpToDate} - "
-            + $"Idle: {daemonInsights.IsFullyIdle} - "
-            + $"Started: {startedAt} - "
-            + $"LastEvt: {daemonInsights.LastEventEmittedAt} - "
-            + $"InsightActivity: {daemonInsights.HadActivityDuringCheck} - "
-            + $"DaemonPos: {daemonInsights.LastEventPosition} - "
-            + $"TestPos: {lastEventPosition}");
+          logger.LogWarning(
+            "CaughtUp: {CaughtUp} - DaemonsIdle: {DaemonsIdle} - ReadModels: {ReadModels} - Idle: {Idle} - Started: {Started} - LastEvt: {LastEvt} - InsightActivity: {InsightActivity} - DaemonPos: {DaemonPos} - TestPos: {TestPos}",
+            status.IsCaughtUp,
+            daemonInsights.AreDaemonsIdle,
+            daemonInsights.AreReadModelsUpToDate,
+            daemonInsights.IsFullyIdle,
+            startedAt,
+            daemonInsights.LastEventEmittedAt,
+            daemonInsights.HadActivityDuringCheck,
+            daemonInsights.LastEventPosition,
+            lastEventPosition);
           lastConsistencyOutputAt = DateTime.UtcNow;
         }
 
@@ -773,7 +776,10 @@ public class TestSetup : IAsyncDisposable
       model,
       1,
       app.WebApplication.Services.GetRequiredService<ILogger<TestSetup>>(),
-      new ConsistencyStateMachine(baseUrl, app.Store));
+      new ConsistencyStateMachine(
+        baseUrl,
+        app.Store,
+        app.WebApplication.Services.GetRequiredService<ILogger<TestSetup>>()));
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)
