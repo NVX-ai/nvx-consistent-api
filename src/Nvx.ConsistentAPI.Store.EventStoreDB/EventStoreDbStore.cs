@@ -504,9 +504,9 @@ public class EventStoreDbStore<EventInterface>(
     && rpcEx.Status.Detail.Contains("too slow");
 
   internal static T CreateTerminatedMessage<T>(Exception exception) where T : class =>
-    typeof(T) == typeof(ReadAllMessage<EventModelEvent>)
-      ? (T)(object)new ReadAllMessage<EventModelEvent>.Terminated(exception)
-      : (T)(object)new ReadStreamMessage<EventModelEvent>.Terminated(exception);
+    typeof(T) == typeof(ReadAllMessage<EventInterface>)
+      ? (T)(object)new ReadAllMessage<EventInterface>.Terminated(exception)
+      : (T)(object)new ReadStreamMessage<EventInterface>.Terminated(exception);
 
   private static StoredEventMetadata CreateStoredEventMetadata(ResolvedEvent re) =>
     StoredEventMetadata.FromStorage(

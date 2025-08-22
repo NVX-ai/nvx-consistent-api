@@ -34,6 +34,7 @@
         <ProjectReference Include="..\Nvx.ConsistentAPI.Store.InMemory\Nvx.ConsistentAPI.Store.InMemory.csproj"/>
         <ProjectReference Include="..\Nvx.ConsistentAPI.Store.MsSql\Nvx.ConsistentAPI.Store.MsSql.csproj" />
         <ProjectReference Include="..\Nvx.ConsistentAPI.Store\Nvx.ConsistentAPI.Store.csproj"/>
+        <ProjectReference Include="..\Nvx.ConsistentAPI\Nvx.ConsistentAPI.csproj" />
     </ItemGroup>
 
 </Project>
