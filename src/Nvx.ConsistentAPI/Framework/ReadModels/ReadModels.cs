@@ -171,12 +171,9 @@ public class ReadModelDefinition<Shape, EntityShape> :
         var checkpoint = await databaseHandler.Checkpoint();
         lastProcessedEventPosition = lastCheckpointPosition = checkpoint;
 
-        // TODO: Deal with the prefix/swimlane dichotomy
-        string[] swimlanes = [StreamPrefix, $"{InterestedEntityEntity.StreamPrefix}{StreamPrefix}"];
+        string[] swimlanes = [StreamPrefix, InterestedEntityEntity.StreamPrefix];
         var request = checkpoint.HasValue
-          ? ReadAllRequest.Before(
-            checkpoint.Value,
-            swimlanes)
+          ? ReadAllRequest.Before(checkpoint.Value, swimlanes)
           : ReadAllRequest.End(swimlanes);
 
         await foreach (var message in store.Read(request))
@@ -243,10 +240,12 @@ public class ReadModelDefinition<Shape, EntityShape> :
             foreach (var t in me switch
                      {
                        InterestedEntityRegisteredInterest ie => ie
-                         .InterestedEntityId.GetStrongId()
+                         .When(e => e.ConcernedEntityStreamName.StartsWith(StreamPrefix))
+                         .Bind(e => e.InterestedEntityId.GetStrongId())
                          .Map(id => (id, ie.InterestedEntityStreamName)),
                        InterestedEntityHadInterestRemoved ie => ie
-                         .InterestedEntityId.GetStrongId()
+                         .When(e => e.ConcernedEntityStreamName.StartsWith(StreamPrefix))
+                         .Bind(e => e.InterestedEntityId.GetStrongId())
                          .Map(id => (id, ie.InterestedEntityStreamName)),
                        _ => None
                      })
