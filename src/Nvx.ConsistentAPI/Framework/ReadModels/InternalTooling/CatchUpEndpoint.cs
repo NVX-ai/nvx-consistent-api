@@ -31,19 +31,14 @@ internal static class CatchUpEndpoint
 
       if (internalToolingApiKeyHeader == settings.ToolingEndpointsApiKey)
       {
-        context.Response.StatusCode = StatusCodes.Status200OK;
-        await context.Response.WriteAsJsonAsync(new HydrationStatus(await IsCaughtUp()));
+        await Respond(context);
         return;
       }
 
       await FrameworkSecurity
         .Authorization(context, fetcher, emitter, settings, new PermissionsRequireAll("admin"), None)
         .Iter(
-          async _ =>
-          {
-            context.Response.StatusCode = StatusCodes.Status200OK;
-            await context.Response.WriteAsJsonAsync(new HydrationStatus(await IsCaughtUp()));
-          },
+          async _ => await Respond(context),
           async e => await e.Respond(context));
     };
 
@@ -71,5 +66,11 @@ internal static class CatchUpEndpoint
 
     return;
     async Task<bool> IsCaughtUp() => readModels.All(rm => rm.IsUpToDate()) && await centralDaemon.IsUpToDate(null);
+
+    async Task Respond(HttpContext context)
+    {
+      context.Response.StatusCode = StatusCodes.Status200OK;
+      await context.Response.WriteAsJsonAsync(new HydrationStatus(await IsCaughtUp()));
+    }
   }
 }
