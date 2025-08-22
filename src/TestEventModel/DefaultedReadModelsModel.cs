@@ -68,7 +68,7 @@ public record DefaultedReadModelReadModel(string Id, Guid EntityId, string SomeT
 
 public record SomethingHappenedToDefaultedReadModel(Guid Id) : EventModelEvent
 {
-  public string GetSwimLane() => DefaultedReadModelEntity.StreamPrefix;
+  public string GetSwimlane() => DefaultedReadModelEntity.StreamPrefix;
   public StrongId GetEntityId() => new DefaultedReadModelId(Id);
 }
 

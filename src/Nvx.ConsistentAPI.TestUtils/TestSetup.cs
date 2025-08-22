@@ -258,7 +258,7 @@ public class TestSetup : IAsyncDisposable
   public async Task InsertEvents(params EventModelEvent[] evt)
   {
     var firstEvent = evt.GroupBy(e => e.GetStreamName()).Single().First();
-    var swimlane = firstEvent.GetSwimLane();
+    var swimlane = firstEvent.GetSwimlane();
     var id = firstEvent.GetEntityId();
     await Store.Insert(new InsertionPayload<EventModelEvent>(swimlane, id, evt));
   }

@@ -305,24 +305,25 @@ public class Fetcher<Entity> : EntityFetcher
       async Task<FetchResult<Entity>> FromSingleStream()
       {
         var cached = resetCache ? new Miss() : cache.Find(defaulted.GetStreamName());
-        (Entity e, Option<long> r, Option<ulong> gp, DateTime? fe, DateTime? le, string? fu, string? lu) seed =
-          upToGlobalPosition is null
-            ? cached switch
-            {
-              SingleStreamCacheResult<Entity> single =>
-              (
-                single.Entity,
-                single.Revision,
-                single.GlobalPosition,
-                single.FirstEventAt,
-                single.LastEventAt,
-                single.FirstUserSubFound,
-                single.LastUserSubFound),
-              _ => (defaulted, None, None, null, null, null, null)
-            }
-            : (defaulted, None, None, null, null, null, null);
+        (Entity e, Option<long> streamRevision, Option<ulong> globalPosition, DateTime? fe, DateTime? le, string? fu,
+          string? lu) seed =
+            upToGlobalPosition is null
+              ? cached switch
+              {
+                SingleStreamCacheResult<Entity> single =>
+                (
+                  e: single.Entity,
+                  streamRevision: single.Revision,
+                  globalPosition: single.GlobalPosition,
+                  fe: single.FirstEventAt,
+                  le: single.LastEventAt,
+                  fu: single.FirstUserSubFound,
+                  lu: single.LastUserSubFound),
+                _ => (e: defaulted, streamRevision: None, globalPosition: None, null, null, null, null)
+              }
+              : (e: defaulted, streamRevision: None, globalPosition: None, null, null, null, null);
 
-        var request = seed.r.Match(
+        var request = seed.streamRevision.Match(
           sp => ReadStreamRequest.FromAndAfter(swimlane, id, sp + 1),
           () => ReadStreamRequest.Forwards(swimlane, id));
 
@@ -334,7 +335,7 @@ public class Fetcher<Entity> : EntityFetcher
             ReadStreamMessage<EventModelEvent>.SolvedEvent,
             (Entity entity, long rev, Option<ulong> gp, DateTime? fe, DateTime? le, string? fu, string? lu),
             FetchResult<Entity>>(
-            (seed.e, seed.r.DefaultValue(-1), seed.gp, seed.fe, seed.le, seed.fu, seed.lu),
+            (seed.e, seed.streamRevision.DefaultValue(-1), gp: seed.globalPosition, seed.fe, seed.le, seed.fu, seed.lu),
             async (r, @event) =>
             {
               var metadata = EventMetadata.From(@event.Metadata);

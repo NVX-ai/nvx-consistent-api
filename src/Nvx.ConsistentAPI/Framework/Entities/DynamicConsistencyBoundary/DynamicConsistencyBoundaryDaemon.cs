@@ -192,7 +192,7 @@ internal class DynamicConsistencyBoundaryDaemon(
 
   private async Task InsertEvent(EventModelEvent evt)
   {
-    await store.Insert(new InsertionPayload<EventModelEvent>(evt.GetSwimLane(), evt.GetEntityId(), [evt]));
+    await store.Insert(new InsertionPayload<EventModelEvent>(evt.GetSwimlane(), evt.GetEntityId(), [evt]));
 
     switch (evt)
     {

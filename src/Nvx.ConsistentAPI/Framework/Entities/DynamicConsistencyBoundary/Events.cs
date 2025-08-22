@@ -12,7 +12,7 @@ public record ConcernedEntityReceivedInterest(
   : EventModelEvent
 {
   public StrongId GetEntityId() => new ConcernedEntityId(ConcernedEntityStreamName);
-  public string GetSwimLane() => ConcernedEntityEntity.StreamPrefix;
+  public string GetSwimlane() => ConcernedEntityEntity.StreamPrefix;
 }
 
 public record ConcernedEntityHadInterestRemoved(
@@ -24,7 +24,7 @@ public record ConcernedEntityHadInterestRemoved(
   : EventModelEvent
 {
   public StrongId GetEntityId() => new ConcernedEntityId(ConcernedEntityStreamName);
-  public string GetSwimLane() => ConcernedEntityEntity.StreamPrefix;
+  public string GetSwimlane() => ConcernedEntityEntity.StreamPrefix;
 }
 
 public record InterestedEntityRegisteredInterest(
@@ -36,7 +36,7 @@ public record InterestedEntityRegisteredInterest(
   : EventModelEvent
 {
   public StrongId GetEntityId() => new InterestedEntityId(InterestedEntityStreamName);
-  public string GetSwimLane() => InterestedEntityEntity.StreamPrefix;
+  public string GetSwimlane() => InterestedEntityEntity.StreamPrefix;
 }
 
 public record InterestedEntityHadInterestRemoved(
@@ -48,7 +48,7 @@ public record InterestedEntityHadInterestRemoved(
   : EventModelEvent
 {
   public StrongId GetEntityId() => new InterestedEntityId(InterestedEntityStreamName);
-  public string GetSwimLane() => InterestedEntityEntity.StreamPrefix;
+  public string GetSwimlane() => InterestedEntityEntity.StreamPrefix;
 }
 
 internal static class EntityIdExtensions

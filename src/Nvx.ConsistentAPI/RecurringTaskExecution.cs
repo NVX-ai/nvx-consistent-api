@@ -34,7 +34,7 @@ public partial record RecurringTaskExecution(string Id, DateTime ScheduledAt)
 
 public record RecurringTaskScheduled(string Id, DateTime ScheduledAt) : EventModelEvent
 {
-  public string GetSwimLane() => RecurringTaskExecution.StreamPrefix;
+  public string GetSwimlane() => RecurringTaskExecution.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }
 

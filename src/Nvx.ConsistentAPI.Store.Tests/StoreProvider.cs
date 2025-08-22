@@ -135,13 +135,13 @@ public record MyEventId(Guid Value) : StrongId
 
 public record MyEvent(Guid Id) : EventModelEvent
 {
-  public string GetSwimLane() => "MyTestSwimLane";
+  public string GetSwimlane() => "MyTestSwimLane";
   public StrongId GetEntityId() => new MyEventId(Id);
 }
 
 public record MyOtherEvent(Guid Id) : EventModelEvent
 {
-  public string GetSwimLane() => "MyOtherTestSwimLane";
+  public string GetSwimlane() => "MyOtherTestSwimLane";
   public StrongId GetEntityId() => new MyEventId(Id);
 }
 

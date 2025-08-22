@@ -36,19 +36,19 @@ public partial record FileUpload(Guid Id, string FileName, string State, string[
 
 public record FileUploaded(Guid Id, string FileName) : EventModelEvent
 {
-  public string GetSwimLane() => FileUpload.StreamPrefix;
+  public string GetSwimlane() => FileUpload.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record FileConfirmed(Guid Id) : EventModelEvent
 {
-  public string GetSwimLane() => FileUpload.StreamPrefix;
+  public string GetSwimlane() => FileUpload.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record FileTagged(Guid Id, string[] Tags) : EventModelEvent
 {
-  public string GetSwimLane() => FileUpload.StreamPrefix;
+  public string GetSwimlane() => FileUpload.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 

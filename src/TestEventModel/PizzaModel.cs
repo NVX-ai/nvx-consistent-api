@@ -82,13 +82,13 @@ public partial record ExternalPizzaEntity(Guid Id, Guid PizzaId, Guid TenantId)
 
 public record PizzaCreated(Guid Id, Guid[] IngredientIds, Guid TenantId) : EventModelEvent
 {
-  public string GetSwimLane() => PizzaEntity.StreamPrefix;
+  public string GetSwimlane() => PizzaEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record ExternalPizzaCreated(Guid Id, Guid PizzaId, Guid TenantId) : EventModelEvent
 {
-  public string GetSwimLane() => ExternalPizzaEntity.StreamPrefix;
+  public string GetSwimlane() => ExternalPizzaEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
@@ -199,13 +199,13 @@ public partial record IngredientEntity(Guid Id, int Stock)
 
 public record IngredientCreated(Guid Id) : EventModelEvent
 {
-  public string GetSwimLane() => IngredientEntity.StreamPrefix;
+  public string GetSwimlane() => IngredientEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record IngredientStockReceived(Guid Id, int Amount) : EventModelEvent
 {
-  public string GetSwimLane() => IngredientEntity.StreamPrefix;
+  public string GetSwimlane() => IngredientEntity.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
