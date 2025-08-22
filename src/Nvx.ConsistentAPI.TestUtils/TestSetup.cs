@@ -72,8 +72,8 @@ internal static class InstanceTracking
 
 internal class ConsistencyStateMachine
 {
-  private const int BaseDelayMilliseconds = 250;
-  private const int MaxDelayMilliseconds = 15_000;
+  private const int BaseDelayMilliseconds = 200;
+  private const int MaxDelayMilliseconds = 8_000;
   private readonly ConcurrentDictionary<Guid, DateTime> testsAcknowledged = [];
   private readonly string url;
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
@@ -166,6 +166,7 @@ internal class ConsistencyStateMachine
         var daemonInsights = await $"{url}{DaemonsInsight.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<DaemonsInsights>();
+
         var hasCheckRunLongEnough = DateTime.UtcNow - startedAt > GetMinimumDelayForCheck(type);
         var isLastEventOldEnough = DateTime.UtcNow - lastEventEmittedAt > GetMinimumDelayForCheck(type);
         var isUpToDate = daemonInsights.LastEventPosition == lastEventPosition;
@@ -174,7 +175,6 @@ internal class ConsistencyStateMachine
           && status.IsCaughtUp
           && daemonInsights.IsFullyIdle
           && (hasCheckRunLongEnough || isLastEventOldEnough);
-
 
         if (isConsistent)
         {
