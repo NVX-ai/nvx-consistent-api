@@ -42,35 +42,14 @@ internal static class DaemonsInsight
 
         if (internalToolingApiKeyHeader == settings.ToolingEndpointsApiKey)
         {
-          context.Response.StatusCode = StatusCodes.Status200OK;
-          await context.Response.WriteAsJsonAsync(
-            await GetDaemonInsights(
-              settings,
-              processor,
-              readModels,
-              store,
-              daemon,
-              dcbDaemon,
-              projectionDaemon));
+          await Respond(context);
           return;
         }
 
         await FrameworkSecurity
           .Authorization(context, fetcher, emitter, settings, new PermissionsRequireAll("admin"), None)
           .Iter(
-            async _ =>
-            {
-              context.Response.StatusCode = StatusCodes.Status200OK;
-              await context.Response.WriteAsJsonAsync(
-                await GetDaemonInsights(
-                  settings,
-                  processor,
-                  readModels,
-                  store,
-                  daemon,
-                  dcbDaemon,
-                  projectionDaemon));
-            },
+            async _ => await Respond(context),
             async e => await e.Respond(context));
       }
       catch (Exception ex)
@@ -103,6 +82,20 @@ internal static class DaemonsInsight
         return o;
       })
       .ApplyAuth(new PermissionsRequireAll("admin"));
+
+    async Task Respond(HttpContext context)
+    {
+      context.Response.StatusCode = StatusCodes.Status200OK;
+      await context.Response.WriteAsJsonAsync(
+        await GetDaemonInsights(
+          settings,
+          processor,
+          readModels,
+          store,
+          daemon,
+          dcbDaemon,
+          projectionDaemon));
+    }
   }
 
   private static async Task<DaemonsInsights> GetDaemonInsights(
@@ -121,7 +114,7 @@ internal static class DaemonsInsight
       ? await readModels
         .Select<EventModelingReadModelArtifact, Func<Task<SingleReadModelInsights>>>(rm =>
           async () => await rm.Insights(lastEventPosition, store))
-        .Parallel(3)
+        .Parallel()
         .Map(i =>
           i
             .Where(s => s.PercentageComplete < 100)

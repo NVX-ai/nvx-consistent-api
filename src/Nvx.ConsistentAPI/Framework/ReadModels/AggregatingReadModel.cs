@@ -36,17 +36,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
   public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStore<EventModelEvent> store)
   {
-    var effectivePosition = 0UL;
-    foreach (var prefix in StreamPrefixes)
-    {
-      // ReSharper disable once LoopCanBeConvertedToQuery
-      await foreach (var solvedEvent in store.Read(ReadAllRequest.End([prefix])).Events().Take(1))
-      {
-        effectivePosition = effectivePosition < solvedEvent.Metadata.GlobalPosition
-          ? solvedEvent.Metadata.GlobalPosition
-          : effectivePosition;
-      }
-    }
+    var effectivePosition = (await Task.WhenAll(StreamPrefixes.Select(EffectivePosition))).Max();
 
     var currentPosition = lastProcessedEventPosition ?? currentCheckpointPosition ?? 0UL;
     var percentageComplete = effectivePosition == 0
@@ -58,6 +48,26 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       currentCheckpointPosition,
       true,
       Math.Min(100, isCaughtUp && !isProcessing ? 100 : percentageComplete));
+
+    async Task<ulong> EffectivePosition(string prefix)
+    {
+      await foreach (var msg in store
+                       .Read(ReadAllRequest.End([prefix]))
+                       .Where(m => m is ReadAllMessage<EventModelEvent>.Checkpoint
+                         or ReadAllMessage<EventModelEvent>.AllEvent)
+                       .Take(1))
+      {
+        switch (msg)
+        {
+          case ReadAllMessage<EventModelEvent>.Checkpoint:
+            return 0;
+          case ReadAllMessage<EventModelEvent>.AllEvent e:
+            return e.Metadata.GlobalPosition;
+        }
+      }
+
+      return 0;
+    }
   }
 
   public async Task ApplyTo(
@@ -229,6 +239,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                 lastProcessedEventPosition = evt.Metadata.GlobalPosition;
                 continue;
               }
+
               isProcessing = true;
 
               await using var connection = new SqlConnection(connectionString);
