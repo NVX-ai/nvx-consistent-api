@@ -159,13 +159,13 @@ internal class ConsistencyStateMachine
           return true;
         }
 
-        var status = await $"{url}{CatchUpEndpoint.Route}"
-          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-          .GetJsonAsync<HydrationStatus>();
-
         var daemonInsights = await $"{url}{DaemonsInsight.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<DaemonsInsights>();
+
+        var status = await $"{url}{CatchUpEndpoint.Route}"
+          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
+          .GetJsonAsync<HydrationStatus>();
 
         var hasCheckRunLongEnough = DateTime.UtcNow - startedAt > GetMinimumDelayForCheck(type);
         var isLastEventOldEnough = DateTime.UtcNow - lastEventEmittedAt > GetMinimumDelayForCheck(type);
