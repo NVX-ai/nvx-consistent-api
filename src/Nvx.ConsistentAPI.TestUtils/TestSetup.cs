@@ -70,15 +70,30 @@ internal static class InstanceTracking
   internal static Task Dispose(int _) => Task.CompletedTask;
 }
 
-internal class ConsistencyStateMachine(string url)
+internal class ConsistencyStateMachine
 {
   private const int BaseDelayMilliseconds = 250;
   private const int MaxDelayMilliseconds = 15_000;
   private readonly ConcurrentDictionary<Guid, DateTime> testsAcknowledged = [];
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private DateTime lastConsistentAt = DateTime.MinValue;
+  private DateTime lastEventEmittedAt = DateTime.MinValue;
   private int TestsWaiting => testsAcknowledged.Count(kvp => DateTime.UtcNow.AddSeconds(-15) < kvp.Value);
   private DateTime lastConsistencyOutputAt = DateTime.MinValue;
+  private readonly string url;
+  public ConsistencyStateMachine(string url, EventStore<EventModelEvent> store)
+  {
+    this.url = url;
+    _ = Task.Run(() => Subscribe(store));
+  }
+
+  private async Task Subscribe(EventStore<EventModelEvent> store)
+  {
+    await foreach (var evt in store.Subscribe(SubscribeAllRequest.FromNowOn()).Events())
+    {
+      lastEventEmittedAt = evt.Metadata.CreatedAt;
+    }
+  }
 
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
@@ -136,7 +151,7 @@ internal class ConsistencyStateMachine(string url)
           .GetJsonAsync<DaemonsInsights>();
         var startedAgo = DateTime.UtcNow - startedAt;
         var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
-        var isLastEventOldEnough = daemonInsights.LastEventEmittedAt > startedAt;
+        var isLastEventOldEnough = DateTime.UtcNow - lastEventEmittedAt > GetMinimumDelayForCheck(type);
 
         var isConsistent =
           status.IsCaughtUp
@@ -737,7 +752,7 @@ public class TestSetup : IAsyncDisposable
       model,
       1,
       app.WebApplication.Services.GetRequiredService<ILogger<TestSetup>>(),
-      new ConsistencyStateMachine(baseUrl));
+      new ConsistencyStateMachine(baseUrl, app.Store));
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)
