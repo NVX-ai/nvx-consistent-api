@@ -185,13 +185,13 @@ internal class ConsistencyStateMachine
           Console.WriteLine(
             $"CaughtUp: {status.IsCaughtUp} - "
             + $"DaemonsIdle: {daemonInsights.AreDaemonsIdle} - "
-            + $"ReadModelsUpToDate: {daemonInsights.AreReadModelsUpToDate} - "
-            + $"FullyIdle: {daemonInsights.IsFullyIdle} - "
-            + $"StartedAt: {startedAt} - "
-            + $"LastEventAt: {daemonInsights.LastEventEmittedAt} - "
-            + $"HadActivityDuringDaemonCheck: {daemonInsights.HadActivityDuringCheck} - "
-            + $"LastEventPositionInDaemon: {daemonInsights.LastEventPosition} - "
-            + $"LastEventPositionInTestSubscriber: {lastEventPosition}");
+            + $"ReadModels: {daemonInsights.AreReadModelsUpToDate} - "
+            + $"Idle: {daemonInsights.IsFullyIdle} - "
+            + $"Started: {startedAt} - "
+            + $"LastEvt: {daemonInsights.LastEventEmittedAt} - "
+            + $"InsightActivity: {daemonInsights.HadActivityDuringCheck} - "
+            + $"DaemonPos: {daemonInsights.LastEventPosition} - "
+            + $"TestPos: {lastEventPosition}");
           lastConsistencyOutputAt = DateTime.UtcNow;
         }
 
