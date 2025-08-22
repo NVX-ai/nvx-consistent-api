@@ -236,28 +236,7 @@ public partial record UserSecurity(
           Auth = new PermissionsRequireOne("tenancy-management"), AreaTag = OperationTags.Authorization
         }
       ],
-      ReadModels =
-      [
-        new ReadModelDefinition<UserSecurityReadModel, UserSecurity>
-        {
-          StreamPrefix = StreamPrefix,
-          Projector = us =>
-          [
-            new UserSecurityReadModel(
-              us.Sub,
-              us.Sub,
-              us.Email,
-              us.FullName,
-              us.TenantRoles,
-              us.ApplicationPermissions,
-              us.TenantPermissions,
-              us.Tenants
-            )
-          ],
-          Auth = new PermissionsRequireOne("permission-management"),
-          AreaTag = OperationTags.Authorization
-        }
-      ],
+      ReadModels = [UserSecurityReadModel.Definition],
       Projections =
       [
         new AssignToTenantOnTenantPermissionAssigned(),
@@ -579,6 +558,27 @@ public record UserSecurityReadModel(
   Dictionary<Guid, string[]> TenantPermissions,
   TenantDetails[] Tenants) : EventModelReadModel
 {
+  public static readonly EventModelingReadModelArtifact Definition =
+    new ReadModelDefinition<UserSecurityReadModel, UserSecurity>
+    {
+      StreamPrefix = UserSecurity.StreamPrefix,
+      Projector = us =>
+      [
+        new UserSecurityReadModel(
+          us.Sub,
+          us.Sub,
+          us.Email,
+          us.FullName,
+          us.TenantRoles,
+          us.ApplicationPermissions,
+          us.TenantPermissions,
+          us.Tenants
+        )
+      ],
+      Auth = new PermissionsRequireOne("permission-management"),
+      AreaTag = OperationTags.Authorization
+    };
+
   public StrongId GetStrongId() => new StrongString(Id);
 }
 
