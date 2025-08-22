@@ -72,7 +72,7 @@ internal static class InstanceTracking
 
 internal class ConsistencyStateMachine
 {
-  private const int BaseDelayMilliseconds = 500;
+  private const int BaseDelayMilliseconds = 250;
   private const int MaxDelayMilliseconds = 25_000;
   private readonly ILogger logger;
   private readonly ConcurrentDictionary<Guid, DateTime> testsAcknowledged = [];
@@ -90,7 +90,8 @@ internal class ConsistencyStateMachine
     _ = Task.Run(() => Subscribe(store));
   }
 
-  private int TestsWaiting => testsAcknowledged.Count(kvp => DateTime.UtcNow.AddSeconds(-25) < kvp.Value);
+  private int TestsWaiting =>
+    testsAcknowledged.Count(kvp => DateTime.UtcNow.AddMilliseconds(-MaxDelayMilliseconds) < kvp.Value);
 
   private async Task Subscribe(EventStore<EventModelEvent> store)
   {
@@ -161,9 +162,11 @@ internal class ConsistencyStateMachine
           return true;
         }
 
+        var insightsWatch = Stopwatch.StartNew();
         var daemonInsights = await $"{url}{DaemonsInsight.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<DaemonsInsights>();
+        insightsWatch.Stop();
 
         var status = await $"{url}{CatchUpEndpoint.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
@@ -185,7 +188,7 @@ internal class ConsistencyStateMachine
         else if (lastConsistencyOutputAt < DateTime.UtcNow.AddSeconds(-5))
         {
           logger.LogWarning(
-            "CaughtUp: {CaughtUp} - DaemonsIdle: {DaemonsIdle} - ReadModels: {ReadModels} - Idle: {Idle} - Started: {Started} - LastEvt: {LastEvt} - InsightActivity: {InsightActivity} - DaemonPos: {DaemonPos} - TestPos: {TestPos}",
+            "CaughtUp: {CaughtUp} - DaemonsIdle: {DaemonsIdle} - ReadModels: {ReadModels} - Idle: {Idle} - Started: {Started} - LastEvt: {LastEvt} - InsightActivity: {InsightActivity} - DaemonPos: {DaemonPos} - TestPos: {TestPos} - InsightsDuration: {InsightsDuration}ms",
             status.IsCaughtUp,
             daemonInsights.AreDaemonsIdle,
             daemonInsights.AreReadModelsUpToDate,
@@ -194,7 +197,8 @@ internal class ConsistencyStateMachine
             daemonInsights.LastEventEmittedAt,
             daemonInsights.HadActivityDuringCheck,
             daemonInsights.LastEventPosition,
-            lastEventPosition);
+            lastEventPosition,
+            insightsWatch.ElapsedMilliseconds);
           lastConsistencyOutputAt = DateTime.UtcNow;
         }
 
