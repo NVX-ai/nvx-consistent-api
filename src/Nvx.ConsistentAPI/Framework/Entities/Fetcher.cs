@@ -190,10 +190,10 @@ public class Fetcher<Entity> : EntityFetcher
       entryOptions.AbsoluteExpirationRelativeToNow = cacheExpiration;
     }
 
-    return (id, gp, f, sk) => id
-      .Bind(i => defaulter(i).Map(e => (e, i)))
+    return (idOption, globalPosition, fetcher, noCache) => idOption
+      .Bind(id => defaulter(id).Map(entity => (entity, id)))
       .Match(
-        t => Fetch(t.e, t.i, gp, f, sk),
+        t => Fetch(t.entity, t.id, globalPosition, fetcher, noCache),
         () => new FetchResult<Entity>(None, -1, None, null, null, null, null).Apply(Task.FromResult));
 
     async Task<FetchResult<Entity>> Fetch(
