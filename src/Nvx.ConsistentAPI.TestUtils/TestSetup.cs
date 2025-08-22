@@ -72,8 +72,8 @@ internal static class InstanceTracking
 
 internal class ConsistencyStateMachine
 {
-  private const int BaseDelayMilliseconds = 200;
-  private const int MaxDelayMilliseconds = 8_000;
+  private const int BaseDelayMilliseconds = 250;
+  private const int MaxDelayMilliseconds = 25_000;
   private readonly ConcurrentDictionary<Guid, DateTime> testsAcknowledged = [];
   private readonly string url;
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
@@ -183,12 +183,15 @@ internal class ConsistencyStateMachine
         else if (lastConsistencyOutputAt < DateTime.UtcNow.AddSeconds(-5))
         {
           Console.WriteLine(
-            $"CaughtUp: {status.IsCaughtUp}. "
-            + $"DaemonsIdle: {daemonInsights.AreDaemonsIdle}. "
-            + $"ReadModelsUpToDate: {daemonInsights.AreReadModelsUpToDate}. "
-            + $"FullyIdle: {daemonInsights.IsFullyIdle}. "
-            + $"StartedAt: {startedAt}, "
-            + $"LastEventAt: {daemonInsights.LastEventEmittedAt}.");
+            $"CaughtUp: {status.IsCaughtUp}"
+            + $"DaemonsIdle: {daemonInsights.AreDaemonsIdle}"
+            + $"ReadModelsUpToDate: {daemonInsights.AreReadModelsUpToDate}"
+            + $"FullyIdle: {daemonInsights.IsFullyIdle}"
+            + $"StartedAt: {startedAt}"
+            + $"LastEventAt: {daemonInsights.LastEventEmittedAt}"
+            + $"HadActivityDuringDaemonCheck: {daemonInsights.HadActivityDuringCheck}"
+            + $"LastEventPositionInDaemon: {daemonInsights.LastEventPosition}"
+            + $"LastEventPositionInTestSubscriber: {lastEventPosition}");
           lastConsistencyOutputAt = DateTime.UtcNow;
         }
 
