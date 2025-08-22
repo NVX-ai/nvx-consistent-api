@@ -79,7 +79,8 @@ internal class ConsistencyStateMachine
   private readonly string url;
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private DateTime lastConsistencyOutputAt = DateTime.MinValue;
-  private DateTime lastConsistentAt = DateTime.MinValue;
+  private DateTime lastConsistentCheckStartedAt = DateTime.MinValue;
+
   private DateTime lastEventEmittedAt = DateTime.MinValue;
   private ulong lastEventPosition = ulong.MinValue;
 
@@ -142,14 +143,7 @@ internal class ConsistencyStateMachine
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsAlreadyConsistent()
-    {
-      var minimumDelayForCheck = GetMinimumDelayForCheck(type);
-      var hasCheckRunLongEnough = DateTime.UtcNow - startedAt > minimumDelayForCheck;
-      var hasConsistencyAfterLastEvent = lastConsistentAt - lastEventEmittedAt > minimumDelayForCheck;
-      var hasConsistencyOldEnough = lastConsistentAt - startedAt > minimumDelayForCheck;
-      return hasConsistencyOldEnough && hasConsistencyAfterLastEvent && hasCheckRunLongEnough;
-    }
+    bool IsAlreadyConsistent() => lastConsistentCheckStartedAt > startedAt;
 
     async Task<bool> IsConsistent()
     {
@@ -159,6 +153,7 @@ internal class ConsistencyStateMachine
 
         if (IsAlreadyConsistent())
         {
+          logger.LogWarning("Is already consistent");
           return true;
         }
 
@@ -184,7 +179,7 @@ internal class ConsistencyStateMachine
 
         if (isConsistent)
         {
-          lastConsistentAt = daemonInsights.LastEventEmittedAt;
+          lastConsistentCheckStartedAt = startedAt;
         }
         else if (lastConsistencyOutputAt < DateTime.UtcNow.AddSeconds(-5))
         {
