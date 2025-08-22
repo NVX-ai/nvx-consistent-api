@@ -5,6 +5,7 @@ using DeFuncto;
 using DeFuncto.Extensions;
 using Microsoft.Data.SqlClient;
 using Newtonsoft.Json;
+using Nvx.ConsistentAPI.Store.Events;
 using Nvx.ConsistentAPI.Store.Store;
 using static DeFuncto.Prelude;
 
@@ -13,7 +14,8 @@ namespace Nvx.ConsistentAPI.Store.MsSql;
 public class MsSqlEventStore<EventInterface>(
   string connectionString,
   Func<string, byte[], Option<(EventInterface evt, StrongId streamId)>> deserializer,
-  Func<EventInterface, (string typeName, byte[] data)> serializer) : EventStore<EventInterface>
+  Func<EventInterface, (string typeName, byte[] data)> serializer)
+  : EventStore<EventInterface> where EventInterface : HasSwimlane, HasEntityId
 {
   private const string EventStoreTableCreationSql =
     """
@@ -226,13 +228,6 @@ public class MsSqlEventStore<EventInterface>(
         };
       }
     }
-  }
-
-  private enum NotifiedSyncStatus
-  {
-    CaughtUp,
-    Behind,
-    None
   }
 
   public AsyncResult<InsertionSuccess, InsertionFailure> Insert(InsertionPayload<EventInterface> payload)
@@ -573,6 +568,13 @@ public class MsSqlEventStore<EventInterface>(
     {
       return None;
     }
+  }
+
+  private enum NotifiedSyncStatus
+  {
+    CaughtUp,
+    Behind,
+    None
   }
 
   private record FullEventRecord(

@@ -5,16 +5,10 @@ namespace Nvx.ConsistentAPI.Store.Tests;
 public class EventStoreDbErrorConversion
 {
   [Fact(DisplayName = "should convert to read all message")]
-  public void Test1()
-  {
-    var error = EventStoreDbStore.CreateTerminatedMessage<ReadAllMessage<EventModelEvent>>(new Exception());
-    Assert.NotNull(error);
-  }
+  public void Test1() => Assert.NotNull(
+    EventStoreDbStore<EventModelEvent>.CreateTerminatedMessage<ReadAllMessage<EventModelEvent>>(new Exception()));
 
   [Fact(DisplayName = "should convert to read stream message")]
-  public void Test2()
-  {
-    var error = EventStoreDbStore.CreateTerminatedMessage<ReadStreamMessage<EventModelEvent>>(new Exception());
-    Assert.NotNull(error);
-  }
+  public void Test2() => Assert.NotNull(
+    EventStoreDbStore<EventModelEvent>.CreateTerminatedMessage<ReadStreamMessage<EventModelEvent>>(new Exception()));
 }

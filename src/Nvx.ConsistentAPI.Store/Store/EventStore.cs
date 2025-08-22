@@ -1,6 +1,8 @@
-﻿namespace Nvx.ConsistentAPI.Store.Store;
+﻿using Nvx.ConsistentAPI.Store.Events;
 
-public interface EventStore<EventInterface>
+namespace Nvx.ConsistentAPI.Store.Store;
+
+public interface EventStore<EventInterface> where EventInterface : HasSwimlane, HasEntityId
 {
   Task Initialize(CancellationToken cancellationToken = default);
 

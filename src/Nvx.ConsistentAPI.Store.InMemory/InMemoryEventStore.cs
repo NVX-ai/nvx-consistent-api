@@ -1,10 +1,12 @@
 ﻿using System.Runtime.CompilerServices;
 using DeFuncto;
+using Nvx.ConsistentAPI.Store.Events;
 using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI.Store.InMemory;
 
 public class InMemoryEventStore<EventInterface> : EventStore<EventInterface>
+  where EventInterface : HasSwimlane, HasEntityId
 {
   private const int DelayPollingSubscriptions = 25;
   private const int TimeoutForCaughtUp = 2_500;

@@ -200,7 +200,10 @@ public static class Generator
 
     var store = settings.EventStoreSettings.Match(
       EventStore<EventModelEvent> () => new InMemoryEventStore<EventModelEvent>(),
-      esDb => new EventStoreDbStore(esDb.ConnectionString),
+      esDb => new EventStoreDbStore<EventModelEvent>(
+        esDb.ConnectionString,
+        EventModelEventSerialization.Deserialize,
+        EventModelEventSerialization.Serialize),
       ms => new MsSqlEventStore<EventModelEvent>(
         ms.ConnectionString,
         EventModelEventSerialization.Deserialize,

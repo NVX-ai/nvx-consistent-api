@@ -1,19 +1,47 @@
 ﻿using System.Runtime.CompilerServices;
 using EventStore.Client;
 using Grpc.Core;
+using Nvx.ConsistentAPI.Store.Events;
 using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI.Store.EventStoreDB;
 
 // This is tightly bound to EventModelEvent, it can be made to work on any event interface.
-public class EventStoreDbStore(string connectionString) : EventStore<EventModelEvent>
+public class EventStoreDbStore<EventInterface>(
+  string connectionString,
+  Func<string, byte[], Option<(EventInterface evt, StrongId streamId)>> deserializer,
+  Func<EventInterface, (string typeName, byte[] data)> serializer)
+  : EventStore<EventInterface> where EventInterface : HasSwimlane, HasEntityId
 {
   private readonly EventStoreClient client = new(EventStoreClientSettings.Create(connectionString));
-  private readonly Func<ResolvedEvent, Option<EventModelEvent>> parser = Parser();
 
   public Task Initialize(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-  public AsyncResult<InsertionSuccess, InsertionFailure> Insert(InsertionPayload<EventModelEvent> payload)
+  public async Task TruncateStream(string swimlane, StrongId id, long truncateBefore)
+  {
+    var streamName = $"{swimlane}{id.StreamId()}";
+
+    var read = client.ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start, 1);
+
+    if (await read.ReadState == ReadState.StreamNotFound)
+    {
+      return;
+    }
+
+    var currentStreamMetadata = await client.GetStreamMetadataAsync(streamName).Map(mdr => mdr.Metadata);
+    await client.SetStreamMetadataAsync(
+      streamName,
+      StreamState.Any,
+      new StreamMetadata(
+        currentStreamMetadata.MaxCount,
+        currentStreamMetadata.MaxAge,
+        StreamPosition.FromInt64(truncateBefore),
+        currentStreamMetadata.CacheControl,
+        currentStreamMetadata.Acl,
+        currentStreamMetadata.CustomMetadata));
+  }
+
+  public AsyncResult<InsertionSuccess, InsertionFailure> Insert(InsertionPayload<EventInterface> payload)
   {
     return Go();
 
@@ -38,7 +66,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     }
   }
 
-  public async IAsyncEnumerable<ReadAllMessage<EventModelEvent>> Read(
+  public async IAsyncEnumerable<ReadAllMessage<EventInterface>> Read(
     ReadAllRequest request = default,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
@@ -49,7 +77,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
 
     yield break;
 
-    async IAsyncEnumerable<ReadAllMessage<EventModelEvent>> DoRead()
+    async IAsyncEnumerable<ReadAllMessage<EventInterface>> DoRead()
     {
       var direction = request.Direction == ReadDirection.Forwards ? Direction.Forwards : Direction.Backwards;
       var position = request.Relative switch
@@ -81,12 +109,12 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
         {
           case StreamMessage.SubscriptionConfirmation:
           case StreamMessage.Ok:
-            yield return new ReadAllMessage<EventModelEvent>.ReadingStarted();
+            yield return new ReadAllMessage<EventInterface>.ReadingStarted();
             break;
           case StreamMessage.Event(var re):
-            yield return parser(re)
+            yield return Parse(re)
               .Match(
-                ReadAllMessage<EventModelEvent> (e) => new ReadAllMessage<EventModelEvent>.AllEvent(
+                ReadAllMessage<EventInterface> (e) => new ReadAllMessage<EventInterface>.AllEvent(
                   e.GetSwimlane(),
                   e.GetEntityId(),
                   e,
@@ -99,27 +127,27 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
                     re.Event.EventId.ToGuid(),
                     re.Event.Position.CommitPosition,
                     re.Event.EventNumber.ToInt64())),
-                () => new ReadAllMessage<EventModelEvent>.ToxicAllEvent(
+                () => new ReadAllMessage<EventInterface>.ToxicAllEvent(
                   re.Event.EventStreamId,
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
                   re.Event.EventNumber.ToInt64()));
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
-            yield return new ReadAllMessage<EventModelEvent>.Checkpoint(pos.CommitPosition);
+            yield return new ReadAllMessage<EventInterface>.Checkpoint(pos.CommitPosition);
             break;
           case StreamMessage.CaughtUp:
-            yield return new ReadAllMessage<EventModelEvent>.CaughtUp();
+            yield return new ReadAllMessage<EventInterface>.CaughtUp();
             break;
           case StreamMessage.FellBehind:
-            yield return new ReadAllMessage<EventModelEvent>.FellBehind();
+            yield return new ReadAllMessage<EventInterface>.FellBehind();
             break;
         }
       }
     }
   }
 
-  public async IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> Read(
+  public async IAsyncEnumerable<ReadStreamMessage<EventInterface>> Read(
     ReadStreamRequest request,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
@@ -142,11 +170,11 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
 
     yield break;
 
-    async IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> DoRead()
+    async IAsyncEnumerable<ReadStreamMessage<EventInterface>> DoRead()
     {
       var streamName = $"{request.Swimlane}{request.Id.StreamId()}";
 
-      yield return new ReadStreamMessage<EventModelEvent>.ReadingStarted();
+      yield return new ReadStreamMessage<EventInterface>.ReadingStarted();
 
       await foreach (var msg in client
                        .ReadStreamAsync(
@@ -161,17 +189,17 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
         {
           case StreamMessage.SubscriptionConfirmation:
           case StreamMessage.Ok:
-            yield return new ReadStreamMessage<EventModelEvent>.ReadingStarted();
+            yield return new ReadStreamMessage<EventInterface>.ReadingStarted();
             break;
           case StreamMessage.Event(var re):
-            yield return parser(re)
+            yield return Parse(re)
               .Match(
-                ReadStreamMessage<EventModelEvent> (e) => new ReadStreamMessage<EventModelEvent>.SolvedEvent(
+                ReadStreamMessage<EventInterface> (e) => new ReadStreamMessage<EventInterface>.SolvedEvent(
                   e.GetSwimlane(),
                   e.GetEntityId(),
                   e,
                   CreateStoredEventMetadata(re)),
-                () => new ReadStreamMessage<EventModelEvent>.ToxicEvent(
+                () => new ReadStreamMessage<EventInterface>.ToxicEvent(
                   re.Event.EventStreamId,
                   re.Event.Data.ToArray(),
                   re.Event.Metadata.ToArray(),
@@ -180,20 +208,20 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
             position = re.Event.EventNumber;
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
-            yield return new ReadStreamMessage<EventModelEvent>.Checkpoint(pos.CommitPosition);
+            yield return new ReadStreamMessage<EventInterface>.Checkpoint(pos.CommitPosition);
             break;
           case StreamMessage.FellBehind:
-            yield return new ReadStreamMessage<EventModelEvent>.FellBehind();
+            yield return new ReadStreamMessage<EventInterface>.FellBehind();
             break;
           case StreamMessage.CaughtUp:
-            yield return new ReadStreamMessage<EventModelEvent>.CaughtUp();
+            yield return new ReadStreamMessage<EventInterface>.CaughtUp();
             break;
         }
       }
     }
   }
 
-  public async IAsyncEnumerable<ReadAllMessage<EventModelEvent>> Subscribe(
+  public async IAsyncEnumerable<ReadAllMessage<EventInterface>> Subscribe(
     SubscribeAllRequest request = default,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
@@ -216,7 +244,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
 
     yield break;
 
-    async IAsyncEnumerable<ReadAllMessage<EventModelEvent>> DoRead()
+    async IAsyncEnumerable<ReadAllMessage<EventInterface>> DoRead()
     {
       await foreach (var msg in client
                        .SubscribeToAll(
@@ -229,17 +257,17 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
         {
           case StreamMessage.Ok:
           case StreamMessage.SubscriptionConfirmation:
-            yield return new ReadAllMessage<EventModelEvent>.ReadingStarted();
+            yield return new ReadAllMessage<EventInterface>.ReadingStarted();
             break;
           case StreamMessage.Event(var re):
-            yield return parser(re)
+            yield return Parse(re)
               .Match(
-                ReadAllMessage<EventModelEvent> (e) => new ReadAllMessage<EventModelEvent>.AllEvent(
+                ReadAllMessage<EventInterface> (e) => new ReadAllMessage<EventInterface>.AllEvent(
                   e.GetSwimlane(),
                   e.GetEntityId(),
                   e,
                   CreateStoredEventMetadata(re)),
-                () => new ReadAllMessage<EventModelEvent>.ToxicAllEvent(
+                () => new ReadAllMessage<EventInterface>.ToxicAllEvent(
                   re.Event.EventStreamId,
                   re.Event.Metadata.ToArray(),
                   re.Event.Position.CommitPosition,
@@ -247,20 +275,20 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
             position = FromAll.After(re.Event.Position);
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
-            yield return new ReadAllMessage<EventModelEvent>.Checkpoint(pos.CommitPosition);
+            yield return new ReadAllMessage<EventInterface>.Checkpoint(pos.CommitPosition);
             break;
           case StreamMessage.CaughtUp:
-            yield return new ReadAllMessage<EventModelEvent>.CaughtUp();
+            yield return new ReadAllMessage<EventInterface>.CaughtUp();
             break;
           case StreamMessage.FellBehind:
-            yield return new ReadAllMessage<EventModelEvent>.FellBehind();
+            yield return new ReadAllMessage<EventInterface>.FellBehind();
             break;
         }
       }
     }
   }
 
-  public async IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> Subscribe(
+  public async IAsyncEnumerable<ReadStreamMessage<EventInterface>> Subscribe(
     SubscribeStreamRequest request,
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
@@ -273,7 +301,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
 
     yield break;
 
-    async IAsyncEnumerable<ReadStreamMessage<EventModelEvent>> DoRead()
+    async IAsyncEnumerable<ReadStreamMessage<EventInterface>> DoRead()
     {
       var streamName = $"{request.Swimlane}{request.Id.StreamId()}";
 
@@ -289,17 +317,17 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
         {
           case StreamMessage.SubscriptionConfirmation:
           case StreamMessage.Ok:
-            yield return new ReadStreamMessage<EventModelEvent>.ReadingStarted();
+            yield return new ReadStreamMessage<EventInterface>.ReadingStarted();
             break;
           case StreamMessage.Event(var re):
-            yield return parser(re)
+            yield return Parse(re)
               .Match(
-                ReadStreamMessage<EventModelEvent> (e) => new ReadStreamMessage<EventModelEvent>.SolvedEvent(
+                ReadStreamMessage<EventInterface> (e) => new ReadStreamMessage<EventInterface>.SolvedEvent(
                   e.GetSwimlane(),
                   e.GetEntityId(),
                   e,
                   CreateStoredEventMetadata(re)),
-                () => new ReadStreamMessage<EventModelEvent>.ToxicEvent(
+                () => new ReadStreamMessage<EventInterface>.ToxicEvent(
                   re.Event.EventStreamId,
                   re.Event.Data.ToArray(),
                   re.Event.Metadata.ToArray(),
@@ -308,7 +336,7 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
             position = FromStream.After(re.Event.EventNumber);
             break;
           case StreamMessage.AllStreamCheckpointReached(var pos):
-            yield return new ReadStreamMessage<EventModelEvent>.Checkpoint(pos.CommitPosition);
+            yield return new ReadStreamMessage<EventInterface>.Checkpoint(pos.CommitPosition);
             break;
           case StreamMessage.LastStreamPosition(var pos):
             position = FromStream.After(pos);
@@ -318,29 +346,8 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     }
   }
 
-  public async Task TruncateStream(string swimlane, StrongId id, long truncateBefore)
-  {
-    var streamName = $"{swimlane}{id.StreamId()}";
-
-    var read = client.ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start, 1);
-
-    if (await read.ReadState == ReadState.StreamNotFound)
-    {
-      return;
-    }
-
-    var currentStreamMetadata = await client.GetStreamMetadataAsync(streamName).Map(mdr => mdr.Metadata);
-    await client.SetStreamMetadataAsync(
-      streamName,
-      StreamState.Any,
-      new StreamMetadata(
-        currentStreamMetadata.MaxCount,
-        currentStreamMetadata.MaxAge,
-        StreamPosition.FromInt64(truncateBefore),
-        currentStreamMetadata.CacheControl,
-        currentStreamMetadata.Acl,
-        currentStreamMetadata.CustomMetadata));
-  }
+  private Option<EventInterface> Parse(ResolvedEvent re) =>
+    deserializer(re.Event.EventType, re.Event.Data.ToArray()).Select(t => t.evt);
 
   private async Task<Result<InsertionSuccess, InsertionFailure>> AnyState(
     IEnumerable<EventData> eventData,
@@ -419,53 +426,24 @@ public class EventStoreDbStore(string connectionString) : EventStore<EventModelE
     }
   }
 
-  private static IEnumerable<EventData> ToEventData(
-    (EventModelEvent Event, EventInsertionMetadataPayload Metadata)[] insertions) =>
+  private IEnumerable<EventData> ToEventData(
+    (EventInterface Event, EventInsertionMetadataPayload Metadata)[] insertions) =>
     insertions.Select(i =>
-      new EventData(
-        Uuid.FromGuid(i.Metadata.EventId),
-        i.Event.EventType,
-        i.Event.ToBytes(),
-        new EventMetadata(
-            i.Metadata.CreatedAt,
-            i.Metadata.CorrelationId,
-            i.Metadata.CausationId,
-            i.Metadata.RelatedUserSub,
-            null,
-            null)
-          .ToBytes()
-      ));
-
-  private static Func<ResolvedEvent, Option<EventModelEvent>> Compose(
-    params (string eventTypeName, Func<ResolvedEvent, Option<EventModelEvent>> parser)[] parsers
-  )
-  {
-    var parsersDictionary = parsers.ToDictionary(tpl => tpl.eventTypeName, tpl => tpl.parser);
-    return re => parsersDictionary.TryGetValue(re.Event.EventType, out var parser) ? parser(re) : None;
-  }
-
-  private static Func<ResolvedEvent, Option<EventModelEvent>> Parser()
-  {
-    return AllEventModelEventShapes().Select(ParserBuilder.Build).ToArray().Apply(Compose);
-
-    static IEnumerable<Type> AllEventModelEventShapes()
-    {
-      var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-      var result = new HashSet<Type>();
-
-      foreach (var assembly in assemblies)
-      {
-        var types = assembly.GetTypes().Where(t => t.GetInterfaces().Contains(typeof(EventModelEvent)) && t.IsClass);
-
-        foreach (var type in types)
-        {
-          result.Add(type);
-        }
-      }
-
-      return result;
-    }
-  }
+      serializer(i.Event)
+        .Apply(eventTuple =>
+          new EventData(
+            Uuid.FromGuid(i.Metadata.EventId),
+            eventTuple.typeName,
+            eventTuple.data,
+            new EventMetadata(
+                i.Metadata.CreatedAt,
+                i.Metadata.CorrelationId,
+                i.Metadata.CausationId,
+                i.Metadata.RelatedUserSub,
+                null,
+                null)
+              .ToBytes()
+          )));
 
   private static async IAsyncEnumerable<T> WithRetryOnConsumerTooSlow<T>(
     Func<IAsyncEnumerable<T>> enumerableFactory,

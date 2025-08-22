@@ -90,7 +90,10 @@ public static class StoreProvider
       .Build();
     await container.StartAsync();
 
-    var store = new EventStoreDbStore(container.GetConnectionString());
+    var store = new EventStoreDbStore<EventModelEvent>(
+      container.GetConnectionString(),
+      Deserialize,
+      Serialize);
     var stopwatch = Stopwatch.StartNew();
     while (stopwatch.Elapsed < TimeSpan.FromMinutes(1))
     {
@@ -148,7 +151,6 @@ public record MyOtherEvent(Guid Id) : EventModelEvent
 public sealed class TestStore(DockerContainer? container, SemaphoreSlim? semaphore) : IAsyncDisposable
 {
   public required EventStore<EventModelEvent> Store { get; init; }
-  public bool IsDisposed { get; private set; }
 
   public async ValueTask DisposeAsync()
   {
@@ -156,8 +158,6 @@ public sealed class TestStore(DockerContainer? container, SemaphoreSlim? semapho
     {
       await container.DisposeAsync();
     }
-
-    IsDisposed = true;
 
     try
     {
