@@ -148,7 +148,7 @@ internal class ConsistencyStateMachine
       var hasCheckRunLongEnough = DateTime.UtcNow - startedAt > minimumDelayForCheck;
       var hasConsistencyAfterLastEvent = lastConsistentAt - lastEventEmittedAt > minimumDelayForCheck;
       var hasConsistencyOldEnough = lastConsistentAt - startedAt > minimumDelayForCheck;
-      return (hasConsistencyOldEnough || hasConsistencyAfterLastEvent) && hasCheckRunLongEnough;
+      return hasConsistencyOldEnough && hasConsistencyAfterLastEvent && hasCheckRunLongEnough;
     }
 
     async Task<bool> IsConsistent()
@@ -179,7 +179,8 @@ internal class ConsistencyStateMachine
           isUpToDate
           && status.IsCaughtUp
           && daemonInsights.IsFullyIdle
-          && (hasCheckRunLongEnough || isLastEventOldEnough);
+          && hasCheckRunLongEnough
+          && isLastEventOldEnough;
 
         if (isConsistent)
         {
@@ -200,6 +201,7 @@ internal class ConsistencyStateMachine
             lastEventPosition,
             insightsWatch.ElapsedMilliseconds);
           lastConsistencyOutputAt = DateTime.UtcNow;
+          logger.LogWarning("{DaemonInsight}", Serialization.Serialize(daemonInsights));
         }
 
         return isConsistent;
