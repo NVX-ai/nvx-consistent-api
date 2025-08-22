@@ -32,26 +32,14 @@ internal static class PreHydrationCompleted
 
       if (internalToolingApiKeyHeader == settings.ToolingEndpointsApiKey)
       {
-        // This endpoint is meant to be consumed by tooling that relies on status codes.
-        context.Response.StatusCode =
-          await IsCaughtUp()
-            ? StatusCodes.Status200OK
-            : StatusCodes.Status503ServiceUnavailable;
-        await context.Response.WriteAsJsonAsync(new PreHydrationStatus(await IsCaughtUp(), hydratedAt));
+        await Respond(context);
         return;
       }
 
       await FrameworkSecurity
         .Authorization(context, fetcher, emitter, settings, new PermissionsRequireAll("admin"), None)
         .Iter(
-          async _ =>
-          {
-            context.Response.StatusCode =
-              await IsCaughtUp()
-                ? StatusCodes.Status200OK
-                : StatusCodes.Status503ServiceUnavailable;
-            await context.Response.WriteAsJsonAsync(new PreHydrationStatus(await IsCaughtUp(), hydratedAt));
-          },
+          async _ => await Respond(context),
           async e => await e.Respond(context));
     };
 
@@ -94,6 +82,16 @@ internal static class PreHydrationCompleted
       }
 
       return isCaughtUp;
+    }
+
+    async Task Respond(HttpContext context)
+    {
+      // This endpoint is meant to be consumed by tooling that relies on status codes.
+      context.Response.StatusCode =
+        await IsCaughtUp()
+          ? StatusCodes.Status200OK
+          : StatusCodes.Status503ServiceUnavailable;
+      await context.Response.WriteAsJsonAsync(new PreHydrationStatus(await IsCaughtUp(), hydratedAt));
     }
   }
 }
