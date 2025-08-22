@@ -115,13 +115,7 @@ internal static class DaemonsInsight
     ProjectionDaemon projectionDaemon)
   {
     var isHydrating = settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration);
-    var lastEventPosition = 0UL;
-    var lastEventEmittedAt = DateTime.UnixEpoch;
-    await foreach (var solvedEvent in store.Read(ReadAllRequest.End()).Events().Take(1))
-    {
-      lastEventPosition = solvedEvent.Metadata.GlobalPosition;
-      lastEventEmittedAt = solvedEvent.Metadata.CreatedAt;
-    }
+    var (lastEventPosition, lastEventEmittedAt) = await GetLastEvent();
 
     var catchingUpReadModels = isHydrating
       ? await readModels
@@ -136,6 +130,8 @@ internal static class DaemonsInsight
             .ToArray())
       : [];
 
+    var (afterInsightsLastPosition, _) = await GetLastEvent();
+
     return new DaemonsInsights(
       catchingUpReadModels,
       new ReadModelsInsights(
@@ -148,7 +144,30 @@ internal static class DaemonsInsight
       isHydrating ? await readModelDaemon.Insights(lastEventPosition) : null,
       dynamicConsistencyBoundaryDaemon.Insights(lastEventPosition),
       lastEventEmittedAt,
-      lastEventPosition);
+      lastEventPosition,
+      afterInsightsLastPosition != lastEventPosition);
+
+    async Task<(ulong lastEventPosition, DateTime lastEventEmittedAt)> GetLastEvent()
+    {
+      var cancellationSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+      try
+      {
+        await foreach (var solvedEvent in store
+                         .Read(ReadAllRequest.End(), cancellationSource.Token)
+                         .Events()
+                         .Take(1)
+                         .WithCancellation(cancellationSource.Token))
+        {
+          return (solvedEvent.Metadata.GlobalPosition, lastEventEmittedAt = solvedEvent.Metadata.CreatedAt);
+        }
+      }
+      catch (OperationCanceledException)
+      {
+        // ignored
+      }
+
+      return (0UL, DateTime.UnixEpoch);
+    }
   }
 }
 
@@ -162,7 +181,8 @@ public record DaemonsInsights(
   HydrationDaemonInsights? HydrationDaemonInsights,
   DynamicConsistencyBoundaryDaemonInsights DynamicConsistencyBoundaryDaemonInsights,
   DateTime LastEventEmittedAt,
-  ulong LastEventPosition)
+  ulong LastEventPosition,
+  bool HadActivityDuringCheck)
 {
   public bool AreReadModelsUpToDate =>
     CatchingUpReadModels.All(rm => rm.PercentageComplete >= 100)
@@ -176,7 +196,11 @@ public record DaemonsInsights(
     && DynamicConsistencyBoundaryDaemonInsights.CurrentPercentageComplete >= 100;
 
   public bool IsFullyIdle =>
-    AreDaemonsIdle && AreReadModelsUpToDate && Tasks.Length == 0 && AboutToRunTasks.Length == 0;
+    AreDaemonsIdle
+    && AreReadModelsUpToDate
+    && Tasks.Length == 0
+    && AboutToRunTasks.Length == 0
+    && !HadActivityDuringCheck;
 }
 
 public record ReadModelsInsights(int Total, int UpToDate);

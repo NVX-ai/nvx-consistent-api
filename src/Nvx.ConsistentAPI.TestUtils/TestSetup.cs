@@ -75,30 +75,45 @@ internal class ConsistencyStateMachine
   private const int BaseDelayMilliseconds = 250;
   private const int MaxDelayMilliseconds = 15_000;
   private readonly ConcurrentDictionary<Guid, DateTime> testsAcknowledged = [];
+  private readonly string url;
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
+  private DateTime lastConsistencyOutputAt = DateTime.MinValue;
   private DateTime lastConsistentAt = DateTime.MinValue;
   private DateTime lastEventEmittedAt = DateTime.MinValue;
-  private int TestsWaiting => testsAcknowledged.Count(kvp => DateTime.UtcNow.AddSeconds(-15) < kvp.Value);
-  private DateTime lastConsistencyOutputAt = DateTime.MinValue;
-  private readonly string url;
+  private ulong lastEventPosition = ulong.MinValue;
+
   public ConsistencyStateMachine(string url, EventStore<EventModelEvent> store)
   {
     this.url = url;
     _ = Task.Run(() => Subscribe(store));
   }
 
+  private int TestsWaiting => testsAcknowledged.Count(kvp => DateTime.UtcNow.AddSeconds(-25) < kvp.Value);
+
   private async Task Subscribe(EventStore<EventModelEvent> store)
   {
-    await foreach (var evt in store.Subscribe(SubscribeAllRequest.FromNowOn()).Events())
+    while (true)
     {
-      lastEventEmittedAt = evt.Metadata.CreatedAt;
+      try
+      {
+        await foreach (var evt in store.Subscribe(SubscribeAllRequest.FromNowOn()).Events())
+        {
+          lastEventEmittedAt = evt.Metadata.CreatedAt;
+          lastEventPosition = evt.Metadata.GlobalPosition;
+        }
+      }
+      catch
+      {
+        await Task.Delay(250);
+      }
     }
+    // ReSharper disable once FunctionNeverReturns
   }
 
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
     const int maxSteps = MaxDelayMilliseconds / BaseDelayMilliseconds;
-    var steps = Math.Min(maxSteps, 1 + TestsWaiting);
+    var steps = Math.Min(maxSteps, TestsWaiting);
     var increment = Math.Max(1, steps);
     var minimumDelayMs = waitType switch
     {
@@ -126,9 +141,11 @@ internal class ConsistencyStateMachine
 
     bool IsAlreadyConsistent()
     {
-      var startedAgo = DateTime.UtcNow - startedAt;
-      var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
-      return startedAt < lastConsistentAt && hasCheckRunLongEnough;
+      var minimumDelayForCheck = GetMinimumDelayForCheck(type);
+      var hasCheckRunLongEnough = DateTime.UtcNow - startedAt > minimumDelayForCheck;
+      var hasConsistencyAfterLastEvent = lastConsistentAt - lastEventEmittedAt > minimumDelayForCheck;
+      var hasConsistencyOldEnough = lastConsistentAt - startedAt > minimumDelayForCheck;
+      return (hasConsistencyOldEnough || hasConsistencyAfterLastEvent) && hasCheckRunLongEnough;
     }
 
     async Task<bool> IsConsistent()
@@ -149,12 +166,12 @@ internal class ConsistencyStateMachine
         var daemonInsights = await $"{url}{DaemonsInsight.Route}"
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<DaemonsInsights>();
-        var startedAgo = DateTime.UtcNow - startedAt;
-        var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
+        var hasCheckRunLongEnough = DateTime.UtcNow - startedAt > GetMinimumDelayForCheck(type);
         var isLastEventOldEnough = DateTime.UtcNow - lastEventEmittedAt > GetMinimumDelayForCheck(type);
-
+        var isUpToDate = daemonInsights.LastEventPosition == lastEventPosition;
         var isConsistent =
-          status.IsCaughtUp
+          isUpToDate
+          && status.IsCaughtUp
           && daemonInsights.IsFullyIdle
           && (hasCheckRunLongEnough || isLastEventOldEnough);
 
@@ -165,12 +182,13 @@ internal class ConsistencyStateMachine
         }
         else if (lastConsistencyOutputAt < DateTime.UtcNow.AddSeconds(-5))
         {
-          Console.WriteLine($"CaughtUp: {status.IsCaughtUp}. " +
-                            $"DaemonsIdle: {daemonInsights.AreDaemonsIdle}. " +
-                            $"ReadModelsUpToDate: {daemonInsights.AreReadModelsUpToDate}. " +
-                            $"FullyIdle: {daemonInsights.IsFullyIdle}. " +
-                            $"StartedAt: {startedAt}, " +
-                            $"LastEventAt: {daemonInsights.LastEventEmittedAt}.");
+          Console.WriteLine(
+            $"CaughtUp: {status.IsCaughtUp}. "
+            + $"DaemonsIdle: {daemonInsights.AreDaemonsIdle}. "
+            + $"ReadModelsUpToDate: {daemonInsights.AreReadModelsUpToDate}. "
+            + $"FullyIdle: {daemonInsights.IsFullyIdle}. "
+            + $"StartedAt: {startedAt}, "
+            + $"LastEventAt: {daemonInsights.LastEventEmittedAt}.");
           lastConsistencyOutputAt = DateTime.UtcNow;
         }
 
