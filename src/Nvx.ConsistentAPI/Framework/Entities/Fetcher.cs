@@ -25,10 +25,10 @@ public interface RevisionFetcher
   AsyncOption<T> LatestFetch<T>(Option<StrongId> id) where T : EventModelEntity<T>;
 }
 
-internal class RevisionFetchWrapper(Fetcher fetcher, ulong upToRevision) : RevisionFetcher
+internal class RevisionFetchWrapper(Fetcher fetcher, ulong upToGlobalPosition) : RevisionFetcher
 {
   public AsyncOption<T> Fetch<T>(Option<StrongId> id) where T : EventModelEntity<T> =>
-    fetcher.Fetch<T>(id, upToRevision).Map(fr => fr.Ent);
+    fetcher.Fetch<T>(id, upToGlobalPosition).Map(fr => fr.Ent);
 
   public AsyncOption<T> LatestFetch<T>(Option<StrongId> id) where T : EventModelEntity<T> =>
     fetcher.Fetch<T>(id).Map(fr => fr.Ent);
