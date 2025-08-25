@@ -7,18 +7,18 @@ public class TenantUserValidation
   [Fact(DisplayName = "get tenant users as expected")]
   public async Task GetTenantUsers()
   {
-    var TenantId = new StrongGuid(Guid.NewGuid());
+    var tenantId = new StrongGuid(Guid.NewGuid());
     var userId = Guid.NewGuid();
     var entity = await TenantUsersEntity
-      .Defaulted(TenantId)
+      .Defaulted(tenantId)
       .Fold(
-        new UserWasAddedToTenant(TenantId.Value, userId.ToString()),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new UserWasAddedToTenant(tenantId.Value, userId.ToString()),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
 
     Assert.Equal(
       new TenantUserReadModel(
-        TenantId.Value.ToString(),
+        tenantId.Value.ToString(),
         entity.TenantName,
         entity.Users
       ),

@@ -4,12 +4,12 @@ using System.Globalization;
 using System.Reflection;
 using System.Text;
 using Dapper;
-using EventStore.Client;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Nvx.ConsistentAPI.Framework;
+using Nvx.ConsistentAPI.Store.Events.Metadata;
 
 namespace Nvx.ConsistentAPI;
 
@@ -561,7 +561,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       idParams);
   }
 
-  public async Task<Unit> Update(Shape[] rms, string? checkpoint, TraceabilityFields traceabilityFields, StrongId id)
+  public async Task<Unit> Update(Shape[] rms, ulong? checkpoint, TraceabilityFields traceabilityFields, StrongId id)
   {
     await using var connection = new SqlConnection(connectionString);
 
@@ -575,7 +575,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
 
       if (checkpoint is not null)
       {
-        await UpdateCheckpoint(connection, checkpoint, null);
+        await UpdateCheckpoint(connection, checkpoint.Value, null);
       }
     }
     catch (Exception ex) when (!ex.Message.Contains("Cannot insert duplicate key in object"))
@@ -595,14 +595,17 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     try
     {
       var parameters = new DynamicParameters(rm);
-      
-      var traceabilityFieldsTruncated = traceabilityFields with { FrameworkRelatedEntityId = traceabilityFields.FrameworkRelatedEntityId.Length > StringSizes.InlinedId
-        ? new StringInfo(traceabilityFields.FrameworkRelatedEntityId).SubstringByTextElements(
-          0,
-          StringSizes.InlinedId)
-        : traceabilityFields.FrameworkRelatedEntityId };
+
+      var traceabilityFieldsTruncated = traceabilityFields with
+      {
+        FrameworkRelatedEntityId = traceabilityFields.FrameworkRelatedEntityId.Length > StringSizes.InlinedId
+          ? new StringInfo(traceabilityFields.FrameworkRelatedEntityId).SubstringByTextElements(
+            0,
+            StringSizes.InlinedId)
+          : traceabilityFields.FrameworkRelatedEntityId
+      };
       parameters.AddDynamicParams(traceabilityFieldsTruncated);
-      
+
       foreach (var prop in stringProperties)
       {
         var strValue = prop.pi.GetValue(rm) as string;
@@ -630,11 +633,11 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
           {
             continue;
           }
-          
+
           parameters.Add(prop.Name, JsonConvert.SerializeObject(values));
         }
       }
-      
+
       await connection.ExecuteAsync(TraceableUpsertSql, parameters);
       foreach (var prop in arrayProperties)
       {
@@ -648,7 +651,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
           var values = batch
             .Select(x => new { rm.Id, Value = x })
             .Where(y => y.Value != null);
-            
+
           await connection.ExecuteAsync($"INSERT INTO [{propTableName}] VALUES (@Id, @Value)", values);
         }
       }
@@ -683,19 +686,17 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     }
   }
 
-  public async Task<Position> Checkpoint()
+  public async Task<ulong?> Checkpoint()
   {
     await using var connection = new SqlConnection(connectionString);
     const string sql = "SELECT [Checkpoint] FROM [ReadModelCheckpoints] WHERE [ModelName] = @ModelName";
     var value = await connection.QueryFirstOrDefaultAsync<string?>(sql, new { ModelName = tableName });
     if (value is null)
     {
-      return Position.Start;
+      return null;
     }
 
-    return Position.TryParse(value, out var position) && position != null
-      ? position.Value
-      : Position.Start;
+    return GlobalPosition.TryParse(value, out var position) ? position?.CommitPosition : null;
   }
 
   private string GenerateUpsertSql(bool isTraceable)
@@ -826,7 +827,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     await Initialize();
   }
 
-  public async Task UpdateCheckpoint(string checkpoint)
+  public async Task UpdateCheckpoint(ulong checkpoint)
   {
     await using var connection = new SqlConnection(connectionString);
     await connection.ExecuteAsync(
@@ -836,11 +837,11 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
         ELSE
         INSERT INTO [ReadModelCheckpoints] ([ModelName], [Checkpoint]) VALUES (@ModelName, @Checkpoint)
       """,
-      new { ModelName = tableName, Checkpoint = checkpoint }
+      new { ModelName = tableName, Checkpoint = new GlobalPosition(checkpoint, checkpoint).ToString() }
     );
   }
 
-  internal async Task UpdateCheckpoint(IDbConnection connection, string checkpoint, IDbTransaction? transaction)
+  internal async Task UpdateCheckpoint(IDbConnection connection, ulong checkpoint, IDbTransaction? transaction)
   {
     const string sqlCheckpoint =
       """
@@ -850,7 +851,10 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
         INSERT INTO [ReadModelCheckpoints] ([ModelName], [Checkpoint]) VALUES (@ModelName, @Checkpoint)
       """;
 
-    await connection.ExecuteAsync(sqlCheckpoint, new { ModelName = tableName, Checkpoint = checkpoint }, transaction);
+    await connection.ExecuteAsync(
+      sqlCheckpoint,
+      new { ModelName = tableName, Checkpoint = new GlobalPosition(checkpoint, checkpoint).ToString() },
+      transaction);
   }
 
   private static string SortColumn(Type type, SortBy? sortBy)

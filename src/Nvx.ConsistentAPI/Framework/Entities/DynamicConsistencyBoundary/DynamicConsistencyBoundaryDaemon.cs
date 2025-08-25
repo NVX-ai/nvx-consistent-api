@@ -1,17 +1,16 @@
-﻿using EventStore.Client;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Nvx.ConsistentAPI.Framework;
 using Nvx.ConsistentAPI.InternalTooling;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
 internal class DynamicConsistencyBoundaryDaemon(
-  EventStoreClient client,
-  Func<ResolvedEvent, Option<EventModelEvent>> parser,
+  EventStore<EventModelEvent> store,
   InterestTrigger[] triggers,
   ILogger logger)
 {
-  private readonly InterestFetcher interestFetcher = new(client, parser);
+  private readonly InterestFetcher interestFetcher = new(store);
   private ulong? currentProcessedPosition;
   private ulong? currentSweepPosition;
   private int interestsRegisteredSinceStartup;
@@ -41,29 +40,16 @@ internal class DynamicConsistencyBoundaryDaemon(
   {
     _ = Task.Run(async () =>
     {
-      var position = FromAll.End;
+      var request = SubscribeAllRequest.FromNowOn();
       while (true)
       {
         try
         {
-          await foreach (var msg in client.SubscribeToAll(
-                             position,
-                             filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()))
-                           .Messages)
+          await foreach (var solvedEvent in store.Subscribe(request).Events())
           {
-            switch (msg)
-            {
-              case StreamMessage.Event evt:
-                var re = evt.ResolvedEvent;
-                foreach (var parsed in parser(re))
-                {
-                  await TriggerInterests(parsed, re.Event.EventId);
-                }
-
-                position = FromAll.After(re.Event.Position);
-                currentProcessedPosition = re.Event.Position.CommitPosition;
-                break;
-            }
+            await TriggerInterests(solvedEvent.Event, solvedEvent.Metadata.EventId);
+            request = SubscribeAllRequest.After(solvedEvent.Metadata.GlobalPosition);
+            currentProcessedPosition = solvedEvent.Metadata.GlobalPosition;
           }
         }
         catch (Exception ex)
@@ -77,24 +63,16 @@ internal class DynamicConsistencyBoundaryDaemon(
     _ = Task.Run(async () =>
     {
       var shouldKeepRunning = true;
-      var position = Position.Start;
+      var request = ReadAllRequest.Start();
       while (shouldKeepRunning)
       {
         try
         {
-          await foreach (var re in client.ReadAllAsync(
-                           Direction.Forwards,
-                           position,
-                           EventTypeFilter.ExcludeSystemEvents()))
+          await foreach (var solvedEvent in store.Read(request).Events())
           {
-            foreach (var parsed in parser(re))
-            {
-              await TriggerInterests(parsed, re.Event.EventId);
-            }
-
-            // ReSharper disable once RedundantAssignment
-            position = re.Event.Position;
-            currentSweepPosition = position.CommitPosition;
+            await TriggerInterests(solvedEvent.Event, solvedEvent.Metadata.EventId);
+            request = ReadAllRequest.FromAndAfter(solvedEvent.Metadata.GlobalPosition);
+            currentSweepPosition = solvedEvent.Metadata.GlobalPosition;
           }
 
           shouldKeepRunning = false;
@@ -110,7 +88,7 @@ internal class DynamicConsistencyBoundaryDaemon(
     });
   }
 
-  private async Task TriggerInterests(EventModelEvent evt, Uuid originatingEventId)
+  private async Task TriggerInterests(EventModelEvent evt, Guid originatingEventId)
   {
     var stops = triggers.SelectMany(t => t.Stops(evt)).Distinct().ToArray();
     var initiates = triggers.SelectMany(t => t.Initiates(evt)).Distinct().ToArray();
@@ -164,7 +142,7 @@ internal class DynamicConsistencyBoundaryDaemon(
       .Select(t => t.s)
       .ToArray();
 
-  private async Task RegisterNewInterests(EntityInterestManifest[] interests, Uuid originatingEventId) =>
+  private async Task RegisterNewInterests(EntityInterestManifest[] interests, Guid originatingEventId) =>
     await interests
       .Select<EntityInterestManifest, Func<Task<Unit>>>(interestedStream =>
         async () =>
@@ -188,7 +166,7 @@ internal class DynamicConsistencyBoundaryDaemon(
         })
       .Parallel();
 
-  private async Task RemoveInterests(EntityInterestManifest[] interests, Uuid originatingEventId) =>
+  private async Task RemoveInterests(EntityInterestManifest[] interests, Guid originatingEventId) =>
     await interests
       .Select<EntityInterestManifest, Func<Task<Unit>>>(interestedStream =>
         async () =>
@@ -214,6 +192,8 @@ internal class DynamicConsistencyBoundaryDaemon(
 
   private async Task InsertEvent(EventModelEvent evt)
   {
+    await store.Insert(new InsertionPayload<EventModelEvent>(evt.GetSwimlane(), evt.GetEntityId(), [evt]));
+
     switch (evt)
     {
       case InterestedEntityRegisteredInterest:
@@ -223,23 +203,6 @@ internal class DynamicConsistencyBoundaryDaemon(
         Interlocked.Increment(ref interestsRemovedSinceStartup);
         break;
     }
-
-    await client.AppendToStreamAsync(
-      evt.GetStreamName(),
-      StreamState.Any,
-      [
-        new EventData(
-          Uuid.NewUuid(),
-          evt.EventType,
-          evt.ToBytes(),
-          new EventMetadata(
-              DateTime.UtcNow,
-              null,
-              null,
-              null,
-              null)
-            .ToBytes())
-      ]);
   }
 
   private static Dictionary<string, string> ToDictionary(StrongId id)

@@ -1,9 +1,9 @@
-﻿using EventStore.Client;
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.Framework.Projections;
+using Nvx.ConsistentAPI.Store.Store;
 
 // ReSharper disable NotAccessedPositionalProperty.Global
 
@@ -16,7 +16,7 @@ internal static class DaemonsInsight
   internal static void Endpoint(
     EventModelingReadModelArtifact[] readModels,
     GeneratorSettings settings,
-    EventStoreClient eventStoreClient,
+    EventStore<EventModelEvent> store,
     Fetcher fetcher,
     Emitter emitter,
     WebApplication app,
@@ -42,35 +42,14 @@ internal static class DaemonsInsight
 
         if (internalToolingApiKeyHeader == settings.ToolingEndpointsApiKey)
         {
-          context.Response.StatusCode = StatusCodes.Status200OK;
-          await context.Response.WriteAsJsonAsync(
-            await GetDaemonInsights(
-              settings,
-              processor,
-              readModels,
-              eventStoreClient,
-              daemon,
-              dcbDaemon,
-              projectionDaemon));
+          await Respond(context);
           return;
         }
 
         await FrameworkSecurity
           .Authorization(context, fetcher, emitter, settings, new PermissionsRequireAll("admin"), None)
           .Iter(
-            async _ =>
-            {
-              context.Response.StatusCode = StatusCodes.Status200OK;
-              await context.Response.WriteAsJsonAsync(
-                await GetDaemonInsights(
-                  settings,
-                  processor,
-                  readModels,
-                  eventStoreClient,
-                  daemon,
-                  dcbDaemon,
-                  projectionDaemon));
-            },
+            async _ => await Respond(context),
             async e => await e.Respond(context));
       }
       catch (Exception ex)
@@ -103,32 +82,38 @@ internal static class DaemonsInsight
         return o;
       })
       .ApplyAuth(new PermissionsRequireAll("admin"));
+
+    async Task Respond(HttpContext context)
+    {
+      context.Response.StatusCode = StatusCodes.Status200OK;
+      await context.Response.WriteAsJsonAsync(
+        await GetDaemonInsights(
+          settings,
+          processor,
+          readModels,
+          store,
+          daemon,
+          dcbDaemon,
+          projectionDaemon));
+    }
   }
 
   private static async Task<DaemonsInsights> GetDaemonInsights(
     GeneratorSettings settings,
     TodoProcessor processor,
     EventModelingReadModelArtifact[] readModels,
-    EventStoreClient eventStoreClient,
+    EventStore<EventModelEvent> store,
     ReadModelHydrationDaemon readModelDaemon,
     DynamicConsistencyBoundaryDaemon dynamicConsistencyBoundaryDaemon,
     ProjectionDaemon projectionDaemon)
   {
     var isHydrating = settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration);
-    var lastEventPosition = 0UL;
-    var lastEventEmittedAt = DateTime.UnixEpoch;
-    await foreach (var evt in eventStoreClient
-                     .ReadAllAsync(Direction.Backwards, Position.End, EventTypeFilter.ExcludeSystemEvents(), 1)
-                     .Take(1))
-    {
-      lastEventPosition = evt.Event.Position.CommitPosition;
-      lastEventEmittedAt = evt.Event.Created;
-    }
+    var (lastEventPosition, lastEventEmittedAt) = await GetLastEvent();
 
     var catchingUpReadModels = isHydrating
       ? await readModels
         .Select<EventModelingReadModelArtifact, Func<Task<SingleReadModelInsights>>>(rm =>
-          async () => await rm.Insights(lastEventPosition, eventStoreClient))
+          async () => await rm.Insights(lastEventPosition, store))
         .Parallel()
         .Map(i =>
           i
@@ -138,19 +123,44 @@ internal static class DaemonsInsight
             .ToArray())
       : [];
 
+    var (afterInsightsLastPosition, _) = await GetLastEvent();
+
     return new DaemonsInsights(
       catchingUpReadModels,
       new ReadModelsInsights(
         isHydrating ? readModels.Length : 0,
         isHydrating ? readModels.Length - catchingUpReadModels.Length : 0),
       await readModelDaemon.GetLingeringFailedHydrations(),
-      processor.RunningTodoTasks,
+      await processor.GetRunning(),
       await processor.AboutToRunTasks(),
       projectionDaemon.Insights(lastEventPosition),
       isHydrating ? await readModelDaemon.Insights(lastEventPosition) : null,
       dynamicConsistencyBoundaryDaemon.Insights(lastEventPosition),
       lastEventEmittedAt,
-      lastEventPosition);
+      lastEventPosition,
+      afterInsightsLastPosition != lastEventPosition);
+
+    async Task<(ulong lastEventPosition, DateTime lastEventEmittedAt)> GetLastEvent()
+    {
+      var cancellationSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+      try
+      {
+        await foreach (var solvedEvent in store
+                         .Read(ReadAllRequest.End(), cancellationSource.Token)
+                         .Events()
+                         .Take(1)
+                         .WithCancellation(cancellationSource.Token))
+        {
+          return (solvedEvent.Metadata.GlobalPosition, lastEventEmittedAt = solvedEvent.Metadata.CreatedAt);
+        }
+      }
+      catch (OperationCanceledException)
+      {
+        // ignored
+      }
+
+      return (0UL, DateTime.UnixEpoch);
+    }
   }
 }
 
@@ -164,7 +174,8 @@ public record DaemonsInsights(
   HydrationDaemonInsights? HydrationDaemonInsights,
   DynamicConsistencyBoundaryDaemonInsights DynamicConsistencyBoundaryDaemonInsights,
   DateTime LastEventEmittedAt,
-  ulong LastEventPosition)
+  ulong LastEventPosition,
+  bool HadActivityDuringCheck)
 {
   public bool AreReadModelsUpToDate =>
     CatchingUpReadModels.All(rm => rm.PercentageComplete >= 100)
@@ -178,7 +189,11 @@ public record DaemonsInsights(
     && DynamicConsistencyBoundaryDaemonInsights.CurrentPercentageComplete >= 100;
 
   public bool IsFullyIdle =>
-    AreDaemonsIdle && AreReadModelsUpToDate && Tasks.Length == 0 && AboutToRunTasks.Length == 0;
+    AreDaemonsIdle
+    && AreReadModelsUpToDate
+    && Tasks.Length == 0
+    && AboutToRunTasks.Length == 0
+    && !HadActivityDuringCheck;
 }
 
 public record ReadModelsInsights(int Total, int UpToDate);

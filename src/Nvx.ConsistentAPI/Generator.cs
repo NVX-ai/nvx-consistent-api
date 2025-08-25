@@ -10,6 +10,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
+using Nvx.ConsistentAPI.Store.EventStoreDB;
+using Nvx.ConsistentAPI.Store.InMemory;
+using Nvx.ConsistentAPI.Store.MsSql;
+using Nvx.ConsistentAPI.Store.Store;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
@@ -17,21 +21,6 @@ using Serilog.Events;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
 namespace Nvx.ConsistentAPI;
-
-public record GeneratorSettings(
-  string ReadModelConnectionString,
-  string EventStoreConnectionString,
-  string BlobStorageConnectionString,
-  SecurityKey[] JwtPublicKeys,
-  string AdminId,
-  string? AzureSignalRConnectionString,
-  Option<Action<WebApplicationBuilder>> BuilderCustomizations,
-  Option<Action<SwaggerGenOptions>> SwaggerCustomizations,
-  Option<Action<WebApplication>> AppCustomizations,
-  LoggingSettings LoggingSettings,
-  string ToolingEndpointsApiKey,
-  FrameworkFeatures EnabledFeatures = FrameworkFeatures.All,
-  int ParallelHydration = 25);
 
 // ReSharper disable once ClassNeverInstantiated.Global
 internal class AllOperationsFilter(EventModel model) : IOperationFilter
@@ -180,7 +169,7 @@ public static class Generator
   /// <param name="eventModel">The event model for the application.</param>
   /// <param name="corsOrigins">The allowed CORS origins.</param>
   /// <returns>A Task that results in a ConsistentApp instance.</returns>
-  public static async Task<WebApplication> GetWebApp(
+  public static async Task<ConsistentApplication> GetWebApp(
     int? port,
     GeneratorSettings settings,
     EventModel eventModel,
@@ -208,6 +197,18 @@ public static class Generator
         options.ConnectionString = $"InstrumentationKey={settings.LoggingSettings.AzureInstrumentationKey}";
       });
     }
+
+    var store = settings.EventStoreSettings.Match(
+      EventStore<EventModelEvent> () => new InMemoryEventStore<EventModelEvent>(),
+      esDb => new EventStoreDbStore<EventModelEvent>(
+        esDb.ConnectionString,
+        EventModelEventSerialization.Deserialize,
+        EventModelEventSerialization.Serialize),
+      ms => new MsSqlEventStore<EventModelEvent>(
+        ms.ConnectionString,
+        EventModelEventSerialization.Deserialize,
+        EventModelEventSerialization.Serialize));
+    await store.Initialize();
 
     builder
       .Services
@@ -361,7 +362,8 @@ public static class Generator
             .File(
               Path.Combine(settings.LoggingSettings.LogsFolder, "log-.log"),
               rollingInterval: settings.LoggingSettings.LogFileRollInterval.ToSerilog(),
-              retainedFileTimeLimit: TimeSpan.FromDays(settings.LoggingSettings.LogDaysToKeep))
+              retainedFileTimeLimit: TimeSpan.FromDays(settings.LoggingSettings.LogDaysToKeep),
+              restrictedToMinimumLevel: Map(settings.LoggingSettings.LogLevel))
             .CreateLogger());
       });
     }
@@ -383,7 +385,7 @@ public static class Generator
 
     var logger = app.Services.GetRequiredService<ILogger<WebApplication>>();
 
-    await merged.ApplyTo(app, settings, logger);
+    var fetcher = await merged.ApplyTo(app, settings, logger, store);
 
     settings.AppCustomizations.Iter(c => c(app));
 
@@ -416,7 +418,7 @@ public static class Generator
       });
     });
     app.UseSwaggerUI();
-    return app;
+    return new ConsistentApplication(app, store, fetcher);
 
     LogEventLevel Map(LogLevel level) => level switch
     {
@@ -452,13 +454,6 @@ public static class Generator
 
     foreach (var assembly in assemblies)
     {
-      // There is a bug with the test runner that prevents loading some types
-      // from system data while running tests.
-      if (assembly.FullName?.StartsWith("System.Data.") ?? false)
-      {
-        continue;
-      }
-
       foldTypes.AddRange(
         assembly
           .GetTypes()

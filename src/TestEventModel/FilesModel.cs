@@ -5,7 +5,7 @@ namespace TestEventModel;
 public partial record EntityWithFiles(string Id, MyFile[] Files)
   : EventModelEntity<EntityWithFiles>, Folds<SavedEntityWithFiles, EntityWithFiles>
 {
-  private const string StreamPrefix = "entity-with-files-";
+  public const string StreamPrefix = "entity-with-files-";
   public string GetStreamName() => GetStreamName(Id);
 
   public ValueTask<EntityWithFiles> Fold(
@@ -39,7 +39,7 @@ public partial record EntityWithFiles(string Id, MyFile[] Files)
 
 public record SavedEntityWithFiles(string Id, MyFile[] Files) : EventModelEvent
 {
-  public string GetStreamName() => EntityWithFiles.GetStreamName(GetEntityId().StreamId());
+  public string GetSwimlane() => EntityWithFiles.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Id);
 }
 

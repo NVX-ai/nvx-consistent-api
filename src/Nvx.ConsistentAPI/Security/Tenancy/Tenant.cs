@@ -25,8 +25,7 @@ public record RenameTenant(Guid Id, string NewName) : EventModelCommand<Tenant>
     Option<Tenant> tenant,
     Option<UserSecurity> user,
     FileUpload[] files
-  ) =>
-    new ExistingStream(new TenantRenamed(Id, NewName));
+  ) => this.Require(tenant, _ => new ExistingStream(new TenantRenamed(Id, NewName)));
 
   public IEnumerable<string> Validate() => [];
 }
@@ -39,8 +38,7 @@ public record EnableTenant(Guid Id) : EventModelCommand<Tenant>
     Option<Tenant> tenant,
     Option<UserSecurity> user,
     FileUpload[] files
-  ) =>
-    new ExistingStream(new TenantEnabled(Id));
+  ) => this.Require(tenant, _ => new ExistingStream(new TenantEnabled(Id)));
 
   public IEnumerable<string> Validate() => [];
 }
@@ -53,33 +51,32 @@ public record DisableTenant(Guid Id) : EventModelCommand<Tenant>
     Option<Tenant> tenant,
     Option<UserSecurity> user,
     FileUpload[] files
-  ) =>
-    new ExistingStream(new TenantDisabled(Id));
+  ) => this.Require(tenant, _ => new ExistingStream(new TenantDisabled(Id)));
 
   public IEnumerable<string> Validate() => [];
 }
 
 public record TenantCreated(Guid Id, string Name) : EventModelEvent
 {
-  public string GetStreamName() => Tenant.GetStreamName(Id);
+  public string GetSwimlane() => Tenant.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record TenantRenamed(Guid Id, string NewName) : EventModelEvent
 {
-  public string GetStreamName() => Tenant.GetStreamName(Id);
+  public string GetSwimlane() => Tenant.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record TenantEnabled(Guid Id) : EventModelEvent
 {
-  public string GetStreamName() => Tenant.GetStreamName(Id);
+  public string GetSwimlane() => Tenant.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record TenantDisabled(Guid Id) : EventModelEvent
 {
-  public string GetStreamName() => Tenant.GetStreamName(Id);
+  public string GetSwimlane() => Tenant.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
@@ -90,7 +87,7 @@ public partial record Tenant(Guid Id, string Name, bool Enabled) :
   Folds<TenantEnabled, Tenant>,
   Folds<TenantDisabled, Tenant>
 {
-  public const string StreamPrefix = "framework-tenant-";
+  public const string StreamPrefix = "framework-tenant--";
 
   public static readonly EventModel Get =
     new()
@@ -141,7 +138,7 @@ public partial record Tenant(Guid Id, string Name, bool Enabled) :
   public ValueTask<Tenant> Fold(TenantRenamed tr, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { Name = tr.NewName });
 
-  public static string GetStreamName(Guid id) => $"{StreamPrefix}-{id}";
+  public static string GetStreamName(Guid id) => $"{StreamPrefix}{id}";
 
   public static Tenant Defaulted(StrongGuid id) => new(id.Value, string.Empty, false);
 }

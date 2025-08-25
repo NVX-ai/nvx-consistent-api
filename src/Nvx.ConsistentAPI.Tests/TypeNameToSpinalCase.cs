@@ -1,3 +1,5 @@
+using Nvx.ConsistentAPI.Store.Events;
+
 namespace Nvx.ConsistentAPI.Tests;
 
 public class TypeNameToSpinalCase

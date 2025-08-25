@@ -1,12 +1,14 @@
 // ReSharper disable ParameterTypeCanBeEnumerable.Local
 
 using EventStore.Client;
+using Nvx.ConsistentAPI.Store.Events;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
 public abstract class
-  ProjectionDefinition<SourceEvent, ProjectedEvent, SourceEntity, ProjectionEntity,
-    ProjectionId> : EventModelingProjectionArtifact
+  ProjectionDefinition<SourceEvent, ProjectedEvent, SourceEntity, ProjectionEntity, ProjectionId>
+  : EventModelingProjectionArtifact
   where SourceEvent : EventModelEvent
   where ProjectedEvent : EventModelEvent
   where SourceEntity : EventModelEntity<SourceEntity>
@@ -21,27 +23,29 @@ public abstract class
 
   public abstract string SourcePrefix { get; }
 
-  public Task HandleEvent(
-    ResolvedEvent evt,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
-    Fetcher fetcher,
-    EventStoreClient client)
-  {
-    return parser(evt)
-      .Match(
-        async me => await (me switch
-        {
-          SourceEvent se => Handle(se, evt.Event.EventId, EventMetadata.TryParse(evt)),
-          _ => Task.CompletedTask
-        }),
-        () => Task.CompletedTask);
+  public bool CanProject(EventModelEvent e) =>
+    e.GetStreamName().StartsWith(SourcePrefix)
+    && e.EventType == Naming.ToSpinalCase<SourceEvent>();
 
-    async Task Handle(SourceEvent sourceEvent, Uuid sourceEventUuid, EventMetadata metadata)
+  public async Task HandleEvent(
+    EventModelEvent me,
+    StoredEventMetadata storedMetadata,
+    Fetcher fetcher,
+    EventStore<EventModelEvent> store)
+  {
+    await (me switch
     {
-      await Emit(Decider, client);
+      SourceEvent se => Handle(se, storedMetadata.EventId, EventMetadata.From(storedMetadata)),
+      _ => Task.CompletedTask
+    });
+    return;
+
+    async Task Handle(SourceEvent sourceEvent, Guid sourceEventUuid, EventMetadata metadata)
+    {
+      await Emit(Decider, store);
       return;
 
-      async Task<Result<(Option<EventModelEvent>, Uuid, EventMetadata)[], ApiError>> Decider()
+      async Task<Result<(Option<EventModelEvent>, Guid, EventMetadata)[], ApiError>> Decider()
       {
         return await
           fetcher
@@ -55,11 +59,11 @@ public abstract class
                 (ProjectionId id, FetchResult<ProjectionEntity> fr)[],
                 (SourceEntity e, (ProjectionId id, Option<ProjectionEntity> pe)[] pes)>(ett =>
                 (t.e, ett.Select(et => (et.id, et.fr.Ent)).ToArray())))
-            .Map<(Option<EventModelEvent> evt, Uuid sourceEventUuid, EventMetadata metadata)[]>(t =>
+            .Map<(Option<EventModelEvent> evt, Guid sourceEventUuid, EventMetadata metadata)[]>(t =>
               t.pes.Select(pt => ToProjection(pt, t.e)).ToArray())
             .DefaultValue([]);
 
-        (Option<EventModelEvent>, Uuid sourceEventUuid, EventMetadata) ToProjection(
+        (Option<EventModelEvent>, Guid sourceEventUuid, EventMetadata) ToProjection(
           (ProjectionId id, Option<ProjectionEntity> pe) pt,
           SourceEntity se) =>
           (Project(sourceEvent, se, pt.pe, pt.id, sourceEventUuid, metadata).Map(e => e as EventModelEvent),
@@ -75,13 +79,9 @@ public abstract class
     }
   }
 
-  public bool CanProject(ResolvedEvent e) =>
-    e.Event.EventStreamId.StartsWith(SourcePrefix)
-    && e.Event.EventType == Naming.ToSpinalCase<SourceEvent>();
-
   private async Task Emit(
-    Func<Task<Result<(Option<EventModelEvent>, Uuid, EventMetadata)[], ApiError>>> decider,
-    EventStoreClient esClient)
+    Func<Task<Result<(Option<EventModelEvent>, Guid, EventMetadata)[], ApiError>>> decider,
+    EventStore<EventModelEvent> store)
   {
     var i = 0;
     while (i < 1000)
@@ -100,27 +100,7 @@ public abstract class
 
     return;
 
-    IEnumerable<EventData> ToEventData(
-      EventModelEvent @event,
-      Uuid sourceEventUuid,
-      int offset,
-      EventMetadata? metadata) =>
-      IdempotentUuid
-        .Generate($"{Name}{sourceEventUuid}{offset}")
-        .Apply(id => new[]
-        {
-          new EventData(
-            id,
-            @event.EventType,
-            @event.ToBytes(),
-            (metadata is not null
-              ? metadata with { CreatedAt = DateTime.UtcNow, CausationId = sourceEventUuid.ToString() }
-              : new EventMetadata(DateTime.UtcNow, Guid.NewGuid().ToString(), sourceEventUuid.ToString(), null, null)
-            ).ToBytes()
-          )
-        });
-
-    async Task<Unit> Go((Option<EventModelEvent>, Uuid, EventMetadata)[] tuples)
+    async Task<Unit> Go((Option<EventModelEvent>, Guid, EventMetadata)[] tuples)
     {
       var offset = 0;
       foreach (var tuple in tuples)
@@ -130,28 +110,35 @@ public abstract class
           .Match(
             async @event =>
             {
-              var result = await esClient.AppendToStreamAsync(
-                @event.GetStreamName(),
-                StreamState.Any,
-                ToEventData(@event, sourceEventUuid, offset++, metadata));
+              var result = await store.Insert(
+                new InsertionPayload<EventModelEvent>(
+                  @event.GetSwimlane(),
+                  @event.GetEntityId(),
+                  new AnyStreamState(),
+                  [
+                    (
+                      @event,
+                      new EventInsertionMetadataPayload(
+                        IdempotentUuid.Generate($"{Name}{sourceEventUuid}{offset++}").ToGuid(),
+                        metadata.RelatedUserSub,
+                        metadata.CorrelationId ?? Guid.NewGuid().ToString(),
+                        sourceEventUuid.ToString(),
+                        metadata.CreatedAt)
+                    )
+                  ]));
 
               if (@event is not EventModelSnapshotEvent)
               {
                 return unit;
               }
 
-              var currentStreamMetadata =
-                await esClient.GetStreamMetadataAsync(@event.GetStreamName()).Map(mdr => mdr.Metadata);
-
-              var newMetadata = new StreamMetadata(
-                currentStreamMetadata.MaxCount,
-                currentStreamMetadata.MaxAge,
-                result.NextExpectedStreamRevision.ToUInt64(),
-                currentStreamMetadata.CacheControl,
-                currentStreamMetadata.Acl,
-                currentStreamMetadata.CustomMetadata);
-
-              await esClient.SetStreamMetadataAsync(@event.GetStreamName(), StreamState.Any, newMetadata);
+              foreach (var insertionSuccess in result.Option)
+              {
+                await store.TruncateStream(
+                  @event.GetSwimlane(),
+                  @event.GetEntityId(),
+                  insertionSuccess.StreamPosition);
+              }
 
               return unit;
             },
@@ -168,13 +155,13 @@ public abstract class
     SourceEntity e,
     Option<ProjectionEntity> projectionEntity,
     ProjectionId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata);
 
   public abstract IEnumerable<ProjectionId> GetProjectionIds(
     SourceEvent sourceEvent,
     SourceEntity sourceEntity,
-    Uuid sourceEventId);
+    Guid sourceEventId);
 
   public override int GetHashCode() => Name.GetHashCode();
 }

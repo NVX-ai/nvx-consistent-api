@@ -1,6 +1,5 @@
 using System.Data.Common;
 using Dapper;
-using EventStore.Client;
 using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Nvx.ConsistentAPI;
@@ -65,6 +64,23 @@ public record RetrieveStock(Guid ProductId, int Amount) : EventModelCommand<Stoc
 
 // ReSharper disable once NotAccessedPositionalProperty.Global
 public record CreateProduct(Guid ProductId, string Name, AttachedFile? Photo) : EventModelCommand<Product>
+{
+  public Option<StrongId> TryGetEntityId(Option<UserSecurity> user) => new StrongGuid(ProductId);
+
+  public Result<EventInsertion, ApiError> Decide(
+    Option<Product> entity,
+    Option<UserSecurity> user,
+    FileUpload[] files
+  ) =>
+    entity.Match<Result<EventInsertion, ApiError>>(
+      _ => new ConflictError("Tried to create an already existing product"),
+      () => new CreateStream(new ProductCreated(ProductId, Name))
+    );
+
+  public IEnumerable<string> Validate() => [];
+}
+
+public record CreateProductWithValidationRule(Guid ProductId, string Name, AttachedFile? Photo) : EventModelCommand<Product>
 {
   public Option<StrongId> TryGetEntityId(Option<UserSecurity> user) => new StrongGuid(ProductId);
 
@@ -208,82 +224,79 @@ public record SendNotificationToUser(string Message, string RecipientSub) : Even
 // Events
 public record StockAdded(Guid ProductId, int Amount) : EventModelEvent
 {
-  public string GetStreamName() => Stock.GetStreamName(ProductId);
+  public string GetSwimlane() => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockTagged(Guid ProductId, string?[] Tags) : EventModelEvent
 {
-  public string GetStreamName() => Stock.GetStreamName(ProductId);
+  public string GetSwimlane() => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockRetrieved(Guid ProductId, int Amount) : EventModelEvent
 {
-  public string GetStreamName() => Stock.GetStreamName(ProductId);
+  public string GetSwimlane() => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockNamed(Guid ProductId, string Name) : EventModelEvent
 {
-  public string GetStreamName() => Stock.GetStreamName(ProductId);
+  public string GetSwimlane() => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record ProductCreated(Guid ProductId, string Name) : EventModelEvent
 {
-  public string GetStreamName() => GetStreamName(ProductId);
+  public string GetSwimlane() => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
-  private static string GetStreamName(Guid id) => Product.GetStreamName(id);
 }
 
 public record ProductPictureAdded(Guid ProductId, Guid PictureId) : EventModelEvent
 {
-  public string GetStreamName() => GetStreamName(ProductId);
+  public string GetSwimlane() => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
-  private static string GetStreamName(Guid id) => Product.GetStreamName(id);
 }
 
 public record AggregatingProductHidden(Guid ProductId) : EventModelEvent
 {
-  public string GetStreamName() => Product.GetStreamName(ProductId);
+  public string GetSwimlane() => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record AggregatingProductShown(Guid ProductId) : EventModelEvent
 {
-  public string GetStreamName() => Product.GetStreamName(ProductId);
+  public string GetSwimlane() => Product.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
 }
 
 public record StockPictureAdded(Guid ProductId, Guid PictureId) : EventModelEvent
 {
-  public string GetStreamName() => GetStreamName(ProductId);
+  public string GetSwimlane() => Stock.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(ProductId);
-  private static string GetStreamName(Guid id) => Stock.GetStreamName(id);
 }
 
 public record OrganizationBuildingRegistered(string Name, Guid TenantId) : EventModelEvent
 {
-  public string GetStreamName() => OrganizationBuilding.GetStreamName(Name);
+  public string GetSwimlane() => OrganizationBuilding.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Name);
 }
 
 public record UserSelectedFavoriteFood(string Sub, string Name) : EventModelEvent
 {
-  public string GetStreamName() => UserFavoriteFood.GetStreamName(Sub);
+  public string GetSwimlane() => UserFavoriteFood.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(Sub);
 }
 
 public record StoreReceivedProduct(Guid StoreId, Guid ProductId) : EventModelEvent
 {
-  public string GetStreamName() => StoreFrontProduct.GetStreamName(new StoreFrontProductId(StoreId, ProductId));
+  public string GetSwimlane() => StoreFrontProduct.StreamPrefix;
   public StrongId GetEntityId() => new StoreFrontProductId(StoreId, ProductId);
 }
 
 public record UserNamedOneProduct(string UserSub, Guid ProductId, string Name) : EventModelEvent
 {
-  public string GetStreamName() => UserRegistryOfNamedProducts.GetStreamName(UserSub);
+  public string GetSwimlane() => UserRegistryOfNamedProducts.StreamPrefix;
   public StrongId GetEntityId() => new StrongString(UserSub);
 }
 
@@ -336,15 +349,15 @@ public partial record Stock(Guid ProductId, int Amount, string ProductName, Guid
 
   public ValueTask<Stock> Fold(StockNamed sn, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { ProductName = sn.Name });
-  
-  public ValueTask<Stock> Fold(StockTagged st, EventMetadata metadata, RevisionFetcher fetcher) =>
-    ValueTask.FromResult(this with { Tags = st.Tags });
 
   public ValueTask<Stock> Fold(StockPictureAdded evt, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { PictureId = evt.PictureId });
 
   public ValueTask<Stock> Fold(StockRetrieved rs, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { Amount = Amount - rs.Amount });
+
+  public ValueTask<Stock> Fold(StockTagged st, EventMetadata metadata, RevisionFetcher fetcher) =>
+    ValueTask.FromResult(this with { Tags = st.Tags });
 
   public static string GetStreamName(Guid productId) => $"{StreamPrefix}{productId}";
   public static Stock Defaulted(StrongGuid id) => new(id.Value, 0, "Unknown product", null, []);
@@ -711,8 +724,7 @@ public static class TestEventModel
         created.Name,
         md.RelatedUserSub ?? string.Empty),
       SourcePrefix = Product.StreamPrefix,
-      LockLength = TimeSpan.FromSeconds(4),
-      Delay = TimeSpan.FromMilliseconds(1),
+      LockLength = TimeSpan.FromSeconds(2),
       Expiration = TimeSpan.FromMinutes(10)
     };
 
@@ -735,6 +747,12 @@ public static class TestEventModel
         new CommandDefinition<CreateProduct, Product>
         {
           Description = "Adds a new product to the catalogue.",
+          Auth = new PermissionsRequireOne("product-creator"),
+          AreaTag = "ProductStock"
+        },
+        new CommandDefinition<CreateProductWithValidationRule, Product>
+        {
+          Description = "Adds a new product to the catalogue, but it has validation rules.",
           Auth = new PermissionsRequireOne("product-creator"),
           UsesValidationRules = true,
           AreaTag = "ProductStock"
@@ -892,14 +910,14 @@ public static class TestEventModel
       Product e,
       Option<Stock> destinationEntity,
       StrongGuid projectionId,
-      Uuid eventId,
+      Guid eventId,
       EventMetadata metadata) =>
       new StockNamed(e.Id, e.Name);
 
     public override IEnumerable<StrongGuid> GetProjectionIds(
       ProductCreated sourceEvent,
       Product sourceEntity,
-      Uuid sourceEventId) => [new(sourceEvent.ProductId)];
+      Guid sourceEventId) => [new(sourceEvent.ProductId)];
   }
 
   private class ProductPictureUploadedToStockPictureAdded :
@@ -913,13 +931,13 @@ public static class TestEventModel
       Product e,
       Option<Stock> destinationEntity,
       StrongGuid projectionId,
-      Uuid eventId,
+      Guid eventId,
       EventMetadata metadata) => new StockPictureAdded(e.Id, se.PictureId);
 
     public override IEnumerable<StrongGuid> GetProjectionIds(
       ProductPictureAdded sourceEvent,
       Product sourceEntity,
-      Uuid sourceEventId) => [new(sourceEvent.ProductId)];
+      Guid sourceEventId) => [new(sourceEvent.ProductId)];
   }
 }
 

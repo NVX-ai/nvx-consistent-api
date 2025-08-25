@@ -1,4 +1,3 @@
-using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -6,6 +5,7 @@ using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.Framework.Projections.Model;
 using Nvx.ConsistentAPI.InternalTooling;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI.Framework.Projections;
 
@@ -13,8 +13,7 @@ public class ProjectionDaemon(
   EventModelingProjectionArtifact[] projectors,
   Fetcher fetcher,
   Emitter emitter,
-  EventStoreClient client,
-  Func<ResolvedEvent, Option<EventModelEvent>> parser,
+  EventStore<EventModelEvent> store,
   WebApplication app,
   GeneratorSettings gs,
   ILogger logger)
@@ -22,10 +21,10 @@ public class ProjectionDaemon(
   private const string SubscriptionVersion = "1";
   private static readonly SemaphoreSlim CatchUpLock = new(1);
   private string[] catchingUp = [];
+  private bool isProjecting;
   private ulong lastCatchUpProcessedPosition;
   private ulong lastProcessedPosition;
   private int projectedCount;
-  private bool isProjecting;
 
   public ProjectorDaemonInsights Insights(ulong lastEventPosition)
   {
@@ -146,7 +145,7 @@ public class ProjectionDaemon(
     async Task CatchUp()
     {
       var keepCatchingUp = true;
-      var position = Position.Start;
+      ulong? position = null;
       while (keepCatchingUp)
       {
         try
@@ -162,20 +161,26 @@ public class ProjectionDaemon(
           }
 
           var projectorsBehind = projectors.Where(p => projectionsBehind.Contains(p.Name)).ToArray();
-          await foreach (var evt in client.ReadAllAsync(
-                           Direction.Forwards,
-                           position,
-                           StreamFilter.Prefix(projectorsBehind.Select(p => p.SourcePrefix).Distinct().ToArray())))
+          var swimlanes = projectorsBehind.Select(p => p.SourcePrefix).Distinct().ToArray();
+          var request = position.HasValue
+            ? ReadAllRequest.FromAndAfter(
+              position.Value,
+              swimlanes)
+            : ReadAllRequest.Start(swimlanes);
+
+
+          await foreach (var evt in store.Read(request).Events())
           {
             foreach (var projector in projectorsBehind)
             {
               try
               {
-                if (!projector.CanProject(evt))
+                if (!projector.CanProject(evt.Event))
                 {
                   continue;
                 }
-                await projector.HandleEvent(evt, parser, fetcher, client);
+
+                await projector.HandleEvent(evt.Event, evt.Metadata, fetcher, store);
                 Interlocked.Increment(ref projectedCount);
               }
               catch (Exception ex)
@@ -188,8 +193,8 @@ public class ProjectionDaemon(
               }
             }
 
-            position = evt.Event.Position;
-            lastCatchUpProcessedPosition = evt.Event.Position.CommitPosition;
+            position = evt.Metadata.GlobalPosition;
+            lastCatchUpProcessedPosition = evt.Metadata.GlobalPosition;
           }
 
           foreach (var projector in projectionsBehind)
@@ -218,30 +223,28 @@ public class ProjectionDaemon(
         try
         {
           var tracker = await GetTracker();
-          var position = tracker.Checkpoint is null
-            ? FromAll.End
-            : FromAll.After(new Position(tracker.Checkpoint.Value, tracker.Checkpoint.Value));
+          var request =
+            tracker.Checkpoint is null
+              ? SubscribeAllRequest.FromNowOn()
+              : SubscribeAllRequest.After(tracker.Checkpoint.Value);
 
-          await foreach (var message in client.SubscribeToAll(
-                             position,
-                             filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()))
-                           .Messages)
+          await foreach (var message in store.Subscribe(request))
           {
             var hasProjected = false;
             switch (message)
             {
-              case StreamMessage.Event(var evt):
+              case ReadAllMessage<EventModelEvent>.AllEvent evt:
                 foreach (var projector in projectors)
                 {
                   try
                   {
-                    if (!projector.CanProject(evt))
+                    if (!projector.CanProject(evt.Event))
                     {
                       continue;
                     }
 
                     isProjecting = true;
-                    await projector.HandleEvent(evt, parser, fetcher, client);
+                    await projector.HandleEvent(evt.Event, evt.Metadata, fetcher, store);
                     isProjecting = false;
                     hasProjected = true;
                   }
@@ -259,26 +262,22 @@ public class ProjectionDaemon(
                 if (hasProjected)
                 {
                   await emitter.Emit(() => new AnyState(
-                    new ProjectionCheckpointReached(SubscriptionVersion, evt.Event.Position.CommitPosition)));
+                    new ProjectionCheckpointReached(SubscriptionVersion, evt.Metadata.GlobalPosition)));
                   Interlocked.Increment(ref projectedCount);
                 }
 
-                lastProcessedPosition = evt.Event.Position.CommitPosition;
+                lastProcessedPosition = evt.Metadata.GlobalPosition;
 
                 break;
-              case StreamMessage.AllStreamCheckpointReached(var checkpoint):
+              case ReadAllMessage<EventModelEvent>.Checkpoint(var checkpoint):
                 var checkpointTracker = await GetTracker();
                 await emitter.Emit(() => new AnyState(
                   new ProjectionSnapshotReached(
                     SubscriptionVersion,
                     checkpointTracker.ExistingProjections,
                     checkpointTracker.UpToDateProjections,
-                    checkpoint.CommitPosition)));
-                lastProcessedPosition = checkpoint.CommitPosition;
-                break;
-              case StreamMessage.CaughtUp:
-                break;
-              case StreamMessage.FellBehind:
+                    checkpoint)));
+                lastProcessedPosition = checkpoint;
                 break;
             }
           }

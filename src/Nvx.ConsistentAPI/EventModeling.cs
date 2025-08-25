@@ -1,10 +1,11 @@
-using EventStore.Client;
+using System.Collections.ObjectModel;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Nvx.ConsistentAPI.Framework.Projections;
 using Nvx.ConsistentAPI.Framework.StaticEndpoints;
 using Nvx.ConsistentAPI.InternalTooling;
+using Nvx.ConsistentAPI.Store.Store;
 using HashCode = System.HashCode;
 
 namespace Nvx.ConsistentAPI;
@@ -37,18 +38,20 @@ public interface EventModelingCommandArtifact : Endpoint
 public interface EventModelingReadModelArtifact : Endpoint
 {
   Type ShapeType { get; }
-  Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClien);
+
+  Task<SingleReadModelInsights> Insights(
+    ulong lastEventPosition,
+    EventStore<EventModelEvent> store);
 
   Task ApplyTo(
     WebApplication app,
-    EventStoreClient esClient,
+    EventStore<EventModelEvent> store,
     Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
     GeneratorSettings settings,
     ILogger logger);
 
-  bool IsUpToDate(Position? position = null);
+  bool IsUpToDate(ulong? position = null);
 }
 
 public interface IdempotentReadModel
@@ -57,7 +60,7 @@ public interface IdempotentReadModel
     FoundEntity foundEntity,
     DatabaseHandlerFactory dbFactory,
     StrongId entityId,
-    string? checkpoint,
+    ulong? checkpoint,
     ILogger logger);
 
   bool CanProject(EventModelEvent e);
@@ -73,13 +76,13 @@ public interface EventModelingProjectionArtifact
   string Name { get; }
 
   string SourcePrefix { get; }
-  bool CanProject(ResolvedEvent evt);
+  bool CanProject(EventModelEvent evt);
 
   Task HandleEvent(
-    ResolvedEvent evt,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    EventModelEvent me,
+    StoredEventMetadata storedMetadata,
     Fetcher fetcher,
-    EventStoreClient client);
+    EventStore<EventModelEvent> store);
 }
 
 public static class PermissionsEndpoint
@@ -146,13 +149,18 @@ public class EventModel
       InterestTriggers = InterestTriggers.Concat(other.InterestTriggers).ToArray()
     };
 
-  public async Task ApplyTo(WebApplication app, GeneratorSettings settings, ILogger logger)
+  public async Task<Fetcher> ApplyTo(
+    WebApplication app,
+    GeneratorSettings settings,
+    ILogger logger,
+    EventStore<EventModelEvent> store)
   {
-    var esClient = new EventStoreClient(EventStoreClientSettings.Create(settings.EventStoreConnectionString));
-    var emitter = new Emitter(esClient, logger);
-    var parser = Parser();
+    var emitter = new Emitter(store, logger);
 
-    var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(esClient, parser)));
+    var swimlaneLookup =
+      new ReadOnlyDictionary<Type, string>(Entities.ToDictionary(e => e.EntityType, e => e.StreamPrefix));
+
+    var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(store, swimlaneLookup)));
 
     await FileDefinitions.InitializeEndpoint(app, emitter, fetcher, settings);
     UserSecurityDefinitions.InitializeEndpoints(app, emitter, fetcher, settings);
@@ -170,8 +178,7 @@ public class EventModel
         .ToArray(),
       fetcher,
       emitter,
-      esClient,
-      parser,
+      store,
       app,
       settings,
       logger);
@@ -179,7 +186,7 @@ public class EventModel
 
     foreach (var readModel in ReadModels)
     {
-      await readModel.ApplyTo(app, esClient, fetcher, parser, emitter, settings, logger);
+      await readModel.ApplyTo(app, store, fetcher, emitter, settings, logger);
     }
 
     runner.Initialize(RecurringTasks, fetcher, emitter, settings, logger);
@@ -199,9 +206,8 @@ public class EventModel
 
     var hydrationDaemon = new ReadModelHydrationDaemon(
       settings,
-      esClient,
+      store,
       fetcher,
-      parser,
       ReadModels.Where(rm => rm is IdempotentReadModel).Cast<IdempotentReadModel>().ToArray(),
       logger);
 
@@ -220,15 +226,15 @@ public class EventModel
 
     processor.Initialize();
 
-    var dcbDaemon = new DynamicConsistencyBoundaryDaemon(esClient, parser, InterestTriggers, logger);
+    var dcbDaemon = new DynamicConsistencyBoundaryDaemon(store, InterestTriggers, logger);
     dcbDaemon.Initialize();
 
-    CatchUp.Endpoint(ReadModels, hydrationDaemon, settings, fetcher, emitter, app);
+    CatchUpEndpoint.Apply(ReadModels, hydrationDaemon, settings, fetcher, emitter, app);
     PreHydrationCompleted.Endpoint(ReadModels, hydrationDaemon, settings, fetcher, emitter, app);
     DaemonsInsight.Endpoint(
       ReadModels,
       settings,
-      esClient,
+      store,
       fetcher,
       emitter,
       app,
@@ -238,7 +244,7 @@ public class EventModel
       projectionDaemon,
       logger);
 
-    return;
+    return fetcher;
 
     static async Task TryActivateAdmin(Fetcher fetcher, GeneratorSettings settings, Emitter emitter)
     {
@@ -266,44 +272,6 @@ public class EventModel
             .Emit(() => new AnyState(new ApplicationPermissionAssigned(settings.AdminId, "admin")))
             .Async()
             .Map(_ => unit);
-    }
-  }
-
-  private static Func<ResolvedEvent, Option<EventModelEvent>> Compose(
-    params (string eventTypeName, Func<ResolvedEvent, Option<EventModelEvent>> parser)[] parsers
-  )
-  {
-    var parsersDictionary = parsers.ToDictionary(tpl => tpl.eventTypeName, tpl => tpl.parser);
-    return re => parsersDictionary.TryGetValue(re.Event.EventType, out var parser) ? parser(re) : None;
-  }
-
-  private static Func<ResolvedEvent, Option<EventModelEvent>> Parser()
-  {
-    return AllEventModelEventShapes().Select(ParserBuilder.Build).ToArray().Apply(Compose);
-
-    static IEnumerable<Type> AllEventModelEventShapes()
-    {
-      var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-      var result = new HashSet<Type>();
-
-      foreach (var assembly in assemblies)
-      {
-        // There is a bug with the test runner that prevents loading some types
-        // from system data while running tests.
-        if (assembly.FullName?.StartsWith("System.Data.") ?? false)
-        {
-          continue;
-        }
-
-        var types = assembly.GetTypes().Where(t => t.GetInterfaces().Contains(typeof(EventModelEvent)) && t.IsClass);
-
-        foreach (var type in types)
-        {
-          result.Add(type);
-        }
-      }
-
-      return result;
     }
   }
 
@@ -356,8 +324,8 @@ public class EventModel
 
 public record EventWithMetadata<E>(
   E Event,
-  Position Revision,
-  Uuid EventId,
+  ulong Revision,
+  Guid EventId,
   EventMetadata Metadata) where E : EventModelEvent
 {
   public EventWithMetadata<E2> As<E2>(E2 e) where E2 : EventModelEvent => new(e, Revision, EventId, Metadata);

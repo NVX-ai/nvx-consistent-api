@@ -26,7 +26,7 @@ public class UserNotificationReadModelShould
           sender.Sub,
           DateTime.UtcNow,
           null),
-        new EventMetadata(DateTime.UtcNow, null, null, null, null),
+        new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
         null!);
 
     var baseExpectation = new UserNotificationReadModel(
@@ -79,7 +79,7 @@ public class UserNotificationReadModelShould
       .FromEntity(
         await entity.Fold(
           new NotificationRead(notificationId),
-          new EventMetadata(DateTime.UtcNow, null, null, null, null),
+          new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
           null!))
       .ShouldBeSingle(baseValue =>
       {
@@ -113,7 +113,7 @@ public class UserNotificationReadModelShould
       .FromEntity(
         await entity.Fold(
           new NotificationUnread(notificationId),
-          new EventMetadata(DateTime.UtcNow, null, null, null, null),
+          new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
           null!))
       .ShouldBeSingle(baseValue =>
       {
@@ -147,7 +147,7 @@ public class UserNotificationReadModelShould
       .FromEntity(
         await entity.Fold(
           new NotificationArchived(notificationId),
-          new EventMetadata(DateTime.UtcNow, null, null, null, null),
+          new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
           null!))
       .ShouldBeSingle(baseValue =>
       {
@@ -165,7 +165,7 @@ public class UserNotificationReadModelShould
       UserNotificationReadModel.FromEntity(
         await entity.Fold(
           new NotificationDeleted(notificationId),
-          new EventMetadata(DateTime.UtcNow, null, null, null, null),
+          new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
           null!)));
 
     var fifthExpectation = new UserNotificationReadModel(
@@ -188,7 +188,7 @@ public class UserNotificationReadModelShould
       .FromEntity(
         await entity.Fold(
           new NotificationRestored(notificationId),
-          new EventMetadata(DateTime.UtcNow, null, null, null, null),
+          new EventMetadata(DateTime.UtcNow, null, null, null, null, null),
           null!))
       .ShouldBeSingle(baseValue =>
       {

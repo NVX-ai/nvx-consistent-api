@@ -7,6 +7,19 @@ public static class Initializer
     new TestSettings
     {
       LogsFolder = "logs",
-      UsePersistentTestContainers = false
+      UsePersistentTestContainers =
+        Environment
+          .GetEnvironmentVariable("USE_PERISTENT_TEST_CONTAINERS")
+          ?.Equals("true", StringComparison.InvariantCultureIgnoreCase)
+        == true,
+      StoreType =
+        Environment
+            .GetEnvironmentVariable("TEST_EVENT_STORE_TYPE")
+            ?.ToLowerInvariant() switch
+          {
+            "inmemory" => EventStoreType.InMemory,
+            "mssql" => EventStoreType.MsSql,
+            _ => EventStoreType.EventStoreDb
+          }
     });
 }

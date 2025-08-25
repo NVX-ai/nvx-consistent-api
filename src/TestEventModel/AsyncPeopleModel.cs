@@ -67,19 +67,19 @@ public partial record PersonEntity(Guid Id, string Name, PersonEntity[] Children
 
 public record PersonCreated(Guid Id, string Name) : EventModelEvent
 {
-  public string GetStreamName() => PersonEntity.GetStreamName(new PersonId(Id));
+  public string GetSwimlane() => PersonEntity.StreamPrefix;
   public StrongId GetEntityId() => new PersonId(Id);
 }
 
 public record PersonChildAdded(Guid ParentId, Guid ChildId) : EventModelEvent
 {
-  public string GetStreamName() => PersonEntity.GetStreamName(new PersonId(ParentId));
+  public string GetSwimlane() => PersonEntity.StreamPrefix;
   public StrongId GetEntityId() => new PersonId(ParentId);
 }
 
 public record PersonNameUpdated(Guid Id, string Name) : EventModelEvent
 {
-  public string GetStreamName() => PersonEntity.GetStreamName(new PersonId(Id));
+  public string GetSwimlane() => PersonEntity.StreamPrefix;
   public StrongId GetEntityId() => new PersonId(Id);
 }
 

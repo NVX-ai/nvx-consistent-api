@@ -1,16 +1,10 @@
-using EventStore.Client;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
 public interface Folds<Evt, Ent> where Evt : EventModelEvent where Ent : EventModelEntity<Ent>
 {
   ValueTask<Ent> Fold(Evt evt, EventMetadata metadata, RevisionFetcher fetcher);
-}
-
-public abstract record StrongId
-{
-  public abstract string StreamId();
-  public abstract override string ToString();
 }
 
 public record StrongString(string Value) : StrongId
@@ -36,7 +30,12 @@ public interface EventModelEntity<Entity> : EventModelEntity
 public interface EntityDefinition
 {
   string StreamPrefix { get; }
-  EntityFetcher GetFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser);
+
+  EntityFetcher GetFetcher(
+    EventStore<EventModelEvent> store,
+    IReadOnlyDictionary<Type, string> swimlaneLookup);
+
+  Type EntityType { get; }
 }
 
 public class EntityDefinition<EntityShape, EntityId> :
@@ -50,13 +49,17 @@ public class EntityDefinition<EntityShape, EntityId> :
   public bool IsSlidingCache { get; init; } = true;
   public required string StreamPrefix { get; init; }
 
-  public EntityFetcher GetFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser) =>
+  public EntityFetcher GetFetcher(
+    EventStore<EventModelEvent> store,
+    IReadOnlyDictionary<Type, string> swimlaneLookup) =>
     new Fetcher<EntityShape>(
-      client,
+      store,
       sid => Optional(sid as EntityId).Bind<EntityShape>(eid => Defaulter(eid)),
-      parser,
       CacheSize,
       CacheExpiration,
       IsSlidingCache,
+      swimlaneLookup,
       StreamPrefix);
+
+  public Type EntityType => typeof(EntityShape);
 }

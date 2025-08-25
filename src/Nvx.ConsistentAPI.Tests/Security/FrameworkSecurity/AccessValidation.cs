@@ -18,4 +18,16 @@ public class AccessValidation
     );
     await FrameworkSecurity.Validate(auth, user, tenantId).ShouldBeOk();
   }
+
+  [Fact(DisplayName = "handles access to commands and read models")]
+  public async Task Test()
+  {
+    await using var setup = await Initializer.Do();
+    await setup.UnauthorizedCommand(new CreateProduct(Guid.NewGuid(), "banana", null));
+    await setup.ForbiddenCommand(new CreateProduct(Guid.NewGuid(), "banana", null));
+    await setup.ForbiddenReadModel<UserWithPermissionReadModel>();
+
+    await setup.FailingCommand(new CommandThatLikesAdmins(), 409, asAdmin: true);
+    await setup.ForbiddenCommand(new CommandThatLikesAdmins());
+  }
 }

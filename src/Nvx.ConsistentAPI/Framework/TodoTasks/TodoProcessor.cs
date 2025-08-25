@@ -1,10 +1,10 @@
 using Dapper;
-using EventStore.Client;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Nvx.ConsistentAPI.InternalTooling;
 using Nvx.ConsistentAPI.Metrics;
+using Nvx.ConsistentAPI.Store.Events.Metadata;
 
 namespace Nvx.ConsistentAPI;
 
@@ -158,7 +158,7 @@ public class TodoTaskDefinition<DataShape, Entity, SourceEvent, EntityId> : Todo
     }
   }
 
-  private static Guid GetTaskId(Uuid sourceEventUuid, string type) =>
+  private static Guid GetTaskId(Guid sourceEventUuid, string type) =>
     IdempotentUuid.Generate($"{sourceEventUuid}{type})").ToGuid();
 
   public override int GetHashCode() => Type.GetHashCode();
@@ -187,7 +187,7 @@ public class TodoTaskDefinition<DataShape, Entity, SourceEvent, EntityId> : Todo
       Entity e,
       Option<ProcessorEntity> projectionEntity,
       StrongGuid projectionId,
-      Uuid sourceEventUuid,
+      Guid sourceEventUuid,
       EventMetadata metadata)
     {
       var todoData = Originator(eventToProject, e, metadata);
@@ -212,7 +212,7 @@ public class TodoTaskDefinition<DataShape, Entity, SourceEvent, EntityId> : Todo
     public override IEnumerable<StrongGuid> GetProjectionIds(
       SourceEvent sourceEvent,
       Entity sourceEntity,
-      Uuid sourceEventId) => [new(GetTaskId(sourceEventId, Type))];
+      Guid sourceEventId) => [new(GetTaskId(sourceEventId, Type))];
   }
 }
 
@@ -222,6 +222,8 @@ internal class TodoProcessor
   private static readonly Type UserWithPermissionIdType = typeof(UserWithPermissionId);
   private static readonly Type StrongStringType = typeof(StrongString);
   private static readonly Type StrongGuidType = typeof(StrongGuid);
+
+  private readonly SemaphoreSlim runningTodoSemaphore = new(1, 1);
 
   private readonly string tableName =
     DatabaseHandler<TodoEventModelReadModel>.TableName(typeof(TodoEventModelReadModel));
@@ -233,12 +235,21 @@ internal class TodoProcessor
   public required TodoTaskDefinition[] Tasks { private get; init; }
   public required ReadModelHydrationDaemon HydrationDaemon { private get; init; }
   internal required EventModelingReadModelArtifact[] ReadModels { get; init; }
+  private List<RunningTodoTaskInsight> RunningTodoTasks { get; } = [];
 
-  internal RunningTodoTaskInsight[] RunningTodoTasks { get; private set; } = [];
+  internal async Task<RunningTodoTaskInsight[]> GetRunning()
+  {
+    await runningTodoSemaphore.WaitAsync();
+    var running = RunningTodoTasks.ToArray();
+    runningTodoSemaphore.Release();
+    return running;
+  }
 
   internal async Task<RunningTodoTaskInsight[]> AboutToRunTasks()
   {
-    var currentlyRunning = RunningTodoTasks;
+    await runningTodoSemaphore.WaitAsync();
+    var currentlyRunning = RunningTodoTasks.ToArray();
+    runningTodoSemaphore.Release();
     return await GetAboutToRunTodos()
       .Map(ts => ts
         .Choose(todoReadModel =>
@@ -269,10 +280,13 @@ internal class TodoProcessor
         )
         .ToArray();
 
-      RunningTodoTasks = matchedTodos
-        .GroupBy(t => t.todoTaskDefinition.Type)
-        .Select(g => new RunningTodoTaskInsight(g.Key, g.Select(t => t.todoReadModel.RelatedEntityId).ToArray()))
-        .ToArray();
+      await runningTodoSemaphore.WaitAsync();
+      RunningTodoTasks.Clear();
+      RunningTodoTasks.AddRange(
+        matchedTodos
+          .GroupBy(t => t.todoTaskDefinition.Type)
+          .Select(g => new RunningTodoTaskInsight(g.Key, g.Select(t => t.todoReadModel.RelatedEntityId).ToArray())));
+      runningTodoSemaphore.Release();
 
       using var _ = new BatchTodoCountTracker(matchedTodos.Length);
       await matchedTodos.Select(ProcessOne).Parallel(10);
@@ -287,6 +301,9 @@ internal class TodoProcessor
     }
   }
 
+  private static GlobalPosition? TryParsePosition(string? val) =>
+    ulong.TryParse(val, out var pos) ? new GlobalPosition(pos, pos) : null;
+
   private Func<Task<Unit>> ProcessOne((TodoTaskDefinition definition, TodoEventModelReadModel todo) t) =>
     async () =>
     {
@@ -295,8 +312,13 @@ internal class TodoProcessor
       try
       {
         // Await for all relevant read models to be up-to-date.
-        if (t.definition.DependingReadModels.All(_ => ReadModels.All(rm => rm.IsUpToDate(t.todo.EventPosition)))
-            && HydrationDaemon.IsUpToDate(t.todo.EventPosition))
+        var position = TryParsePosition(t.todo.EventPosition)?.CommitPosition;
+        if (t
+              .definition
+              .DependingReadModels
+              .SelectMany(drm => ReadModels.Where(rm => rm.ShapeType == drm))
+              .All(rm => rm.IsUpToDate(position))
+            && await HydrationDaemon.IsUpToDate(position))
         {
           return await TryFetch()
             .Option
@@ -316,7 +338,7 @@ internal class TodoProcessor
             Emitter
               .Emit(() =>
               {
-                Logger.LogWarning("Todo {Todo} is waiting for read models to be up-to-date", t.todo);
+                Logger.LogInformation("Todo {Todo} is waiting for read models to be up-to-date", t.todo);
                 try
                 {
                   // ReSharper disable once AccessToDisposedClosure
@@ -534,7 +556,7 @@ internal class TodoProcessor
     try
     {
       const int batchSize = 2_500;
-      var aMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
+      var threshold = DateTime.UtcNow.AddSeconds(-25);
       var now = DateTime.UtcNow;
 
       var query = $"""
@@ -551,16 +573,16 @@ internal class TodoProcessor
                           [RetryCount]
                       FROM [{tableName}]
                       WHERE
-                          ([StartsAt] <= @aMinuteAgo) AND
+                          ([StartsAt] <= @threshold) AND
                           [ExpiresAt] > @now AND
-                          ([LockedUntil] IS NULL OR [LockedUntil] < @aMinuteAgo)
+                          ([LockedUntil] IS NULL OR [LockedUntil] < @threshold)
                       ORDER BY [StartsAt] ASC
                    """;
 
       await using var connection = new SqlConnection(Settings.ReadModelConnectionString);
       return await connection.QueryAsync<TodoEventModelReadModel>(
         query,
-        new { BatchSize = batchSize, aMinuteAgo, now });
+        new { BatchSize = batchSize, threshold, now });
     }
     catch (Exception ex)
     {

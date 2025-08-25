@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <WarningsAsErrors>Nullable</WarningsAsErrors>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Nvx.ConsistentAPI.Store\Nvx.ConsistentAPI.Store.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="EventStore.Client.Grpc.Streams" Version="23.3.9" />
+    </ItemGroup>
+
+</Project>

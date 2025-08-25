@@ -1,5 +1,3 @@
-using EventStore.Client;
-
 namespace Nvx.ConsistentAPI;
 
 public record UserWithTenantPermissionId(string Sub, Guid TenantId, string Permission) : StrongId
@@ -126,28 +124,28 @@ public record TenantPermissionAssignedProjection(
   : EventModelEvent
 {
   public StrongId GetEntityId() => new UserWithTenantPermissionId(Sub, TenantId, Permission);
-  public string GetStreamName() => $"{UserWithTenantPermissionProjection.StreamPrefix}{GetEntityId()}";
+  public string GetSwimlane() => UserWithTenantPermissionProjection.StreamPrefix;
 }
 
 public record TenantPermissionRevokedProjection(string Sub, Guid TenantId, string Permission)
   : EventModelEvent
 {
   public StrongId GetEntityId() => new UserWithTenantPermissionId(Sub, TenantId, Permission);
-  public string GetStreamName() => $"{UserWithTenantPermissionProjection.StreamPrefix}{GetEntityId()}";
+  public string GetSwimlane() => UserWithTenantPermissionProjection.StreamPrefix;
 }
 
 public record TenantPermissionNameReceivedProjection(string Sub, Guid TenantId, string Permission, string Name)
   : EventModelEvent
 {
   public StrongId GetEntityId() => new UserWithTenantPermissionId(Sub, TenantId, Permission);
-  public string GetStreamName() => $"{UserWithTenantPermissionProjection.StreamPrefix}{GetEntityId()}";
+  public string GetSwimlane() => UserWithTenantPermissionProjection.StreamPrefix;
 }
 
 public record TenantPermissionEmailReceivedProjection(string Sub, Guid TenantId, string Permission, string Email)
   : EventModelEvent
 {
   public StrongId GetEntityId() => new UserWithTenantPermissionId(Sub, TenantId, Permission);
-  public string GetStreamName() => $"{UserWithTenantPermissionProjection.StreamPrefix}{GetEntityId()}";
+  public string GetSwimlane() => UserWithTenantPermissionProjection.StreamPrefix;
 }
 
 public class TenantPermissionAssignedProjector :
@@ -162,7 +160,7 @@ public class TenantPermissionAssignedProjector :
     UserSecurity e,
     Option<UserWithTenantPermissionProjection> projectionEntity,
     UserWithTenantPermissionId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     new TenantPermissionAssignedProjection(
       e.Sub,
@@ -175,7 +173,7 @@ public class TenantPermissionAssignedProjector :
   public override IEnumerable<UserWithTenantPermissionId> GetProjectionIds(
     TenantPermissionAssigned sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) => [new(sourceEntity.Sub, sourceEvent.TenantId, sourceEvent.Permission)];
+    Guid sourceEventId) => [new(sourceEntity.Sub, sourceEvent.TenantId, sourceEvent.Permission)];
 }
 
 public class TenantPermissionRevokedProjector :
@@ -193,7 +191,7 @@ public class TenantPermissionRevokedProjector :
     UserSecurity e,
     Option<UserWithTenantPermissionProjection> projectionEntity,
     UserWithTenantPermissionId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     new TenantPermissionRevokedProjection(
       e.Sub,
@@ -204,7 +202,7 @@ public class TenantPermissionRevokedProjector :
   public override IEnumerable<UserWithTenantPermissionId> GetProjectionIds(
     TenantPermissionRevoked sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) => [new(sourceEntity.Sub, sourceEvent.TenantId, sourceEvent.Permission)];
+    Guid sourceEventId) => [new(sourceEntity.Sub, sourceEvent.TenantId, sourceEvent.Permission)];
 }
 
 public class TenantPermissionNameReceivedProjector :
@@ -219,7 +217,7 @@ public class TenantPermissionNameReceivedProjector :
     UserSecurity e,
     Option<UserWithTenantPermissionProjection> projectionEntity,
     UserWithTenantPermissionId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     projectionEntity
       .Map(uwtr => new TenantPermissionNameReceivedProjection(uwtr.Sub, uwtr.TenantId, uwtr.Permission, evt.FullName));
@@ -227,7 +225,7 @@ public class TenantPermissionNameReceivedProjector :
   public override IEnumerable<UserWithTenantPermissionId> GetProjectionIds(
     UserNameReceived sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId
+    Guid sourceEventId
   ) =>
     sourceEntity
       .TenantPermissions
@@ -251,7 +249,7 @@ public class TenantPermissionEmailReceivedProjector :
     UserSecurity e,
     Option<UserWithTenantPermissionProjection> projectionEntity,
     UserWithTenantPermissionId projectionId,
-    Uuid sourceEventUuid,
+    Guid sourceEventUuid,
     EventMetadata metadata) =>
     projectionEntity
       .Map(uwtr => new TenantPermissionEmailReceivedProjection(uwtr.Sub, uwtr.TenantId, uwtr.Permission, evt.Email));
@@ -259,7 +257,7 @@ public class TenantPermissionEmailReceivedProjector :
   public override IEnumerable<UserWithTenantPermissionId> GetProjectionIds(
     UserEmailReceived sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId
+    Guid sourceEventId
   ) =>
     sourceEntity
       .TenantPermissions.SelectMany(tenant =>

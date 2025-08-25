@@ -1,5 +1,5 @@
-﻿using EventStore.Client;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
+using Nvx.ConsistentAPI.Store.Store;
 
 namespace Nvx.ConsistentAPI;
 
@@ -14,66 +14,77 @@ internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger 
     try
     {
       await clearanceSemaphore.WaitAsync();
-      return hydrationTasks.Count(t => !t.task.IsCompleted);
+      var running = hydrationTasks.Count(t => !t.task.IsCompleted);
+      var queued = settings.ParallelHydration - hydrationSemaphore.CurrentCount;
+      clearanceSemaphore.Release();
+      return queued + running;
     }
-    finally
+    catch
     {
       clearanceSemaphore.Release();
+      return 0;
     }
   }
 
-  public async Task Queue(ResolvedEvent evt, Func<ResolvedEvent, Task> tryProcess)
+  public async Task Queue(
+    StrongId strongId,
+    StoredEventMetadata metadata,
+    EventModelEvent evt,
+    Func<StrongId, StoredEventMetadata, EventModelEvent, Task> tryProcess)
   {
     await hydrationSemaphore.WaitAsync();
-    if (hydrationTasks.Any(t => t.stream == evt.Event.EventStreamId))
+    if (hydrationTasks.Any(t => t.stream == evt.GetStreamName()))
     {
       try
       {
         await clearanceSemaphore.WaitAsync();
         await Task.WhenAll(hydrationTasks.Select(t => t.task));
+        hydrationTasks.Clear();
+        clearanceSemaphore.Release();
       }
       catch (Exception ex)
       {
         logger.LogWarning(ex, "Error on hydration, they have an internal retry mechanism, so this is not critical");
-      }
-      finally
-      {
         hydrationTasks.Clear();
         clearanceSemaphore.Release();
       }
     }
 
-    hydrationTasks.Add((evt.Event.EventStreamId, DoQueue(evt, tryProcess)));
+    hydrationTasks.Add((evt.GetStreamName(), DoQueue(strongId, metadata, evt, tryProcess)));
   }
 
-  private async Task DoQueue(ResolvedEvent evt, Func<ResolvedEvent, Task> tryProcess)
+  private async Task DoQueue(
+    StrongId strongId,
+    StoredEventMetadata metadata,
+    EventModelEvent evt,
+    Func<StrongId, StoredEventMetadata, EventModelEvent, Task> tryProcess)
   {
     try
     {
-      await tryProcess(evt);
+      await tryProcess(strongId, metadata, evt);
+      hydrationSemaphore.Release();
     }
-    finally
+    catch
     {
       hydrationSemaphore.Release();
     }
   }
 
-  public async Task Checkpoint(Position position, Func<Position, Task> checkpoint)
+  public async Task Checkpoint(ulong position, Func<ulong, Task> checkpoint)
   {
     try
     {
       await clearanceSemaphore.WaitAsync();
       await Task.WhenAll(hydrationTasks.Select(t => t.task));
       await checkpoint(position);
+      hydrationTasks.Clear();
+      clearanceSemaphore.Release();
     }
     catch (Exception ex)
     {
-      logger.LogWarning(ex, "Error on hydration, they have an internal retry mechanism, so this is not critical");
-    }
-    finally
-    {
       hydrationTasks.Clear();
       clearanceSemaphore.Release();
+      logger.LogWarning(ex, "Error on hydration, they have an internal retry mechanism, so this is not critical");
     }
   }
 }

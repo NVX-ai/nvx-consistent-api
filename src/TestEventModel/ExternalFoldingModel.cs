@@ -20,7 +20,7 @@ public static class ExternalFoldingModel
       new InitiatesInterest<EntityThatDependsOnReceivedDependency>(evt =>
       [
         new EntityInterestManifest(
-          evt.GetStreamName(),
+          (evt as EventModelEvent).GetStreamName(),
           evt.GetEntityId(),
           EntityDependedOn.GetStreamName(evt.DependsOnId),
           new StrongGuid(evt.DependsOnId))
@@ -28,7 +28,7 @@ public static class ExternalFoldingModel
       new StopsInterest<EntityThatDependsOnRemovedDependency>(evt =>
       [
         new EntityInterestManifest(
-          evt.GetStreamName(),
+          (evt as EventModelEvent).GetStreamName(),
           evt.GetEntityId(),
           EntityDependedOn.GetStreamName(evt.DependsOnId),
           new StrongGuid(evt.DependsOnId))
@@ -38,7 +38,7 @@ public static class ExternalFoldingModel
         new EntityInterestManifest(
           EntityThatDepends.GetStreamName(evt.EntityThatDependsId),
           new StrongGuid(evt.EntityThatDependsId),
-          evt.GetStreamName(),
+          (evt as EventModelEvent).GetStreamName(),
           evt.GetEntityId())
       ])
     ]
@@ -140,13 +140,13 @@ public partial record EntityThatDepends(Guid Id, Guid[] DependedOnIds, string[] 
 
 public record EntityThatDependsOnReceivedDependency(Guid Id, Guid DependsOnId) : EventModelEvent
 {
-  public string GetStreamName() => EntityThatDepends.GetStreamName(Id);
+  public string GetSwimlane() => EntityThatDepends.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record EntityThatDependsOnRemovedDependency(Guid Id, Guid DependsOnId) : EventModelEvent
 {
-  public string GetStreamName() => EntityThatDepends.GetStreamName(Id);
+  public string GetSwimlane() => EntityThatDepends.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
@@ -188,13 +188,13 @@ public partial record EntityDependedOn(Guid Id, string[] Tags)
 
 public record EntityDependedOnTagged(Guid Id, string Tag) : EventModelEvent
 {
-  public string GetStreamName() => EntityDependedOn.GetStreamName(Id);
+  public string GetSwimlane() => EntityDependedOn.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
 public record EntityDependedOnHeardAboutEntityThatDepends(Guid Id, Guid EntityThatDependsId)
   : EventModelEvent
 {
-  public string GetStreamName() => EntityDependedOn.GetStreamName(Id);
+  public string GetSwimlane() => EntityDependedOn.StreamPrefix;
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
