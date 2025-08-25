@@ -80,6 +80,8 @@ internal class ConsistencyStateMachine
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private DateTime lastConsistencyOutputAt = DateTime.MinValue;
   private DateTime lastConsistentCheckStartedAt = DateTime.MinValue;
+  private DaemonsInsights? lastConsistentInsights;
+  private HydrationStatus? lastConsistentStatus;
 
   private DateTime lastEventEmittedAt = DateTime.MinValue;
   private ulong lastEventPosition = ulong.MinValue;
@@ -143,7 +145,9 @@ internal class ConsistencyStateMachine
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsAlreadyConsistent() => lastConsistentCheckStartedAt > startedAt;
+    bool IsAlreadyConsistent() =>
+      lastConsistentCheckStartedAt > startedAt
+      || CalculateConsistency(type, startedAt, lastConsistentInsights, lastConsistentStatus);
 
     async Task<bool> IsConsistent()
     {
@@ -167,37 +171,27 @@ internal class ConsistencyStateMachine
           .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
           .GetJsonAsync<HydrationStatus>();
 
-        var hasCheckRunLongEnough = DateTime.UtcNow - startedAt > GetMinimumDelayForCheck(type);
-        var isLastEventOldEnough = DateTime.UtcNow - lastEventEmittedAt > GetMinimumDelayForCheck(type);
-        var isUpToDate = daemonInsights.LastEventPosition == lastEventPosition;
-        var isConsistent =
-          isUpToDate
-          && status.IsCaughtUp
-          && daemonInsights.IsFullyIdle
-          && hasCheckRunLongEnough
-          && isLastEventOldEnough;
+        var isConsistent = CalculateConsistency(type, startedAt, daemonInsights, status);
 
-        if (isConsistent)
+        if (isConsistent || lastConsistencyOutputAt >= DateTime.UtcNow.AddSeconds(-5))
         {
-          lastConsistentCheckStartedAt = startedAt;
+          return isConsistent;
         }
-        else if (lastConsistencyOutputAt < DateTime.UtcNow.AddSeconds(-5))
-        {
-          logger.LogWarning(
-            "CaughtUp: {CaughtUp} - DaemonsIdle: {DaemonsIdle} - ReadModels: {ReadModels} - Idle: {Idle} - Started: {Started} - LastEvt: {LastEvt} - InsightActivity: {InsightActivity} - DaemonPos: {DaemonPos} - TestPos: {TestPos} - InsightsDuration: {InsightsDuration}ms",
-            status.IsCaughtUp,
-            daemonInsights.AreDaemonsIdle,
-            daemonInsights.AreReadModelsUpToDate,
-            daemonInsights.IsFullyIdle,
-            startedAt,
-            daemonInsights.LastEventEmittedAt,
-            daemonInsights.HadActivityDuringCheck,
-            daemonInsights.LastEventPosition,
-            lastEventPosition,
-            insightsWatch.ElapsedMilliseconds);
-          lastConsistencyOutputAt = DateTime.UtcNow;
-          logger.LogWarning("{DaemonInsight}", Serialization.Serialize(daemonInsights));
-        }
+
+        logger.LogWarning(
+          "CaughtUp: {CaughtUp} - DaemonsIdle: {DaemonsIdle} - ReadModels: {ReadModels} - Idle: {Idle} - Started: {Started} - LastEvt: {LastEvt} - InsightActivity: {InsightActivity} - DaemonPos: {DaemonPos} - TestPos: {TestPos} - InsightsDuration: {InsightsDuration}ms",
+          status.IsCaughtUp,
+          daemonInsights.AreDaemonsIdle,
+          daemonInsights.AreReadModelsUpToDate,
+          daemonInsights.IsFullyIdle,
+          startedAt,
+          daemonInsights.LastEventEmittedAt,
+          daemonInsights.HadActivityDuringCheck,
+          daemonInsights.LastEventPosition,
+          lastEventPosition,
+          insightsWatch.ElapsedMilliseconds);
+        lastConsistencyOutputAt = DateTime.UtcNow;
+        logger.LogWarning("{DaemonInsight}", Serialization.Serialize(daemonInsights));
 
         return isConsistent;
       }
@@ -211,6 +205,40 @@ internal class ConsistencyStateMachine
         waitForConsistencySemaphore.Release();
       }
     }
+  }
+
+  private bool CalculateConsistency(
+    ConsistencyWaitType type,
+    DateTime startedAt,
+    DaemonsInsights? daemonInsights,
+    HydrationStatus? status)
+  {
+    if (daemonInsights is null || status is null)
+    {
+      return false;
+    }
+
+    var hasCheckRunLongEnough = DateTime.UtcNow - startedAt > GetMinimumDelayForCheck(type);
+    var isLastEventOldEnough = DateTime.UtcNow - lastEventEmittedAt > GetMinimumDelayForCheck(type);
+    var isUpToDate = daemonInsights.LastEventPosition == lastEventPosition;
+    var isConsistent =
+      isUpToDate
+      && status.IsCaughtUp
+      && daemonInsights.IsFullyIdle
+      && hasCheckRunLongEnough
+      && isLastEventOldEnough;
+
+    if (!isConsistent)
+    {
+      return isConsistent;
+    }
+
+    lastConsistentCheckStartedAt =
+      startedAt > lastConsistentCheckStartedAt ? startedAt : lastConsistentCheckStartedAt;
+    lastConsistentStatus = status;
+    lastConsistentInsights = daemonInsights;
+
+    return isConsistent;
   }
 }
 
