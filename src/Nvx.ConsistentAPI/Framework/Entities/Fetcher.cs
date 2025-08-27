@@ -178,10 +178,7 @@ public class Fetcher<Entity> : EntityFetcher
 
     async Task<FetchResult<Entity>> Fetch(Entity defaulted, Position? upToRevision, Fetcher fetcher, bool resetCache)
     {
-      var interests = await interestFetcher
-        .Interested(defaulted.GetStreamName())
-        .Async()
-        .Match(i => i.ConcernedStreamNames, () => []);
+      var interests = (await interestFetcher.Interests(defaulted.GetStreamName())).Select(i => i.StreamName).ToArray();
 
       if (resetCache)
       {

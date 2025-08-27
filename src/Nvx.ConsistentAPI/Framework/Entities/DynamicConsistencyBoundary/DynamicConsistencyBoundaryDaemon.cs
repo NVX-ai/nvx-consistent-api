@@ -144,7 +144,7 @@ internal class DynamicConsistencyBoundaryDaemon(
       .Where(t => t.Item2.Match(
         e =>
           !e.OriginatingEventIds.Contains(originatingEventId)
-          && e.ConcernedStreamNames.Contains(t.s.ConcernedEntityStreamName),
+          && e.ConcernedStreams.Select(cs => cs.name).Contains(t.s.ConcernedEntityStreamName),
         () => false))
       .Select(t => t.s)
       .ToArray();
@@ -159,7 +159,7 @@ internal class DynamicConsistencyBoundaryDaemon(
       .Where(t => t.Item2.Match(
         e =>
           !e.OriginatingEventIds.Contains(originatingEventId)
-          && !e.ConcernedStreamNames.Contains(t.s.ConcernedEntityStreamName),
+          && !e.ConcernedStreams.Select(cs => cs.name).Contains(t.s.ConcernedEntityStreamName),
         () => true))
       .Select(t => t.s)
       .ToArray();

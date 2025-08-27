@@ -76,6 +76,30 @@ public record EntityThatDependsReadModel(
     [new(entity.Id.ToString(), entity.Id, entity.ConcernedIds, entity.ConcernedTags, entity.SecondDegreeNames)];
 }
 
+public record InterestedEntityAddedAnInterest(Guid Id, Guid DependsOnId) : EventModelEvent
+{
+  public string GetStreamName() => EntityThatIsInterested.GetStreamName(Id);
+  public StrongId GetEntityId() => new StrongGuid(Id);
+}
+
+public record InterestedEntityRemovedInterest(Guid Id, Guid DependsOnId) : EventModelEvent
+{
+  public string GetStreamName() => EntityThatIsInterested.GetStreamName(Id);
+  public StrongId GetEntityId() => new StrongGuid(Id);
+}
+
+public record SecondDegreeConcernedEntityCreated(Guid Id, string Name) : EventModelEvent
+{
+  public string GetStreamName() => SecondDegreeConcernedEntity.GetStreamName(Id);
+  public StrongId GetEntityId() => new StrongGuid(Id);
+}
+
+public record EntityDependedOnStartedDependingOn(Guid Id, Guid FartherDependentId) : EventModelEvent
+{
+  public string GetStreamName() => FirstDegreeConcernedEntity.GetStreamName(Id);
+  public StrongId GetEntityId() => new StrongGuid(Id);
+}
+
 public partial record EntityThatIsInterested(
   Guid Id,
   Guid[] ConcernedIds,
@@ -85,7 +109,8 @@ public partial record EntityThatIsInterested(
     Folds<InterestedEntityAddedAnInterest, EntityThatIsInterested>,
     Folds<InterestedEntityRemovedInterest, EntityThatIsInterested>,
     FoldsExternally<FirstDegreeConcernedEntityTagged, EntityThatIsInterested>,
-    FoldsExternally<FirstDegreeConcernedEntityEventAboutInterestedEntity, EntityThatIsInterested>
+    FoldsExternally<FirstDegreeConcernedEntityEventAboutInterestedEntity, EntityThatIsInterested>,
+    FoldsExternally<SecondDegreeConcernedEntityCreated, EntityThatIsInterested>
 {
   public const string StreamPrefix = "entity-that-is-interested-entity-";
 
@@ -151,6 +176,15 @@ public partial record EntityThatIsInterested(
     RevisionFetcher fetcher) =>
     this with { ConcernedTags = await GetTags(fetcher, ConcernedIds) };
 
+  public async ValueTask<EntityThatIsInterested> Fold(
+    SecondDegreeConcernedEntityCreated evt,
+    EventMetadata metadata,
+    RevisionFetcher fetcher) =>
+    await fetcher
+      .LatestFetch<SecondDegreeConcernedEntity>(new StrongGuid(evt.Id))
+      .Map(e => e.Name)
+      .Match(n => this with { SecondDegreeNames = SecondDegreeNames.Append(n).Distinct().ToArray() }, () => this);
+
   private static async Task<string[]> GetTags(RevisionFetcher fetcher, Guid[] ids) =>
     await ids
       .Select<Guid, Func<Task<string[]>>>(id => async () =>
@@ -167,33 +201,9 @@ public partial record EntityThatIsInterested(
   public static EntityThatIsInterested Defaulted(StrongGuid id) => new(id.Value, [], [], []);
 }
 
-public record InterestedEntityAddedAnInterest(Guid Id, Guid DependsOnId) : EventModelEvent
-{
-  public string GetStreamName() => EntityThatIsInterested.GetStreamName(Id);
-  public StrongId GetEntityId() => new StrongGuid(Id);
-}
-
-public record InterestedEntityRemovedInterest(Guid Id, Guid DependsOnId) : EventModelEvent
-{
-  public string GetStreamName() => EntityThatIsInterested.GetStreamName(Id);
-  public StrongId GetEntityId() => new StrongGuid(Id);
-}
-
-public record EntityDependedOnEntityDependedOnCreated(Guid Id, string Name) : EventModelEvent
-{
-  public string GetStreamName() => SecondDegreeConcernedEntity.GetStreamName(Id);
-  public StrongId GetEntityId() => new StrongGuid(Id);
-}
-
-public record EntityDependedOnStartedDependingOn(Guid Id, Guid FartherDependentId) : EventModelEvent
-{
-  public string GetStreamName() => FirstDegreeConcernedEntity.GetStreamName(Id);
-  public StrongId GetEntityId() => new StrongGuid(Id);
-}
-
 partial record SecondDegreeConcernedEntity(Guid Id, string Name)
   : EventModelEntity<SecondDegreeConcernedEntity>,
-    Folds<EntityDependedOnEntityDependedOnCreated, SecondDegreeConcernedEntity>
+    Folds<SecondDegreeConcernedEntityCreated, SecondDegreeConcernedEntity>
 {
   public const string StreamPrefix = "second-degree-concerned-entity-";
 
@@ -207,7 +217,7 @@ partial record SecondDegreeConcernedEntity(Guid Id, string Name)
   public string GetStreamName() => GetStreamName(Id);
 
   public ValueTask<SecondDegreeConcernedEntity> Fold(
-    EntityDependedOnEntityDependedOnCreated evt,
+    SecondDegreeConcernedEntityCreated evt,
     EventMetadata metadata,
     RevisionFetcher fetcher) => ValueTask.FromResult(this with { Name = evt.Name });
 
@@ -220,7 +230,8 @@ public partial record FirstDegreeConcernedEntity(Guid Id, string[] Tags, string[
   : EventModelEntity<FirstDegreeConcernedEntity>,
     Folds<FirstDegreeConcernedEntityTagged, FirstDegreeConcernedEntity>,
     Folds<FirstDegreeConcernedEntityEventAboutInterestedEntity, FirstDegreeConcernedEntity>,
-    Folds<EntityDependedOnStartedDependingOn, FirstDegreeConcernedEntity>
+    Folds<EntityDependedOnStartedDependingOn, FirstDegreeConcernedEntity>,
+    FoldsExternally<SecondDegreeConcernedEntityCreated, FirstDegreeConcernedEntity>
 {
   public const string StreamPrefix = "first-degree-concerned-entity-";
 
@@ -257,6 +268,14 @@ public partial record FirstDegreeConcernedEntity(Guid Id, string[] Tags, string[
       {
         Tags = Tags.Append(evt.Tag).Distinct().ToArray()
       });
+
+  public async ValueTask<FirstDegreeConcernedEntity> Fold(
+    SecondDegreeConcernedEntityCreated evt,
+    EventMetadata metadata,
+    RevisionFetcher fetcher) =>
+    await fetcher
+      .LatestFetch<SecondDegreeConcernedEntity>(new StrongGuid(evt.Id))
+      .Match(e => this with { FarNames = [..FarNames, e.Name] }, () => this);
 
   public static string GetStreamName(Guid id) => $"{StreamPrefix}{id}";
   public static FirstDegreeConcernedEntity Defaulted(StrongGuid id) => new(id.Value, [], []);

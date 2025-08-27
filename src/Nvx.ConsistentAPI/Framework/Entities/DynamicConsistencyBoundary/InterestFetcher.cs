@@ -3,11 +3,40 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace Nvx.ConsistentAPI;
 
+internal record Concern(string StreamName, StrongId Id);
+internal record Interest(string StreamName, StrongId Id);
+
 internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
 {
   private readonly MemoryCache cache = new(new MemoryCacheOptions { SizeLimit = 500 });
 
-  public async Task<Option<ConcernedEntityEntity>> Concerned(string streamName)
+  public async Task<Concern[]> Concerns(string streamName)
+  {
+    var concerns = new List<Concern>();
+    while (true)
+    {
+      var newConcerns = (await Concerned(streamName)
+          .Async()
+          .Map(ce => ce.InterestedStreams.Choose(t => t.id.GetStrongId().Map(id => new Concern(t.name, id))))
+          .DefaultValue([]))
+        .Where(nc => concerns.All(c => c.StreamName != nc.StreamName))
+        .ToArray();
+      if (newConcerns.Length == 0)
+      {
+        break;
+      }
+
+      concerns.AddRange(newConcerns);
+      foreach (var newConcern in newConcerns)
+      {
+        concerns.AddRange(await Concerns(newConcern.StreamName));
+      }
+    }
+
+    return concerns.ToArray();
+  }
+
+  private async Task<Option<ConcernedEntityEntity>> Concerned(string streamName)
   {
     var entity = cache.Get(streamName) as InterestCacheElement<ConcernedEntityEntity>
                  ?? new InterestCacheElement<ConcernedEntityEntity>(
@@ -42,6 +71,32 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
       new MemoryCacheEntryOptions { Size = 1, AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(1) });
 
     return entity.Entity;
+  }
+
+  public async Task<Interest[]> Interests(string streamName)
+  {
+    var interests = new List<Interest>();
+    while (true)
+    {
+      var newInterests = (await Interested(streamName)
+          .Async()
+          .Map(ie => ie.ConcernedStreams.Choose(t => t.id.GetStrongId().Map(id => new Interest(t.name, id))))
+          .DefaultValue([]))
+        .Where(ni => interests.All(i => i.StreamName != ni.StreamName))
+        .ToArray();
+      if (newInterests.Length == 0)
+      {
+        break;
+      }
+
+      interests.AddRange(newInterests);
+      foreach (var newInterest in newInterests)
+      {
+        interests.AddRange(await Interests(newInterest.StreamName));
+      }
+    }
+
+    return interests.ToArray();
   }
 
   public async Task<Option<InterestedEntityEntity>> Interested(string streamName)

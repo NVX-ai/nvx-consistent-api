@@ -68,7 +68,7 @@ public class CrossStreamFoldIntegration
     var firstDegreeConcernedEntityId = Guid.NewGuid();
     var secondDegreeConcernedEntityId = Guid.NewGuid();
     var farAwayName = Guid.NewGuid().ToString();
-    await setup.InsertEvents(new EntityDependedOnEntityDependedOnCreated(secondDegreeConcernedEntityId, farAwayName));
+    await setup.InsertEvents(new SecondDegreeConcernedEntityCreated(secondDegreeConcernedEntityId, farAwayName));
     await setup.InsertEvents(
       new EntityDependedOnStartedDependingOn(firstDegreeConcernedEntityId, secondDegreeConcernedEntityId));
     await setup.InsertEvents(new InterestedEntityAddedAnInterest(interestedEntityId, firstDegreeConcernedEntityId));

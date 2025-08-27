@@ -260,7 +260,7 @@ internal class ReadModelHydrationDaemon(
             return;
           }
 
-          var interestedTask = TryProcessInterestedStreams(@event);
+          var interestedTask = TryProcessInterestedStreams(@event.GetStreamName());
 
           var ableReadModels =
             ModelsForEvent.GetOrAdd(
@@ -360,33 +360,24 @@ internal class ReadModelHydrationDaemon(
     }
   }
 
-  private async Task TryProcessInterestedStreams(EventModelEvent @event) =>
+  private async Task TryProcessInterestedStreams(string streamName) =>
     await interestFetcher
-      .Concerned(@event.GetStreamName())
-      .Async()
-      .Match(c => c.InterestedStreams, () => [])
+      .Concerns(streamName)
       .Map(ies =>
         ies
-          .Select<(string name, Dictionary<string, string> id), Func<Task<Unit>>>(interestedStream => async () =>
-            await interestedStream
-              .id.GetStrongId()
-              .Map(async strongId =>
-              {
-                await TryProcessInterestedStream(interestedStream.name, strongId);
-                return unit;
-              })
-              .DefaultValue(unit.ToTask()))
+          .Select<Concern, Func<Task<Unit>>>(interestedStream => async () =>
+            await TryProcessInterestedStream(interestedStream.StreamName, interestedStream.Id))
           .Parallel());
 
-  private async Task TryProcessInterestedStream(string streamName, StrongId entityId)
+  private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId)
   {
     var ableReadModels = readModels.Where(rm => rm.CanProject(streamName)).ToArray();
     if (ableReadModels.Length == 0)
     {
-      return;
+      return unit;
     }
 
-    await fetcher
+    return await fetcher
       .DaemonFetch(entityId, streamName, true)
       .Iter(async entity =>
       {
