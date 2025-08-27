@@ -58,4 +58,21 @@ public class CrossStreamFoldIntegration
     Assert.Empty(readModel.DependedOnTags);
     Assert.Contains(readModel.DependsOnIds, t => t == entityDependedOnId);
   }
+
+  [Fact(DisplayName = "should get second degree consistency boundary information")]
+  public async Task Test2()
+  {
+    await using var setup = await Initializer.Do();
+    var entityThatDependsId = Guid.NewGuid();
+    var entityDependedOnId = Guid.NewGuid();
+    var furtherId = Guid.NewGuid();
+    var farAwayName = Guid.NewGuid().ToString();
+    await setup.InsertEvents(new EntityDependedOnEntityDependedOnCreated(furtherId, farAwayName));
+    await setup.InsertEvents(new EntityDependedOnStartedDependingOn(entityDependedOnId, furtherId));
+    await setup.InsertEvents(new EntityThatDependsOnReceivedDependency(entityThatDependsId, entityDependedOnId));
+
+    var readModel = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
+
+    Assert.Contains(farAwayName, readModel.FarAwayNames);
+  }
 }

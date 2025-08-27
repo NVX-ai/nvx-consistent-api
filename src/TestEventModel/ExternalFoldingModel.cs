@@ -9,7 +9,8 @@ public static class ExternalFoldingModel
     Entities =
     [
       EntityThatDepends.Definition,
-      EntityDependedOn.Definition
+      EntityDependedOn.Definition,
+      EntityDependedOnEntityDependedOn.Definition
     ],
     ReadModels =
     [
@@ -40,12 +41,25 @@ public static class ExternalFoldingModel
           new StrongGuid(evt.EntityThatDependsId),
           evt.GetStreamName(),
           evt.GetEntityId())
+      ]),
+      new InitiatesInterest<EntityDependedOnStartedDependingOn>(evt =>
+      [
+        new EntityInterestManifest(
+          EntityDependedOn.GetStreamName(evt.Id),
+          new StrongGuid(evt.Id),
+          EntityDependedOnEntityDependedOn.GetStreamName(evt.FartherDependentId),
+          new StrongGuid(evt.FartherDependentId))
       ])
     ]
   };
 }
 
-public record EntityThatDependsReadModel(string Id, Guid EntityId, Guid[] DependsOnIds, string[] DependedOnTags)
+public record EntityThatDependsReadModel(
+  string Id,
+  Guid EntityId,
+  Guid[] DependsOnIds,
+  string[] DependedOnTags,
+  string[] FarAwayNames)
   : EventModelReadModel
 {
   public static readonly EventModelingReadModelArtifact Definition =
@@ -59,10 +73,10 @@ public record EntityThatDependsReadModel(string Id, Guid EntityId, Guid[] Depend
   public StrongId GetStrongId() => new StrongGuid(EntityId);
 
   public static EntityThatDependsReadModel[] From(EntityThatDepends entity) =>
-    [new(entity.Id.ToString(), entity.Id, entity.DependedOnIds, entity.DependedOnTags)];
+    [new(entity.Id.ToString(), entity.Id, entity.DependedOnIds, entity.DependedOnTags, entity.FarAwayNames)];
 }
 
-public partial record EntityThatDepends(Guid Id, Guid[] DependedOnIds, string[] DependedOnTags)
+public partial record EntityThatDepends(Guid Id, Guid[] DependedOnIds, string[] DependedOnTags, string[] FarAwayNames)
   : EventModelEntity<EntityThatDepends>,
     Folds<EntityThatDependsOnReceivedDependency, EntityThatDepends>,
     Folds<EntityThatDependsOnRemovedDependency, EntityThatDepends>,
@@ -110,11 +124,19 @@ public partial record EntityThatDepends(Guid Id, Guid[] DependedOnIds, string[] 
           DependedOnTags = await GetTags(fetcher, ids)
         });
 
-  public ValueTask<EntityThatDepends> Fold(
+  public async ValueTask<EntityThatDepends> Fold(
     EntityDependedOnHeardAboutEntityThatDepends evt,
     EventMetadata metadata,
     RevisionFetcher fetcher) =>
-    ValueTask.FromResult(this with { DependedOnIds = DependedOnIds.Append(evt.Id).ToArray() });
+    this with
+    {
+      DependedOnIds = DependedOnIds.Append(evt.Id).Distinct().ToArray(),
+      FarAwayNames = FarAwayNames
+        .Concat(
+          await fetcher.LatestFetch<EntityDependedOn>(new StrongGuid(evt.Id)).Map(e => e.FarNames).DefaultValue([]))
+        .Distinct()
+        .ToArray()
+    };
 
   public async ValueTask<EntityThatDepends> Fold(
     EntityDependedOnTagged evt,
@@ -135,7 +157,7 @@ public partial record EntityThatDepends(Guid Id, Guid[] DependedOnIds, string[] 
       .Map(nestedIds => nestedIds.SelectMany(Prelude.Id).ToArray());
 
   public static string GetStreamName(Guid id) => $"{StreamPrefix}{id}";
-  public static EntityThatDepends Defaulted(StrongGuid id) => new(id.Value, [], []);
+  public static EntityThatDepends Defaulted(StrongGuid id) => new(id.Value, [], [], []);
 }
 
 public record EntityThatDependsOnReceivedDependency(Guid Id, Guid DependsOnId) : EventModelEvent
@@ -150,10 +172,49 @@ public record EntityThatDependsOnRemovedDependency(Guid Id, Guid DependsOnId) : 
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
-public partial record EntityDependedOn(Guid Id, string[] Tags)
+public record EntityDependedOnEntityDependedOnCreated(Guid Id, string Name) : EventModelEvent
+{
+  public string GetStreamName() => EntityDependedOnEntityDependedOn.GetStreamName(Id);
+  public StrongId GetEntityId() => new StrongGuid(Id);
+}
+
+public record EntityDependedOnStartedDependingOn(Guid Id, Guid FartherDependentId) : EventModelEvent
+{
+  public string GetStreamName() => EntityDependedOn.GetStreamName(Id);
+  public StrongId GetEntityId() => new StrongGuid(Id);
+}
+
+partial record EntityDependedOnEntityDependedOn(Guid Id, string Name)
+  : EventModelEntity<EntityDependedOnEntityDependedOn>,
+    Folds<EntityDependedOnEntityDependedOnCreated, EntityDependedOnEntityDependedOn>
+{
+  public const string StreamPrefix = "entity-further-depended-on-entity-depended-on-entity-";
+
+  public static readonly EntityDefinition Definition =
+    new EntityDefinition<EntityDependedOnEntityDependedOn, StrongGuid>
+    {
+      Defaulter = Defaulted,
+      StreamPrefix = StreamPrefix
+    };
+
+  public string GetStreamName() => GetStreamName(Id);
+
+  public ValueTask<EntityDependedOnEntityDependedOn> Fold(
+    EntityDependedOnEntityDependedOnCreated evt,
+    EventMetadata metadata,
+    RevisionFetcher fetcher) => ValueTask.FromResult(this with { Name = evt.Name });
+
+
+  public static string GetStreamName(Guid id) => $"{StreamPrefix}{id}";
+
+  public static EntityDependedOnEntityDependedOn Defaulted(StrongGuid id) => new(id.Value, string.Empty);
+}
+
+public partial record EntityDependedOn(Guid Id, string[] Tags, string[] FarNames)
   : EventModelEntity<EntityDependedOn>,
     Folds<EntityDependedOnTagged, EntityDependedOn>,
-    Folds<EntityDependedOnHeardAboutEntityThatDepends, EntityDependedOn>
+    Folds<EntityDependedOnHeardAboutEntityThatDepends, EntityDependedOn>,
+    Folds<EntityDependedOnStartedDependingOn, EntityDependedOn>
 {
   public const string StreamPrefix = "entity-depended-on-entity-";
 
@@ -172,6 +233,15 @@ public partial record EntityDependedOn(Guid Id, string[] Tags)
     RevisionFetcher fetcher) =>
     ValueTask.FromResult(this);
 
+  public async ValueTask<EntityDependedOn> Fold(
+    EntityDependedOnStartedDependingOn evt,
+    EventMetadata metadata,
+    RevisionFetcher fetcher) =>
+    await fetcher
+      .LatestFetch<EntityDependedOnEntityDependedOn>(new StrongGuid(evt.FartherDependentId))
+      .Map(e => e.Name)
+      .Match(n => this with { FarNames = [..FarNames, n] }, () => this);
+
   public ValueTask<EntityDependedOn> Fold(
     EntityDependedOnTagged evt,
     EventMetadata metadata,
@@ -183,7 +253,7 @@ public partial record EntityDependedOn(Guid Id, string[] Tags)
       });
 
   public static string GetStreamName(Guid id) => $"{StreamPrefix}{id}";
-  public static EntityDependedOn Defaulted(StrongGuid id) => new(id.Value, []);
+  public static EntityDependedOn Defaulted(StrongGuid id) => new(id.Value, [], []);
 }
 
 public record EntityDependedOnTagged(Guid Id, string Tag) : EventModelEvent
