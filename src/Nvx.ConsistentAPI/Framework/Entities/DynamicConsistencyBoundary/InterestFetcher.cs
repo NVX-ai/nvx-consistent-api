@@ -19,6 +19,7 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
           .Async()
           .Map(ce => ce.InterestedStreams.Choose(t => t.id.GetStrongId().Map(id => new Concern(t.name, id))))
           .DefaultValue([]))
+        .Distinct()
         .Where(nc => concerns.All(c => c.StreamName != nc.StreamName))
         .ToArray();
       if (newConcerns.Length == 0)
@@ -82,6 +83,7 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
           .Async()
           .Map(ie => ie.ConcernedStreams.Choose(t => t.id.GetStrongId().Map(id => new Interest(t.name, id))))
           .DefaultValue([]))
+        .Distinct()
         .Where(ni => interests.All(i => i.StreamName != ni.StreamName))
         .ToArray();
       if (newInterests.Length == 0)

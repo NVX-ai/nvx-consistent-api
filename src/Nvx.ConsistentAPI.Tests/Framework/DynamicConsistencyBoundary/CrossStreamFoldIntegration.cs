@@ -64,17 +64,24 @@ public class CrossStreamFoldIntegration
   public async Task Test2()
   {
     await using var setup = await Initializer.Do();
-    var interestedEntityId = Guid.NewGuid();
-    var firstDegreeConcernedEntityId = Guid.NewGuid();
-    var secondDegreeConcernedEntityId = Guid.NewGuid();
-    var farAwayName = Guid.NewGuid().ToString();
-    await setup.InsertEvents(new SecondDegreeConcernedEntityCreated(secondDegreeConcernedEntityId, farAwayName));
-    await setup.InsertEvents(
-      new EntityDependedOnStartedDependingOn(firstDegreeConcernedEntityId, secondDegreeConcernedEntityId));
-    await setup.InsertEvents(new InterestedEntityAddedAnInterest(interestedEntityId, firstDegreeConcernedEntityId));
+    var interestedId = Guid.NewGuid();
+    var firstId = Guid.NewGuid();
+    var secondId = Guid.NewGuid();
+    var secondDegreeName = $"Original name {secondId}";
+    await setup.InsertEvents(new SecondDegreeConcernedEntityNamed(secondId, secondDegreeName));
+    await setup.InsertEvents(new EntityDependedOnStartedDependingOn(firstId, secondId));
+    await setup.InsertEvents(new InterestedEntityAddedAnInterest(interestedId, firstId));
 
-    var readModel = await setup.ReadModel<EntityThatDependsReadModel>(interestedEntityId.ToString());
+    var readModel = await setup.ReadModel<EntityThatDependsReadModel>(interestedId.ToString());
 
-    Assert.Contains(farAwayName, readModel.FarAwayNames);
+    Assert.Contains(secondDegreeName, readModel.FarAwayNames);
+
+    var newSecondDegreeName = $"New name {secondId}";
+    await setup.InsertEvents(new SecondDegreeConcernedEntityNamed(secondId, newSecondDegreeName));
+
+    var readModelWithTwoNames = await setup.ReadModel<EntityThatDependsReadModel>(interestedId.ToString());
+    Assert.Contains(newSecondDegreeName, readModelWithTwoNames.FarAwayNames);
+    Assert.Contains(secondDegreeName, readModelWithTwoNames.FarAwayNames);
+    Assert.Equal(2, readModelWithTwoNames.FarAwayNames.Length);
   }
 }
