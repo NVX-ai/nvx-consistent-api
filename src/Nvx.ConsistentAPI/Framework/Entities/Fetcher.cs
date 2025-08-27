@@ -9,6 +9,8 @@ public interface EntityFetcher
   Task<FetchResult<T>> Fetch<T>(Option<StrongId> id, Position? upToRevision, Fetcher fetcher)
     where T : EventModelEntity<T>;
 
+  AsyncOption<T> LatestFetch<T>(Option<StrongId> id, Fetcher fetcher) where T : EventModelEntity<T>;
+
   internal AsyncOption<FoundEntity> DaemonFetch(Option<StrongId> id, Fetcher fetcher, bool resetCache = false);
 
   Type GetFetchType();
@@ -23,13 +25,13 @@ public interface RevisionFetcher
   AsyncOption<T> LatestFetch<T>(Option<StrongId> id) where T : EventModelEntity<T>;
 }
 
-internal class RevisionFetchWrapper(Fetcher fetcher, Position upToRevision) : RevisionFetcher
+internal class RevisionFetchWrapper(Fetcher fetcher, Position upToRevision, bool resetCache) : RevisionFetcher
 {
   public AsyncOption<T> Fetch<T>(Option<StrongId> id) where T : EventModelEntity<T> =>
     fetcher.Fetch<T>(id, upToRevision).Map(fr => fr.Ent);
 
   public AsyncOption<T> LatestFetch<T>(Option<StrongId> id) where T : EventModelEntity<T> =>
-    fetcher.Fetch<T>(id).Map(fr => fr.Ent);
+    fetcher.LatestFetch<T>(id);
 }
 
 public class Fetcher
@@ -45,6 +47,12 @@ public class Fetcher
     fetchers
       .SingleOrNone(f => f.CanProcessStream(streamName))
       .Bind(f => f.GetCachedStreamRevision(id));
+
+  internal AsyncOption<T> LatestFetch<T>(Option<StrongId> id) where T : EventModelEntity<T> =>
+    fetchers
+      .SingleOrNone(f => f.GetFetchType() == typeof(T))
+      .Match(f => f.LatestFetch<T>(id, this), () => throw new InvalidOperationException());
+
 
   internal AsyncOption<FoundEntity> DaemonFetch(Option<StrongId> id, string streamName, bool resetCache = false) =>
     fetchers
@@ -114,6 +122,9 @@ public class Fetcher<Entity> : EntityFetcher
       cacheExpiration,
       isSlidingCache);
   }
+
+  public AsyncOption<T> LatestFetch<T>(Option<StrongId> id, Fetcher fetcher) where T : EventModelEntity<T> =>
+    Fetch(id, null, fetcher, true).Map(fr => fr.Ent.Map(e => (T)(object)e)).Async();
 
   public AsyncOption<FoundEntity> DaemonFetch(Option<StrongId> id, Fetcher fetcher, bool resetCache = false) =>
     Fetch(id, null, fetcher, resetCache).Map(FoundEntity<Entity>.From).Async().Map(FoundEntity (fe) => fe);
@@ -236,7 +247,7 @@ public class Fetcher<Entity> : EntityFetcher
             var folded = await seed.e.Fold(
               parsed,
               metadata,
-              new RevisionFetchWrapper(fetcher, re.OriginalEvent.Position));
+              new RevisionFetchWrapper(fetcher, re.OriginalEvent.Position, resetCache));
 
             var revision = re.Event.EventStreamId == seed.e.GetStreamName()
               ? re.Event.EventNumber.ToInt64()
@@ -327,7 +338,7 @@ public class Fetcher<Entity> : EntityFetcher
                       await r.entity.Fold(
                         evt,
                         metadata,
-                        new RevisionFetchWrapper(fetcher, @event.OriginalEvent.Position)),
+                        new RevisionFetchWrapper(fetcher, @event.OriginalEvent.Position, resetCache)),
                       @event.Event.EventNumber.ToInt64(),
                       Some(@event.Event.Position),
                       firstEventAt,
