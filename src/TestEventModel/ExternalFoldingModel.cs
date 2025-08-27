@@ -42,13 +42,13 @@ public static class ExternalFoldingModel
           evt.GetStreamName(),
           evt.GetEntityId())
       ]),
-      new InitiatesInterest<EntityDependedOnStartedDependingOn>(evt =>
+      new InitiatesInterest<FirstDegreeStartedDependingOnSecondDegree>(evt =>
       [
         new EntityInterestManifest(
           FirstDegreeConcernedEntity.GetStreamName(evt.Id),
           new StrongGuid(evt.Id),
-          SecondDegreeConcernedEntity.GetStreamName(evt.FartherDependentId),
-          new StrongGuid(evt.FartherDependentId))
+          SecondDegreeConcernedEntity.GetStreamName(evt.SecondDegreeId),
+          new StrongGuid(evt.SecondDegreeId))
       ])
     ]
   };
@@ -94,7 +94,7 @@ public record SecondDegreeConcernedEntityNamed(Guid Id, string Name) : EventMode
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
-public record EntityDependedOnStartedDependingOn(Guid Id, Guid FartherDependentId) : EventModelEvent
+public record FirstDegreeStartedDependingOnSecondDegree(Guid Id, Guid SecondDegreeId) : EventModelEvent
 {
   public string GetStreamName() => FirstDegreeConcernedEntity.GetStreamName(Id);
   public StrongId GetEntityId() => new StrongGuid(Id);
@@ -230,7 +230,7 @@ public partial record FirstDegreeConcernedEntity(Guid Id, string[] Tags, string[
   : EventModelEntity<FirstDegreeConcernedEntity>,
     Folds<FirstDegreeConcernedEntityTagged, FirstDegreeConcernedEntity>,
     Folds<FirstDegreeConcernedEntityEventAboutInterestedEntity, FirstDegreeConcernedEntity>,
-    Folds<EntityDependedOnStartedDependingOn, FirstDegreeConcernedEntity>,
+    Folds<FirstDegreeStartedDependingOnSecondDegree, FirstDegreeConcernedEntity>,
     FoldsExternally<SecondDegreeConcernedEntityNamed, FirstDegreeConcernedEntity>
 {
   public const string StreamPrefix = "first-degree-concerned-entity-";
@@ -245,11 +245,11 @@ public partial record FirstDegreeConcernedEntity(Guid Id, string[] Tags, string[
   public string GetStreamName() => GetStreamName(Id);
 
   public async ValueTask<FirstDegreeConcernedEntity> Fold(
-    EntityDependedOnStartedDependingOn evt,
+    FirstDegreeStartedDependingOnSecondDegree evt,
     EventMetadata metadata,
     RevisionFetcher fetcher) =>
     await fetcher
-      .LatestFetch<SecondDegreeConcernedEntity>(new StrongGuid(evt.FartherDependentId))
+      .LatestFetch<SecondDegreeConcernedEntity>(new StrongGuid(evt.SecondDegreeId))
       .Map(e => e.Name)
       .Match(n => this with { SecondDegreeNames = [..SecondDegreeNames, n] }, () => this);
 

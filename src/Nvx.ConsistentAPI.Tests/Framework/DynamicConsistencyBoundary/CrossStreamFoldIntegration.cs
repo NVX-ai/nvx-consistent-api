@@ -69,7 +69,7 @@ public class CrossStreamFoldIntegration
     var secondId = Guid.NewGuid();
     var secondDegreeName = $"Original name {secondId}";
     await setup.InsertEvents(new SecondDegreeConcernedEntityNamed(secondId, secondDegreeName));
-    await setup.InsertEvents(new EntityDependedOnStartedDependingOn(firstId, secondId));
+    await setup.InsertEvents(new FirstDegreeStartedDependingOnSecondDegree(firstId, secondId));
     await setup.InsertEvents(new InterestedEntityAddedAnInterest(interestedId, firstId));
 
     var readModel = await setup.ReadModel<EntityThatDependsReadModel>(interestedId.ToString());
