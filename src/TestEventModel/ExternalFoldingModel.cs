@@ -181,7 +181,7 @@ public partial record EntityThatIsInterested(
     EventMetadata metadata,
     RevisionFetcher fetcher) =>
     await fetcher
-      .LatestFetch<SecondDegreeConcernedEntity>(new StrongGuid(evt.Id))
+      .Fetch<SecondDegreeConcernedEntity>(new StrongGuid(evt.Id))
       .Map(e => e.Name)
       .Match(n => this with { SecondDegreeNames = SecondDegreeNames.Append(n).Distinct().ToArray() }, () => this);
 
