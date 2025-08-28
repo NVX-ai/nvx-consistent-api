@@ -646,7 +646,7 @@ public class TestSetup : IAsyncDisposable
       eventStoreClient,
       model,
       1,
-      app.Services.GetRequiredService<ILogger<TestSetup>>(),
+      app.WebApp.Services.GetRequiredService<ILogger<TestSetup>>(),
       new ConsistencyStateMachine(baseUrl));
   }
 
