@@ -260,7 +260,7 @@ internal class ReadModelHydrationDaemon(
             return;
           }
 
-          var interestedTask = TryProcessConcernedStreams(@event.GetStreamName());
+          var concernedTask = TryProcessConcernedStreams(@event.GetStreamName());
 
           var ableReadModels =
             ModelsForEvent.GetOrAdd(
@@ -269,7 +269,7 @@ internal class ReadModelHydrationDaemon(
 
           if (ableReadModels.Length == 0)
           {
-            await interestedTask;
+            await concernedTask;
             await UpdateLastPosition(evt.Event.Position);
             return;
           }
@@ -293,7 +293,7 @@ internal class ReadModelHydrationDaemon(
                   })
                 .Parallel();
             });
-          await interestedTask;
+          await concernedTask;
           await UpdateLastPosition(evt.Event.Position);
         });
     }
@@ -368,7 +368,7 @@ internal class ReadModelHydrationDaemon(
         ies
           .Select<Concern, Func<Task<Unit>>>(interestedStream => async () =>
             await TryProcessInterestedStream(interestedStream.StreamName, interestedStream.Id))
-          .Parallel());
+          .Parallel(2));
 
   private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId)
   {
@@ -394,7 +394,7 @@ internal class ReadModelHydrationDaemon(
                 logger);
               return unit;
             })
-          .Parallel();
+          .Parallel(2);
       });
   }
 
