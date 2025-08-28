@@ -260,7 +260,7 @@ internal class ReadModelHydrationDaemon(
             return;
           }
 
-          var interestedTask = TryProcessInterestedStreams(@event.GetStreamName());
+          var interestedTask = TryProcessConcernedStreams(@event.GetStreamName());
 
           var ableReadModels =
             ModelsForEvent.GetOrAdd(
@@ -349,18 +349,19 @@ internal class ReadModelHydrationDaemon(
              {
                InterestedEntityRegisteredInterest ie => ie
                  .InterestedEntityId.GetStrongId()
-                 .Map(id1 => (id: id1, ie.InterestedEntityStreamName)),
+                 .Map(id1 => (id: id1, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
                InterestedEntityHadInterestRemoved ie => ie
                  .InterestedEntityId.GetStrongId()
-                 .Map(id2 => (id: id2, ie.InterestedEntityStreamName)),
+                 .Map(id2 => (id: id2, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
                _ => None
              })
     {
       await TryProcessInterestedStream(tuple.InterestedEntityStreamName, tuple.id);
+      await TryProcessConcernedStreams(tuple.ConcernedEntityStreamName);
     }
   }
 
-  private async Task TryProcessInterestedStreams(string streamName) =>
+  private async Task TryProcessConcernedStreams(string streamName) =>
     await interestFetcher
       .Concerns(streamName)
       .Map(ies =>
