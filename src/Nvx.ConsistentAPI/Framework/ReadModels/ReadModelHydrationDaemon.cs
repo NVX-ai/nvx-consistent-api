@@ -357,6 +357,8 @@ internal class ReadModelHydrationDaemon(
              })
     {
       await TryProcessInterestedStream(tuple.InterestedEntityStreamName, tuple.id);
+      // Since concern-related events are not processed, but they happen symmetrically, this triggers the concerns
+      // in depth for the concerned entity.
       await TryProcessConcernedStreams(tuple.ConcernedEntityStreamName);
     }
   }
