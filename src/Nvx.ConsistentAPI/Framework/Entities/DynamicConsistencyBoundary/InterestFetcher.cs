@@ -3,39 +3,55 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace Nvx.ConsistentAPI;
 
-internal record Concern(string StreamName, StrongId Id);
-internal record Interest(string StreamName, StrongId Id);
+internal interface InterestRelation
+{
+  string StreamName { get; }
+}
+
+internal record Concern(string StreamName, StrongId Id) : InterestRelation;
+
+internal record Interest(string StreamName, StrongId Id) : InterestRelation;
 
 internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
 {
   private readonly MemoryCache cache = new(new MemoryCacheOptions { SizeLimit = 500 });
 
-  public async Task<Concern[]> Concerns(string streamName)
+  private static async Task<TOut[]> Relations<TOut, TEntity>(
+    string streamName,
+    Func<string, Task<Option<TEntity>>> tryGet,
+    Func<TEntity, IEnumerable<TOut>> mapper) where TOut : InterestRelation
   {
-    var concerns = new List<Concern>();
+    var relations = new List<TOut>();
     while (true)
     {
-      var newConcerns = (await Concerned(streamName)
+      var newRelations = (await tryGet(streamName)
           .Async()
-          .Map(ce => ce.InterestedStreams.Choose(t => t.id.GetStrongId().Map(id => new Concern(t.name, id))))
+          .Map(mapper)
           .DefaultValue([]))
         .Distinct()
-        .Where(nc => concerns.All(c => c.StreamName != nc.StreamName))
+        .Where(nc => relations.All(c => c.StreamName != nc.StreamName))
         .ToArray();
-      if (newConcerns.Length == 0)
+
+      if (newRelations.Length == 0)
       {
         break;
       }
 
-      concerns.AddRange(newConcerns);
-      foreach (var newConcern in newConcerns)
+      relations.AddRange(newRelations);
+      foreach (var newRelation in newRelations)
       {
-        concerns.AddRange(await Concerns(newConcern.StreamName));
+        relations.AddRange(await Relations(newRelation.StreamName, tryGet, mapper));
       }
     }
 
-    return concerns.ToArray();
+    return relations.Distinct().ToArray();
   }
+
+  public async Task<Concern[]> Concerns(string streamName) =>
+    await Relations<Concern, ConcernedEntityEntity>(
+      streamName,
+      Concerned,
+      ce => ce.InterestedStreams.Choose(t => t.id.GetStrongId().Map(id => new Concern(t.name, id))));
 
   private async Task<Option<ConcernedEntityEntity>> Concerned(string streamName)
   {
@@ -74,32 +90,11 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
     return entity.Entity;
   }
 
-  public async Task<Interest[]> Interests(string streamName)
-  {
-    var interests = new List<Interest>();
-    while (true)
-    {
-      var newInterests = (await Interested(streamName)
-          .Async()
-          .Map(ie => ie.ConcernedStreams.Choose(t => t.id.GetStrongId().Map(id => new Interest(t.name, id))))
-          .DefaultValue([]))
-        .Distinct()
-        .Where(ni => interests.All(i => i.StreamName != ni.StreamName))
-        .ToArray();
-      if (newInterests.Length == 0)
-      {
-        break;
-      }
-
-      interests.AddRange(newInterests);
-      foreach (var newInterest in newInterests)
-      {
-        interests.AddRange(await Interests(newInterest.StreamName));
-      }
-    }
-
-    return interests.ToArray();
-  }
+  public async Task<Interest[]> Interests(string streamName) =>
+    await Relations<Interest, InterestedEntityEntity>(
+      streamName,
+      Interested,
+      ie => ie.ConcernedStreams.Choose(t => t.id.GetStrongId().Map(id => new Interest(t.name, id))));
 
   public async Task<Option<InterestedEntityEntity>> Interested(string streamName)
   {
