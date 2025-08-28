@@ -109,8 +109,7 @@ public partial record EntityThatIsInterested(
     Folds<InterestedEntityAddedAnInterest, EntityThatIsInterested>,
     Folds<InterestedEntityRemovedInterest, EntityThatIsInterested>,
     FoldsExternally<FirstDegreeConcernedEntityTagged, EntityThatIsInterested>,
-    FoldsExternally<FirstDegreeConcernedEntityEventAboutInterestedEntity, EntityThatIsInterested>,
-    FoldsExternally<SecondDegreeConcernedEntityNamed, EntityThatIsInterested>
+    FoldsExternally<FirstDegreeConcernedEntityEventAboutInterestedEntity, EntityThatIsInterested>
 {
   public const string StreamPrefix = "entity-that-is-interested-entity-";
 
@@ -135,7 +134,8 @@ public partial record EntityThatIsInterested(
         this with
         {
           ConcernedIds = ids,
-          ConcernedTags = await GetTags(fetcher, ids)
+          ConcernedTags = await GetTags(fetcher, ids),
+          SecondDegreeNames = await GetNames(fetcher, ids)
         });
 
   public async ValueTask<EntityThatIsInterested> Fold(
@@ -176,14 +176,14 @@ public partial record EntityThatIsInterested(
     RevisionFetcher fetcher) =>
     this with { ConcernedTags = await GetTags(fetcher, ConcernedIds) };
 
-  public async ValueTask<EntityThatIsInterested> Fold(
-    SecondDegreeConcernedEntityNamed evt,
-    EventMetadata metadata,
-    RevisionFetcher fetcher) =>
-    await fetcher
-      .Fetch<SecondDegreeConcernedEntity>(new StrongGuid(evt.Id))
-      .Map(e => e.Name)
-      .Match(n => this with { SecondDegreeNames = SecondDegreeNames.Append(n).Distinct().ToArray() }, () => this);
+  private static async Task<string[]> GetNames(RevisionFetcher fetcher, Guid[] ids) =>
+    await ids
+      .Select<Guid, Func<Task<string[]>>>(id => async () =>
+        await fetcher
+          .LatestFetch<FirstDegreeConcernedEntity>(new StrongGuid(id))
+          .Match(fd => fd.SecondDegreeNames, () => []))
+      .Parallel()
+      .Map(nestedIds => nestedIds.SelectMany(Prelude.Id).ToArray());
 
   private static async Task<string[]> GetTags(RevisionFetcher fetcher, Guid[] ids) =>
     await ids
@@ -244,15 +244,6 @@ public partial record FirstDegreeConcernedEntity(Guid Id, string[] Tags, string[
 
   public string GetStreamName() => GetStreamName(Id);
 
-  public async ValueTask<FirstDegreeConcernedEntity> Fold(
-    FirstDegreeStartedDependingOnSecondDegree evt,
-    EventMetadata metadata,
-    RevisionFetcher fetcher) =>
-    await fetcher
-      .LatestFetch<SecondDegreeConcernedEntity>(new StrongGuid(evt.SecondDegreeId))
-      .Map(e => e.Name)
-      .Match(n => this with { SecondDegreeNames = [..SecondDegreeNames, n] }, () => this);
-
   public ValueTask<FirstDegreeConcernedEntity> Fold(
     FirstDegreeConcernedEntityEventAboutInterestedEntity evt,
     EventMetadata metadata,
@@ -270,12 +261,19 @@ public partial record FirstDegreeConcernedEntity(Guid Id, string[] Tags, string[
       });
 
   public async ValueTask<FirstDegreeConcernedEntity> Fold(
-    SecondDegreeConcernedEntityNamed evt,
+    FirstDegreeStartedDependingOnSecondDegree evt,
     EventMetadata metadata,
     RevisionFetcher fetcher) =>
     await fetcher
-      .LatestFetch<SecondDegreeConcernedEntity>(new StrongGuid(evt.Id))
-      .Match(e => this with { SecondDegreeNames = [..SecondDegreeNames, e.Name] }, () => this);
+      .LatestFetch<SecondDegreeConcernedEntity>(new StrongGuid(evt.SecondDegreeId))
+      .Map(e => e.Name)
+      .Match(n => this with { SecondDegreeNames = SecondDegreeNames.Append(n).Distinct().ToArray() }, () => this);
+
+  public ValueTask<FirstDegreeConcernedEntity> Fold(
+    SecondDegreeConcernedEntityNamed evt,
+    EventMetadata metadata,
+    RevisionFetcher fetcher) =>
+    ValueTask.FromResult(this with { SecondDegreeNames = SecondDegreeNames.Append(evt.Name).Distinct().ToArray() });
 
   public static string GetStreamName(Guid id) => $"{StreamPrefix}{id}";
   public static FirstDegreeConcernedEntity Defaulted(StrongGuid id) => new(id.Value, [], []);
