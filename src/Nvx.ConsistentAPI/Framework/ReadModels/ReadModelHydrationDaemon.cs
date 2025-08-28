@@ -291,7 +291,7 @@ internal class ReadModelHydrationDaemon(
                     await UpdateLastPosition(evt.Event.Position);
                     return unit;
                   })
-                .Parallel();
+                .Parallel(3);
             });
           await concernedTask;
           await UpdateLastPosition(evt.Event.Position);
@@ -368,7 +368,7 @@ internal class ReadModelHydrationDaemon(
         ies
           .Select<Concern, Func<Task<Unit>>>(interestedStream => async () =>
             await TryProcessInterestedStream(interestedStream.StreamName, interestedStream.Id))
-          .Parallel(2));
+          .Parallel(3));
 
   private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId)
   {
@@ -394,7 +394,7 @@ internal class ReadModelHydrationDaemon(
                 logger);
               return unit;
             })
-          .Parallel(2);
+          .Parallel(3);
       });
   }
 
