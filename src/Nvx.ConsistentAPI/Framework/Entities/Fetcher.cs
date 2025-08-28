@@ -329,19 +329,19 @@ public class Fetcher<Entity> : EntityFetcher
             (Entity entity, long rev, Option<Position> gp, DateTime? fe, DateTime? le, string? fu, string? lu),
             FetchResult<Entity>>(
             (seed.e, seed.r.DefaultValue(-1), seed.gp, seed.fe, seed.le, seed.fu, seed.lu),
-            async (r, @event) =>
+            async (acc, @event) =>
               await parser(@event)
                 .Match<ValueTask<(Entity entity, long rev, Option<Position> gp, DateTime? fe, DateTime? le, string? fu,
                   string? lu)>>(
                   async evt =>
                   {
                     var metadata = EventMetadata.TryParse(@event);
-                    var firstEventAt = r.fe ?? metadata.CreatedAt;
+                    var firstEventAt = acc.fe ?? metadata.CreatedAt;
                     var lastEventAt = metadata.CreatedAt;
-                    var firstUserSubFound = r.fu ?? metadata.RelatedUserSub;
-                    var lastUserSubFound = metadata.RelatedUserSub ?? r.lu;
+                    var firstUserSubFound = acc.fu ?? metadata.RelatedUserSub;
+                    var lastUserSubFound = metadata.RelatedUserSub ?? acc.lu;
                     return (
-                      await r.entity.Fold(
+                      await acc.entity.Fold(
                         evt,
                         metadata,
                         new RevisionFetchWrapper(fetcher, @event.OriginalEvent.Position, resetCache)),
@@ -355,15 +355,15 @@ public class Fetcher<Entity> : EntityFetcher
                   () =>
                   {
                     var (createdAt, _, _, relatedUserSub, _) = EventMetadata.TryParse(@event);
-                    DateTime? firstEventAt = r.fe ?? createdAt;
+                    DateTime? firstEventAt = acc.fe ?? createdAt;
                     DateTime? lastEventAt = createdAt;
-                    var firstUserSubFound = r.fu ?? relatedUserSub;
-                    var lastUserSubFound = relatedUserSub ?? r.lu;
+                    var firstUserSubFound = acc.fu ?? relatedUserSub;
+                    var lastUserSubFound = relatedUserSub ?? acc.lu;
                     return ValueTask.FromResult(
                       (
-                        r.entity,
-                        @event.Event.EventNumber.ToInt64(),
-                        Some(@event.Event.Position),
+                        acc.entity,
+                        acc.rev,
+                        acc.gp,
                         firstEventAt,
                         lastEventAt,
                         firstUserSubFound,
