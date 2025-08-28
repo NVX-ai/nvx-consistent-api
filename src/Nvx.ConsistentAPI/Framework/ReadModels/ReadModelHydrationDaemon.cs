@@ -16,6 +16,7 @@ internal class ReadModelHydrationDaemon(
   ILogger logger)
 {
   private const int HydrationRetryLimit = 100;
+  private const int InterestParallelism = 3;
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
   private static readonly TimeSpan HydrationRetryDelay = TimeSpan.FromSeconds(10);
   private readonly string connectionString = settings.ReadModelConnectionString;
@@ -260,7 +261,7 @@ internal class ReadModelHydrationDaemon(
             return;
           }
 
-          var interestedTask = TryProcessInterestedStreams(@event);
+          var concernedTask = TryProcessConcernedStreams(@event.GetStreamName());
 
           var ableReadModels =
             ModelsForEvent.GetOrAdd(
@@ -269,7 +270,7 @@ internal class ReadModelHydrationDaemon(
 
           if (ableReadModels.Length == 0)
           {
-            await interestedTask;
+            await concernedTask;
             await UpdateLastPosition(evt.Event.Position);
             return;
           }
@@ -291,9 +292,9 @@ internal class ReadModelHydrationDaemon(
                     await UpdateLastPosition(evt.Event.Position);
                     return unit;
                   })
-                .Parallel();
+                .Parallel(InterestParallelism);
             });
-          await interestedTask;
+          await concernedTask;
           await UpdateLastPosition(evt.Event.Position);
         });
     }
@@ -349,44 +350,38 @@ internal class ReadModelHydrationDaemon(
              {
                InterestedEntityRegisteredInterest ie => ie
                  .InterestedEntityId.GetStrongId()
-                 .Map(id1 => (id: id1, ie.InterestedEntityStreamName)),
+                 .Map(id1 => (id: id1, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
                InterestedEntityHadInterestRemoved ie => ie
                  .InterestedEntityId.GetStrongId()
-                 .Map(id2 => (id: id2, ie.InterestedEntityStreamName)),
+                 .Map(id2 => (id: id2, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
                _ => None
              })
     {
       await TryProcessInterestedStream(tuple.InterestedEntityStreamName, tuple.id);
+      // Since concern-related events are not processed, but they happen symmetrically, this triggers the concerns
+      // in depth for the concerned entity.
+      await TryProcessConcernedStreams(tuple.ConcernedEntityStreamName);
     }
   }
 
-  private async Task TryProcessInterestedStreams(EventModelEvent @event) =>
+  private async Task TryProcessConcernedStreams(string streamName) =>
     await interestFetcher
-      .Concerned(@event.GetStreamName())
-      .Async()
-      .Match(c => c.InterestedStreams, () => [])
+      .Concerns(streamName)
       .Map(ies =>
         ies
-          .Select<(string name, Dictionary<string, string> id), Func<Task<Unit>>>(interestedStream => async () =>
-            await interestedStream
-              .id.GetStrongId()
-              .Map(async strongId =>
-              {
-                await TryProcessInterestedStream(interestedStream.name, strongId);
-                return unit;
-              })
-              .DefaultValue(unit.ToTask()))
-          .Parallel());
+          .Select<Concern, Func<Task<Unit>>>(interestedStream => async () =>
+            await TryProcessInterestedStream(interestedStream.StreamName, interestedStream.Id))
+          .Parallel(InterestParallelism));
 
-  private async Task TryProcessInterestedStream(string streamName, StrongId entityId)
+  private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId)
   {
     var ableReadModels = readModels.Where(rm => rm.CanProject(streamName)).ToArray();
     if (ableReadModels.Length == 0)
     {
-      return;
+      return unit;
     }
 
-    await fetcher
+    return await fetcher
       .DaemonFetch(entityId, streamName, true)
       .Iter(async entity =>
       {
@@ -402,7 +397,7 @@ internal class ReadModelHydrationDaemon(
                 logger);
               return unit;
             })
-          .Parallel();
+          .Parallel(InterestParallelism);
       });
   }
 

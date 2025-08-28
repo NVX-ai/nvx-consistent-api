@@ -8,8 +8,9 @@ public static class ExternalFoldingModel
   {
     Entities =
     [
-      EntityThatDepends.Definition,
-      EntityDependedOn.Definition
+      EntityThatIsInterested.Definition,
+      FirstDegreeConcernedEntity.Definition,
+      SecondDegreeConcernedEntity.Definition
     ],
     ReadModels =
     [
@@ -17,62 +18,103 @@ public static class ExternalFoldingModel
     ],
     InterestTriggers =
     [
-      new InitiatesInterest<EntityThatDependsOnReceivedDependency>(evt =>
+      new InitiatesInterest<InterestedEntityAddedAnInterest>(evt =>
       [
         new EntityInterestManifest(
           evt.GetStreamName(),
           evt.GetEntityId(),
-          EntityDependedOn.GetStreamName(evt.DependsOnId),
+          FirstDegreeConcernedEntity.GetStreamName(evt.DependsOnId),
           new StrongGuid(evt.DependsOnId))
       ]),
-      new StopsInterest<EntityThatDependsOnRemovedDependency>(evt =>
+      new StopsInterest<InterestedEntityRemovedInterest>(evt =>
       [
         new EntityInterestManifest(
           evt.GetStreamName(),
           evt.GetEntityId(),
-          EntityDependedOn.GetStreamName(evt.DependsOnId),
+          FirstDegreeConcernedEntity.GetStreamName(evt.DependsOnId),
           new StrongGuid(evt.DependsOnId))
       ]),
-      new InitiatesInterest<EntityDependedOnHeardAboutEntityThatDepends>(evt =>
+      new InitiatesInterest<FirstDegreeConcernedEntityEventAboutInterestedEntity>(evt =>
       [
         new EntityInterestManifest(
-          EntityThatDepends.GetStreamName(evt.EntityThatDependsId),
+          EntityThatIsInterested.GetStreamName(evt.EntityThatDependsId),
           new StrongGuid(evt.EntityThatDependsId),
           evt.GetStreamName(),
           evt.GetEntityId())
+      ]),
+      new InitiatesInterest<FirstDegreeStartedDependingOnSecondDegree>(evt =>
+      [
+        new EntityInterestManifest(
+          FirstDegreeConcernedEntity.GetStreamName(evt.Id),
+          new StrongGuid(evt.Id),
+          SecondDegreeConcernedEntity.GetStreamName(evt.SecondDegreeId),
+          new StrongGuid(evt.SecondDegreeId))
       ])
     ]
   };
 }
 
-public record EntityThatDependsReadModel(string Id, Guid EntityId, Guid[] DependsOnIds, string[] DependedOnTags)
+public record EntityThatDependsReadModel(
+  string Id,
+  Guid EntityId,
+  Guid[] DependsOnIds,
+  string[] DependedOnTags,
+  string[] FarAwayNames)
   : EventModelReadModel
 {
   public static readonly EventModelingReadModelArtifact Definition =
-    new ReadModelDefinition<EntityThatDependsReadModel, EntityThatDepends>
+    new ReadModelDefinition<EntityThatDependsReadModel, EntityThatIsInterested>
     {
-      StreamPrefix = EntityThatDepends.StreamPrefix,
+      StreamPrefix = EntityThatIsInterested.StreamPrefix,
       Projector = From,
       AreaTag = "TestExternalFolding"
     };
 
   public StrongId GetStrongId() => new StrongGuid(EntityId);
 
-  public static EntityThatDependsReadModel[] From(EntityThatDepends entity) =>
-    [new(entity.Id.ToString(), entity.Id, entity.DependedOnIds, entity.DependedOnTags)];
+  public static EntityThatDependsReadModel[] From(EntityThatIsInterested entity) =>
+    [new(entity.Id.ToString(), entity.Id, entity.ConcernedIds, entity.ConcernedTags, entity.SecondDegreeNames)];
 }
 
-public partial record EntityThatDepends(Guid Id, Guid[] DependedOnIds, string[] DependedOnTags)
-  : EventModelEntity<EntityThatDepends>,
-    Folds<EntityThatDependsOnReceivedDependency, EntityThatDepends>,
-    Folds<EntityThatDependsOnRemovedDependency, EntityThatDepends>,
-    FoldsExternally<EntityDependedOnTagged, EntityThatDepends>,
-    FoldsExternally<EntityDependedOnHeardAboutEntityThatDepends, EntityThatDepends>
+public record InterestedEntityAddedAnInterest(Guid Id, Guid DependsOnId) : EventModelEvent
 {
-  public const string StreamPrefix = "entity-that-depends-entity-";
+  public string GetStreamName() => EntityThatIsInterested.GetStreamName(Id);
+  public StrongId GetEntityId() => new StrongGuid(Id);
+}
+
+public record InterestedEntityRemovedInterest(Guid Id, Guid DependsOnId) : EventModelEvent
+{
+  public string GetStreamName() => EntityThatIsInterested.GetStreamName(Id);
+  public StrongId GetEntityId() => new StrongGuid(Id);
+}
+
+public record SecondDegreeConcernedEntityNamed(Guid Id, string Name) : EventModelEvent
+{
+  public string GetStreamName() => SecondDegreeConcernedEntity.GetStreamName(Id);
+  public StrongId GetEntityId() => new StrongGuid(Id);
+}
+
+public record FirstDegreeStartedDependingOnSecondDegree(Guid Id, Guid SecondDegreeId) : EventModelEvent
+{
+  public string GetStreamName() => FirstDegreeConcernedEntity.GetStreamName(Id);
+  public StrongId GetEntityId() => new StrongGuid(Id);
+}
+
+public partial record EntityThatIsInterested(
+  Guid Id,
+  Guid[] ConcernedIds,
+  string[] ConcernedTags,
+  string[] SecondDegreeNames)
+  : EventModelEntity<EntityThatIsInterested>,
+    Folds<InterestedEntityAddedAnInterest, EntityThatIsInterested>,
+    Folds<InterestedEntityRemovedInterest, EntityThatIsInterested>,
+    FoldsExternally<FirstDegreeConcernedEntityTagged, EntityThatIsInterested>,
+    FoldsExternally<FirstDegreeConcernedEntityEventAboutInterestedEntity, EntityThatIsInterested>
+{
+  public const string StreamPrefix = "entity-that-is-interested-entity-";
 
   public static readonly EntityDefinition Definition =
-    new EntityDefinition<EntityThatDepends, StrongGuid>
+    new EntityDefinition<EntityThatIsInterested, StrongGuid>
     {
       Defaulter = Defaulted,
       StreamPrefix = StreamPrefix
@@ -80,53 +122,74 @@ public partial record EntityThatDepends(Guid Id, Guid[] DependedOnIds, string[] 
 
   public string GetStreamName() => GetStreamName(Id);
 
-  public async ValueTask<EntityThatDepends> Fold(
-    EntityThatDependsOnReceivedDependency evt,
+  public async ValueTask<EntityThatIsInterested> Fold(
+    InterestedEntityAddedAnInterest evt,
     EventMetadata metadata,
     RevisionFetcher fetcher) =>
-    await DependedOnIds
+    await ConcernedIds
       .Append(evt.DependsOnId)
       .Distinct()
       .ToArray()
       .Apply(async ids =>
         this with
         {
-          DependedOnIds = ids,
-          DependedOnTags = await GetTags(fetcher, ids)
+          ConcernedIds = ids,
+          ConcernedTags = await GetTags(fetcher, ids),
+          SecondDegreeNames = await GetNames(fetcher, ids)
         });
 
-  public async ValueTask<EntityThatDepends> Fold(
-    EntityThatDependsOnRemovedDependency evt,
+  public async ValueTask<EntityThatIsInterested> Fold(
+    InterestedEntityRemovedInterest evt,
     EventMetadata metadata,
     RevisionFetcher fetcher) =>
-    await DependedOnIds
+    await ConcernedIds
       .Where(s => s != evt.DependsOnId)
       .Distinct()
       .ToArray()
       .Apply(async ids =>
         this with
         {
-          DependedOnIds = ids,
-          DependedOnTags = await GetTags(fetcher, ids)
+          ConcernedIds = ids,
+          ConcernedTags = await GetTags(fetcher, ids)
         });
 
-  public ValueTask<EntityThatDepends> Fold(
-    EntityDependedOnHeardAboutEntityThatDepends evt,
+  public async ValueTask<EntityThatIsInterested> Fold(
+    FirstDegreeConcernedEntityEventAboutInterestedEntity evt,
     EventMetadata metadata,
     RevisionFetcher fetcher) =>
-    ValueTask.FromResult(this with { DependedOnIds = DependedOnIds.Append(evt.Id).ToArray() });
+    this with
+    {
+      ConcernedIds = ConcernedIds.Append(evt.Id).Distinct().ToArray(),
+      SecondDegreeNames = SecondDegreeNames
+        .Concat(
+          await fetcher
+            .LatestFetch<FirstDegreeConcernedEntity>(new StrongGuid(evt.Id))
+            .Map(e => e.SecondDegreeNames)
+            .DefaultValue([]))
+        .Distinct()
+        .ToArray()
+    };
 
-  public async ValueTask<EntityThatDepends> Fold(
-    EntityDependedOnTagged evt,
+  public async ValueTask<EntityThatIsInterested> Fold(
+    FirstDegreeConcernedEntityTagged evt,
     EventMetadata metadata,
     RevisionFetcher fetcher) =>
-    this with { DependedOnTags = await GetTags(fetcher, DependedOnIds) };
+    this with { ConcernedTags = await GetTags(fetcher, ConcernedIds) };
+
+  private static async Task<string[]> GetNames(RevisionFetcher fetcher, Guid[] ids) =>
+    await ids
+      .Select<Guid, Func<Task<string[]>>>(id => async () =>
+        await fetcher
+          .LatestFetch<FirstDegreeConcernedEntity>(new StrongGuid(id))
+          .Match(fd => fd.SecondDegreeNames, () => []))
+      .Parallel()
+      .Map(nestedIds => nestedIds.SelectMany(Prelude.Id).ToArray());
 
   private static async Task<string[]> GetTags(RevisionFetcher fetcher, Guid[] ids) =>
     await ids
       .Select<Guid, Func<Task<string[]>>>(id => async () =>
         await fetcher
-          .LatestFetch<EntityDependedOn>(new StrongGuid(id))
+          .LatestFetch<FirstDegreeConcernedEntity>(new StrongGuid(id))
           .Match(
             edo => edo.Tags,
             () => []
@@ -135,30 +198,17 @@ public partial record EntityThatDepends(Guid Id, Guid[] DependedOnIds, string[] 
       .Map(nestedIds => nestedIds.SelectMany(Prelude.Id).ToArray());
 
   public static string GetStreamName(Guid id) => $"{StreamPrefix}{id}";
-  public static EntityThatDepends Defaulted(StrongGuid id) => new(id.Value, [], []);
+  public static EntityThatIsInterested Defaulted(StrongGuid id) => new(id.Value, [], [], []);
 }
 
-public record EntityThatDependsOnReceivedDependency(Guid Id, Guid DependsOnId) : EventModelEvent
+partial record SecondDegreeConcernedEntity(Guid Id, string Name)
+  : EventModelEntity<SecondDegreeConcernedEntity>,
+    Folds<SecondDegreeConcernedEntityNamed, SecondDegreeConcernedEntity>
 {
-  public string GetStreamName() => EntityThatDepends.GetStreamName(Id);
-  public StrongId GetEntityId() => new StrongGuid(Id);
-}
-
-public record EntityThatDependsOnRemovedDependency(Guid Id, Guid DependsOnId) : EventModelEvent
-{
-  public string GetStreamName() => EntityThatDepends.GetStreamName(Id);
-  public StrongId GetEntityId() => new StrongGuid(Id);
-}
-
-public partial record EntityDependedOn(Guid Id, string[] Tags)
-  : EventModelEntity<EntityDependedOn>,
-    Folds<EntityDependedOnTagged, EntityDependedOn>,
-    Folds<EntityDependedOnHeardAboutEntityThatDepends, EntityDependedOn>
-{
-  public const string StreamPrefix = "entity-depended-on-entity-";
+  public const string StreamPrefix = "second-degree-concerned-entity-";
 
   public static readonly EntityDefinition Definition =
-    new EntityDefinition<EntityDependedOn, StrongGuid>
+    new EntityDefinition<SecondDegreeConcernedEntity, StrongGuid>
     {
       Defaulter = Defaulted,
       StreamPrefix = StreamPrefix
@@ -166,14 +216,42 @@ public partial record EntityDependedOn(Guid Id, string[] Tags)
 
   public string GetStreamName() => GetStreamName(Id);
 
-  public ValueTask<EntityDependedOn> Fold(
-    EntityDependedOnHeardAboutEntityThatDepends evt,
+  public ValueTask<SecondDegreeConcernedEntity> Fold(
+    SecondDegreeConcernedEntityNamed evt,
+    EventMetadata metadata,
+    RevisionFetcher fetcher) => ValueTask.FromResult(this with { Name = evt.Name });
+
+  public static string GetStreamName(Guid id) => $"{StreamPrefix}{id}";
+
+  public static SecondDegreeConcernedEntity Defaulted(StrongGuid id) => new(id.Value, string.Empty);
+}
+
+public partial record FirstDegreeConcernedEntity(Guid Id, string[] Tags, string[] SecondDegreeNames)
+  : EventModelEntity<FirstDegreeConcernedEntity>,
+    Folds<FirstDegreeConcernedEntityTagged, FirstDegreeConcernedEntity>,
+    Folds<FirstDegreeConcernedEntityEventAboutInterestedEntity, FirstDegreeConcernedEntity>,
+    Folds<FirstDegreeStartedDependingOnSecondDegree, FirstDegreeConcernedEntity>,
+    FoldsExternally<SecondDegreeConcernedEntityNamed, FirstDegreeConcernedEntity>
+{
+  public const string StreamPrefix = "first-degree-concerned-entity-";
+
+  public static readonly EntityDefinition Definition =
+    new EntityDefinition<FirstDegreeConcernedEntity, StrongGuid>
+    {
+      Defaulter = Defaulted,
+      StreamPrefix = StreamPrefix
+    };
+
+  public string GetStreamName() => GetStreamName(Id);
+
+  public ValueTask<FirstDegreeConcernedEntity> Fold(
+    FirstDegreeConcernedEntityEventAboutInterestedEntity evt,
     EventMetadata metadata,
     RevisionFetcher fetcher) =>
     ValueTask.FromResult(this);
 
-  public ValueTask<EntityDependedOn> Fold(
-    EntityDependedOnTagged evt,
+  public ValueTask<FirstDegreeConcernedEntity> Fold(
+    FirstDegreeConcernedEntityTagged evt,
     EventMetadata metadata,
     RevisionFetcher fetcher) =>
     ValueTask.FromResult(
@@ -182,19 +260,34 @@ public partial record EntityDependedOn(Guid Id, string[] Tags)
         Tags = Tags.Append(evt.Tag).Distinct().ToArray()
       });
 
+  public async ValueTask<FirstDegreeConcernedEntity> Fold(
+    FirstDegreeStartedDependingOnSecondDegree evt,
+    EventMetadata metadata,
+    RevisionFetcher fetcher) =>
+    await fetcher
+      .LatestFetch<SecondDegreeConcernedEntity>(new StrongGuid(evt.SecondDegreeId))
+      .Map(e => e.Name)
+      .Match(n => this with { SecondDegreeNames = SecondDegreeNames.Append(n).Distinct().ToArray() }, () => this);
+
+  public ValueTask<FirstDegreeConcernedEntity> Fold(
+    SecondDegreeConcernedEntityNamed evt,
+    EventMetadata metadata,
+    RevisionFetcher fetcher) =>
+    ValueTask.FromResult(this with { SecondDegreeNames = SecondDegreeNames.Append(evt.Name).Distinct().ToArray() });
+
   public static string GetStreamName(Guid id) => $"{StreamPrefix}{id}";
-  public static EntityDependedOn Defaulted(StrongGuid id) => new(id.Value, []);
+  public static FirstDegreeConcernedEntity Defaulted(StrongGuid id) => new(id.Value, [], []);
 }
 
-public record EntityDependedOnTagged(Guid Id, string Tag) : EventModelEvent
+public record FirstDegreeConcernedEntityTagged(Guid Id, string Tag) : EventModelEvent
 {
-  public string GetStreamName() => EntityDependedOn.GetStreamName(Id);
+  public string GetStreamName() => FirstDegreeConcernedEntity.GetStreamName(Id);
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
-public record EntityDependedOnHeardAboutEntityThatDepends(Guid Id, Guid EntityThatDependsId)
+public record FirstDegreeConcernedEntityEventAboutInterestedEntity(Guid Id, Guid EntityThatDependsId)
   : EventModelEvent
 {
-  public string GetStreamName() => EntityDependedOn.GetStreamName(Id);
+  public string GetStreamName() => FirstDegreeConcernedEntity.GetStreamName(Id);
   public StrongId GetEntityId() => new StrongGuid(Id);
 }

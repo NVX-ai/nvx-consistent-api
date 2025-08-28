@@ -3,11 +3,57 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace Nvx.ConsistentAPI;
 
+internal interface InterestRelation
+{
+  string StreamName { get; }
+}
+
+internal record Concern(string StreamName, StrongId Id) : InterestRelation;
+
+internal record Interest(string StreamName, StrongId Id) : InterestRelation;
+
 internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
 {
   private readonly MemoryCache cache = new(new MemoryCacheOptions { SizeLimit = 500 });
 
-  public async Task<Option<ConcernedEntityEntity>> Concerned(string streamName)
+  private static async Task<TOut[]> Relations<TOut, TEntity>(
+    string streamName,
+    Func<string, Task<Option<TEntity>>> tryGet,
+    Func<TEntity, IEnumerable<TOut>> mapper) where TOut : InterestRelation
+  {
+    var relations = new List<TOut>();
+    while (true)
+    {
+      var newRelations = (await tryGet(streamName)
+          .Async()
+          .Map(mapper)
+          .DefaultValue([]))
+        .Distinct()
+        .Where(nc => relations.All(c => c.StreamName != nc.StreamName))
+        .ToArray();
+
+      if (newRelations.Length == 0)
+      {
+        break;
+      }
+
+      relations.AddRange(newRelations);
+      foreach (var newRelation in newRelations)
+      {
+        relations.AddRange(await Relations(newRelation.StreamName, tryGet, mapper));
+      }
+    }
+
+    return relations.Distinct().ToArray();
+  }
+
+  public async Task<Concern[]> Concerns(string streamName) =>
+    await Relations<Concern, ConcernedEntityEntity>(
+      streamName,
+      Concerned,
+      ce => ce.InterestedStreams.Choose(t => t.id.GetStrongId().Map(id => new Concern(t.name, id))));
+
+  private async Task<Option<ConcernedEntityEntity>> Concerned(string streamName)
   {
     var entity = cache.Get(streamName) as InterestCacheElement<ConcernedEntityEntity>
                  ?? new InterestCacheElement<ConcernedEntityEntity>(
@@ -43,6 +89,12 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
 
     return entity.Entity;
   }
+
+  public async Task<Interest[]> Interests(string streamName) =>
+    await Relations<Interest, InterestedEntityEntity>(
+      streamName,
+      Interested,
+      ie => ie.ConcernedStreams.Choose(t => t.id.GetStrongId().Map(id => new Interest(t.name, id))));
 
   public async Task<Option<InterestedEntityEntity>> Interested(string streamName)
   {

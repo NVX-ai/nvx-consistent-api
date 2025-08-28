@@ -60,7 +60,7 @@ public record InterestedEntityId(string InterestedEntityStreamName) : StrongId
 
 public partial record InterestedEntityEntity(
   string InterestedEntityStreamName,
-  string[] ConcernedStreamNames,
+  (string name, Dictionary<string, string> id)[] ConcernedStreams,
   string[] OriginatingEventIds)
   : EventModelEntity<InterestedEntityEntity>,
     Folds<InterestedEntityRegisteredInterest, InterestedEntityEntity>,
@@ -83,7 +83,7 @@ public partial record InterestedEntityEntity(
     ValueTask.FromResult(
       this with
       {
-        ConcernedStreamNames = [.. ConcernedStreamNames.Where(s => s != evt.ConcernedEntityStreamName)],
+        ConcernedStreams = [.. ConcernedStreams.Where(s => s.name != evt.ConcernedEntityStreamName)],
         OriginatingEventIds = OriginatingEventIds.Append(evt.OriginatingEventId).Distinct().ToArray()
       });
 
@@ -94,7 +94,10 @@ public partial record InterestedEntityEntity(
     ValueTask.FromResult(
       this with
       {
-        ConcernedStreamNames = ConcernedStreamNames.Append(evt.ConcernedEntityStreamName).Distinct().ToArray(),
+        ConcernedStreams = ConcernedStreams
+          .Append((evt.ConcernedEntityStreamName, evt.ConcernedEntityId))
+          .Distinct()
+          .ToArray(),
         OriginatingEventIds = OriginatingEventIds.Append(evt.OriginatingEventId).ToArray()
       });
 

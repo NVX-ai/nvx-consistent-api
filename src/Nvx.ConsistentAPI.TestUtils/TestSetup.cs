@@ -468,6 +468,7 @@ public class TestSetup : IAsyncDisposable
   {
     var builder = new EventStoreDbBuilder()
       .WithImage(settings.EsDbImage)
+      .WithEnvironment("EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP", "true")
       .WithReuse(settings.UsePersistentTestContainers)
       .WithAutoRemove(!settings.UsePersistentTestContainers);
 
@@ -475,7 +476,6 @@ public class TestSetup : IAsyncDisposable
     {
       builder = builder
         .WithName("consistent-api-integration-test-es")
-        .WithEnvironment("EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP", "true")
         .WithPortBinding(3112, 2113);
     }
     else

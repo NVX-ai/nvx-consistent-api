@@ -6,41 +6,41 @@ public class CrossStreamFoldIntegration
   public async Task Test0()
   {
     await using var setup = await Initializer.Do();
-    var entityThatDependsId = Guid.NewGuid();
-    var entityDependedOnId = Guid.NewGuid();
+    var interestedEntityId = Guid.NewGuid();
+    var concernedEntityId = Guid.NewGuid();
     var tag = Guid.NewGuid().ToString();
-    await setup.InsertEvents(new EntityThatDependsOnReceivedDependency(entityThatDependsId, entityDependedOnId));
+    await setup.InsertEvents(new InterestedEntityAddedAnInterest(interestedEntityId, concernedEntityId));
 
-    var beforeTags = await setup.ReadModel<EntityThatDependsReadModel>(entityThatDependsId.ToString());
+    var beforeTags = await setup.ReadModel<EntityThatDependsReadModel>(interestedEntityId.ToString());
     Assert.Empty(beforeTags.DependedOnTags);
 
-    await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, tag));
+    await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, tag));
 
     var withTags = await setup.ReadModel<EntityThatDependsReadModel>(
-      entityThatDependsId.ToString());
+      interestedEntityId.ToString());
     Assert.Single(withTags.DependedOnTags);
     Assert.Contains(withTags.DependedOnTags, t => t == tag);
 
-    await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
-    await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
-    await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
+    await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, Guid.NewGuid().ToString()));
+    await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, Guid.NewGuid().ToString()));
+    await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, Guid.NewGuid().ToString()));
 
     var moreTags = await setup.ReadModel<EntityThatDependsReadModel>(
-      entityThatDependsId.ToString());
+      interestedEntityId.ToString());
     Assert.Equal(4, moreTags.DependedOnTags.Length);
     Assert.Contains(moreTags.DependedOnTags, t => t == tag);
 
-    await setup.InsertEvents(new EntityThatDependsOnRemovedDependency(entityThatDependsId, entityDependedOnId));
+    await setup.InsertEvents(new InterestedEntityRemovedInterest(interestedEntityId, concernedEntityId));
     var afterDependencyRemoved = await setup.ReadModel<EntityThatDependsReadModel>(
-      entityThatDependsId.ToString());
+      interestedEntityId.ToString());
     Assert.Empty(afterDependencyRemoved.DependsOnIds);
     Assert.Empty(afterDependencyRemoved.DependedOnTags);
 
-    await setup.InsertEvents(new EntityDependedOnTagged(entityDependedOnId, Guid.NewGuid().ToString()));
+    await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, Guid.NewGuid().ToString()));
 
     var updatedTagsAfterDependencyRemoved =
       await setup.ReadModel<EntityThatDependsReadModel>(
-        entityThatDependsId.ToString());
+        interestedEntityId.ToString());
     Assert.Empty(updatedTagsAfterDependencyRemoved.DependsOnIds);
     Assert.Empty(updatedTagsAfterDependencyRemoved.DependedOnTags);
   }
@@ -49,13 +49,39 @@ public class CrossStreamFoldIntegration
   public async Task Test1()
   {
     await using var setup = await Initializer.Do();
-    var entityThatDependsId = Guid.NewGuid();
-    var entityDependedOnId = Guid.NewGuid();
-    await setup.InsertEvents(new EntityDependedOnHeardAboutEntityThatDepends(entityDependedOnId, entityThatDependsId));
+    var interestedEntityId = Guid.NewGuid();
+    var concernedEntityId = Guid.NewGuid();
+    await setup.InsertEvents(
+      new FirstDegreeConcernedEntityEventAboutInterestedEntity(concernedEntityId, interestedEntityId));
 
     var readModel = await setup.ReadModel<EntityThatDependsReadModel>(
-      entityThatDependsId.ToString());
+      interestedEntityId.ToString());
     Assert.Empty(readModel.DependedOnTags);
-    Assert.Contains(readModel.DependsOnIds, t => t == entityDependedOnId);
+    Assert.Contains(readModel.DependsOnIds, t => t == concernedEntityId);
+  }
+
+  [Fact(DisplayName = "should get second degree consistency boundary information")]
+  public async Task Test2()
+  {
+    await using var setup = await Initializer.Do();
+    var interestedId = Guid.NewGuid();
+    var firstId = Guid.NewGuid();
+    var secondId = Guid.NewGuid();
+    var secondDegreeName = $"Original name {secondId}";
+    await setup.InsertEvents(new SecondDegreeConcernedEntityNamed(secondId, secondDegreeName));
+    await setup.InsertEvents(new FirstDegreeStartedDependingOnSecondDegree(firstId, secondId));
+    await setup.InsertEvents(new InterestedEntityAddedAnInterest(interestedId, firstId));
+
+    var readModel = await setup.ReadModel<EntityThatDependsReadModel>(interestedId.ToString());
+
+    Assert.Contains(secondDegreeName, readModel.FarAwayNames);
+
+    var newSecondDegreeName = $"New name {secondId}";
+    await setup.InsertEvents(new SecondDegreeConcernedEntityNamed(secondId, newSecondDegreeName));
+
+    var readModelWithTwoNames = await setup.ReadModel<EntityThatDependsReadModel>(interestedId.ToString());
+    Assert.Contains(newSecondDegreeName, readModelWithTwoNames.FarAwayNames);
+    Assert.Contains(secondDegreeName, readModelWithTwoNames.FarAwayNames);
+    Assert.Equal(2, readModelWithTwoNames.FarAwayNames.Length);
   }
 }
