@@ -16,6 +16,7 @@ internal class ReadModelHydrationDaemon(
   ILogger logger)
 {
   private const int HydrationRetryLimit = 100;
+  private const int InterestParallelism = 3;
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
   private static readonly TimeSpan HydrationRetryDelay = TimeSpan.FromSeconds(10);
   private readonly string connectionString = settings.ReadModelConnectionString;
@@ -291,7 +292,7 @@ internal class ReadModelHydrationDaemon(
                     await UpdateLastPosition(evt.Event.Position);
                     return unit;
                   })
-                .Parallel(3);
+                .Parallel(InterestParallelism);
             });
           await concernedTask;
           await UpdateLastPosition(evt.Event.Position);
@@ -370,7 +371,7 @@ internal class ReadModelHydrationDaemon(
         ies
           .Select<Concern, Func<Task<Unit>>>(interestedStream => async () =>
             await TryProcessInterestedStream(interestedStream.StreamName, interestedStream.Id))
-          .Parallel(3));
+          .Parallel(InterestParallelism));
 
   private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId)
   {
@@ -396,7 +397,7 @@ internal class ReadModelHydrationDaemon(
                 logger);
               return unit;
             })
-          .Parallel(3);
+          .Parallel(InterestParallelism);
       });
   }
 
