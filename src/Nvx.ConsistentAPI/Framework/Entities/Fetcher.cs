@@ -25,7 +25,7 @@ public interface RevisionFetcher
   AsyncOption<T> LatestFetch<T>(Option<StrongId> id) where T : EventModelEntity<T>;
 }
 
-internal class RevisionFetchWrapper(Fetcher fetcher, Position upToRevision, bool resetCache) : RevisionFetcher
+internal class RevisionFetchWrapper(Fetcher fetcher, Position upToRevision) : RevisionFetcher
 {
   public AsyncOption<T> Fetch<T>(Option<StrongId> id) where T : EventModelEntity<T> =>
     fetcher.Fetch<T>(id, upToRevision).Map(fr => fr.Ent);
@@ -247,7 +247,7 @@ public class Fetcher<Entity> : EntityFetcher
             var folded = await seed.e.Fold(
               parsed,
               metadata,
-              new RevisionFetchWrapper(fetcher, re.OriginalEvent.Position, resetCache));
+              new RevisionFetchWrapper(fetcher, re.OriginalEvent.Position));
 
             var revision = re.Event.EventStreamId == seed.e.GetStreamName()
               ? re.Event.EventNumber.ToInt64()
@@ -338,7 +338,7 @@ public class Fetcher<Entity> : EntityFetcher
                       await r.entity.Fold(
                         evt,
                         metadata,
-                        new RevisionFetchWrapper(fetcher, @event.OriginalEvent.Position, resetCache)),
+                        new RevisionFetchWrapper(fetcher, @event.OriginalEvent.Position)),
                       @event.Event.EventNumber.ToInt64(),
                       Some(@event.Event.Position),
                       firstEventAt,
