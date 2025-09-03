@@ -287,7 +287,7 @@ internal class ReadModelHydrationDaemon(
                       entity,
                       databaseHandlerFactory,
                       @event.GetEntityId(),
-                      evt.OriginalEvent.Position.ToString(),
+                      null,
                       logger);
                     await UpdateLastPosition(evt.Event.Position);
                     return unit;
