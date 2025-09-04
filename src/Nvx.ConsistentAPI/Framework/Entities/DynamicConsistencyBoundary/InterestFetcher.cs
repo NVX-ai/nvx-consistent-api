@@ -14,7 +14,8 @@ public record Interest(string StreamName, StrongId Id) : InterestRelation;
 
 public class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
 {
-  private readonly MemoryCache cache = new(new MemoryCacheOptions { SizeLimit = 25_000 });
+  private readonly MemoryCache interestCache = new(new MemoryCacheOptions { SizeLimit = 25_000 });
+  private readonly MemoryCache concernCache = new(new MemoryCacheOptions { SizeLimit = 25_000 });
 
   private static async Task<TOut[]> Relations<TOut, TEntity>(
     string streamName,
@@ -53,9 +54,13 @@ public class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option
       Concerned,
       ce => ce.InterestedStreams.Choose(t => t.id.GetStrongId().Map(id => new Concern(t.name, id))));
 
+  public long? GetCachedRevision(string streamName) =>
+    interestCache.Get<InterestCacheElement<InterestedEntityEntity>>(streamName)?.Revision
+    ?? concernCache.Get<InterestCacheElement<ConcernedEntityEntity>>(streamName)?.Revision;
+
   private async Task<Option<ConcernedEntityEntity>> Concerned(string streamName)
   {
-    var entity = cache.Get(streamName) as InterestCacheElement<ConcernedEntityEntity>
+    var entity = concernCache.Get<InterestCacheElement<ConcernedEntityEntity>>(streamName)
                  ?? new InterestCacheElement<ConcernedEntityEntity>(
                    ConcernedEntityEntity.Defaulted(new ConcernedEntityId(streamName)),
                    -1);
@@ -82,7 +87,7 @@ public class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option
       return None;
     }
 
-    cache.Set(
+    concernCache.Set(
       streamName,
       entity,
       new MemoryCacheEntryOptions { Size = 1, AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(1) });
@@ -98,7 +103,7 @@ public class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option
 
   public async Task<Option<InterestedEntityEntity>> Interested(string streamName)
   {
-    var entity = cache.Get(streamName) as InterestCacheElement<InterestedEntityEntity>
+    var entity = interestCache.Get<InterestCacheElement<InterestedEntityEntity>>(streamName)
                  ?? new InterestCacheElement<InterestedEntityEntity>(
                    InterestedEntityEntity.Defaulted(new InterestedEntityId(streamName)),
                    -1);
@@ -125,7 +130,7 @@ public class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option
       return None;
     }
 
-    cache.Set(
+    interestCache.Set(
       streamName,
       entity,
       new MemoryCacheEntryOptions { Size = 1, AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(1) });

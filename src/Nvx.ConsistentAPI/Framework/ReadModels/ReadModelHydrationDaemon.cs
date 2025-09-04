@@ -245,9 +245,14 @@ internal class ReadModelHydrationDaemon(
         .Iter(async @event =>
         {
           // Skip processing if the event is known to not be the last of the stream.
-          if (fetcher
-              .GetCachedStreamRevision(@event.GetStreamName(), @event.GetEntityId())
-              .Match(cachedRevision => cachedRevision >= evt.Event.EventNumber.ToInt64(), () => false))
+          var isMidStream = fetcher
+            .GetCachedStreamRevision(@event.GetStreamName(), @event.GetEntityId())
+            .Match(cachedRevision => cachedRevision > evt.Event.EventNumber.ToInt64(), () => false);
+          var interestCachedRevision = interestFetcher.GetCachedRevision(@event.GetStreamName());
+          var isMidInterest =
+            interestCachedRevision is not null
+            && interestCachedRevision > evt.Event.EventNumber.ToInt64();
+          if (isMidStream || isMidInterest)
           {
             await UpdateLastPosition(evt.Event.Position);
             return;
@@ -356,7 +361,7 @@ internal class ReadModelHydrationDaemon(
                _ => None
              })
     {
-        // do a revision check and skip if it's not last
+      // do a revision check and skip if it's not last
       await TryProcessInterestedStream(tuple.InterestedEntityStreamName, tuple.id);
       // Since concern-related events are not processed, but they happen symmetrically, this triggers the concerns
       // in depth for the concerned entity.
