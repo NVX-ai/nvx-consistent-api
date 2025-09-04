@@ -19,23 +19,32 @@ internal class DynamicConsistencyBoundaryDaemon(
 
   private bool isSweepCompleted;
 
-  public DynamicConsistencyBoundaryDaemonInsights Insights(ulong lastEventPositon) =>
-    new(
-      currentProcessedPosition ?? lastEventPositon,
-      Math.Min(
-        100,
-        lastEventPositon == 0
-          ? 100m
-          : 100m * Convert.ToDecimal(currentProcessedPosition ?? 0) / Convert.ToDecimal(lastEventPositon)),
+  public DynamicConsistencyBoundaryDaemonInsights Insights(ulong lastEventPositon)
+  {
+    return new DynamicConsistencyBoundaryDaemonInsights(
+      ProcessedPosition(),
+      CurrentPercentageComplete(),
       currentSweepPosition,
       isSweepCompleted,
       interestsRegisteredSinceStartup,
       interestsRemovedSinceStartup,
+      SweepPercentageComplete());
+
+    ulong ProcessedPosition() => currentProcessedPosition ?? lastEventPositon;
+
+    decimal CurrentPercentageComplete() => Math.Min(
+      100,
+      lastEventPositon == 0
+        ? 100m
+        : 100m * Convert.ToDecimal(currentProcessedPosition ?? 0) / Convert.ToDecimal(lastEventPositon));
+
+    decimal SweepPercentageComplete() =>
       Math.Min(
         100,
         lastEventPositon == 0 || isSweepCompleted
           ? 100m
-          : 100m * Convert.ToDecimal(currentSweepPosition ?? 0) / Convert.ToDecimal(lastEventPositon)));
+          : 100m * Convert.ToDecimal(currentSweepPosition ?? 0) / Convert.ToDecimal(lastEventPositon));
+  }
 
   internal void Initialize()
   {
