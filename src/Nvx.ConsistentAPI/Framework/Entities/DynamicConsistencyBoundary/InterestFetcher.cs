@@ -14,8 +14,8 @@ public record Interest(string StreamName, StrongId Id) : InterestRelation;
 
 public class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
 {
-  private readonly MemoryCache interestCache = new(new MemoryCacheOptions { SizeLimit = 25_000 });
   private readonly MemoryCache concernCache = new(new MemoryCacheOptions { SizeLimit = 25_000 });
+  private readonly MemoryCache interestCache = new(new MemoryCacheOptions { SizeLimit = 25_000 });
 
   private static async Task<TOut[]> Relations<TOut, TEntity>(
     string streamName,
@@ -56,12 +56,16 @@ public class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option
 
   public long? GetCachedRevision(string streamName)
   {
-    if (interestCache.Get<InterestCacheElement<InterestedEntityEntity>>(streamName) is { } ie)
+    if (streamName.StartsWith(InterestedEntityEntity.StreamPrefix)
+        && interestCache.Get<InterestCacheElement<InterestedEntityEntity>>(
+          streamName[InterestedEntityEntity.StreamPrefix.Length..]) is { } ie)
     {
       return ie.Revision;
     }
 
-    if (interestCache.Get<InterestCacheElement<ConcernedEntityEntity>>(streamName) is { } ce)
+    if (streamName.StartsWith(ConcernedEntityEntity.StreamPrefix)
+        && concernCache.Get<InterestCacheElement<ConcernedEntityEntity>>(
+          streamName[ConcernedEntityEntity.StreamPrefix.Length..]) is { } ce)
     {
       return ce.Revision;
     }
