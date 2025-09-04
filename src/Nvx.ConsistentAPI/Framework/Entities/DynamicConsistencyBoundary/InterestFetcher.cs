@@ -54,9 +54,20 @@ public class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option
       Concerned,
       ce => ce.InterestedStreams.Choose(t => t.id.GetStrongId().Map(id => new Concern(t.name, id))));
 
-  public long? GetCachedRevision(string streamName) =>
-    interestCache.Get<InterestCacheElement<InterestedEntityEntity>>(streamName)?.Revision
-    ?? concernCache.Get<InterestCacheElement<ConcernedEntityEntity>>(streamName)?.Revision;
+  public long? GetCachedRevision(string streamName)
+  {
+    if (interestCache.Get<InterestCacheElement<InterestedEntityEntity>>(streamName) is { } ie)
+    {
+      return ie.Revision;
+    }
+
+    if (interestCache.Get<InterestCacheElement<ConcernedEntityEntity>>(streamName) is { } ce)
+    {
+      return ce.Revision;
+    }
+
+    return null;
+  }
 
   private async Task<Option<ConcernedEntityEntity>> Concerned(string streamName)
   {
