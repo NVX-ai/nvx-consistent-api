@@ -139,14 +139,14 @@ internal class DynamicConsistencyBoundaryDaemon(
     InterestedEntityEntity[] entities,
     string originatingEventId) =>
     interests
-      .Select(s => (s,
-        entities.FirstOrNone(ie => ie.InterestedEntityStreamName == s.InterestedEntityStreamName)))
-      .Where(t => t.Item2.Match(
+      .Select(manifest => (manifest,
+        entity: entities.FirstOrNone(ie => ie.InterestedEntityStreamName == manifest.InterestedEntityStreamName)))
+      .Where(t => t.entity.Match(
         e =>
           !e.OriginatingEventIds.Contains(originatingEventId)
-          && e.ConcernedStreams.Select(cs => cs.name).Contains(t.s.ConcernedEntityStreamName),
+          && e.ConcernedStreams.Select(cs => cs.name).Contains(t.manifest.ConcernedEntityStreamName),
         () => false))
-      .Select(t => t.s)
+      .Select(t => t.manifest)
       .ToArray();
 
   private static EntityInterestManifest[] FilterOutIrrelevantStarts(
@@ -154,14 +154,14 @@ internal class DynamicConsistencyBoundaryDaemon(
     InterestedEntityEntity[] entities,
     string originatingEventId) =>
     interests
-      .Select(s => (s,
-        entities.FirstOrNone(ie => ie.InterestedEntityStreamName == s.InterestedEntityStreamName)))
+      .Select(manifest => (manifest,
+        entities.FirstOrNone(ie => ie.InterestedEntityStreamName == manifest.InterestedEntityStreamName)))
       .Where(t => t.Item2.Match(
         e =>
           !e.OriginatingEventIds.Contains(originatingEventId)
-          && !e.ConcernedStreams.Select(cs => cs.name).Contains(t.s.ConcernedEntityStreamName),
+          && !e.ConcernedStreams.Select(cs => cs.name).Contains(t.manifest.ConcernedEntityStreamName),
         () => true))
-      .Select(t => t.s)
+      .Select(t => t.manifest)
       .ToArray();
 
   private async Task RegisterNewInterests(EntityInterestManifest[] interests, Uuid originatingEventId) =>
