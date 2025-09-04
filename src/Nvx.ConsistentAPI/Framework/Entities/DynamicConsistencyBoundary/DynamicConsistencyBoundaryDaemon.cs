@@ -9,9 +9,9 @@ internal class DynamicConsistencyBoundaryDaemon(
   EventStoreClient client,
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   InterestTrigger[] triggers,
-  ILogger logger)
+  ILogger logger,
+  InterestFetcher interestFetcher)
 {
-  private readonly InterestFetcher interestFetcher = new(client, parser);
   private ulong? currentProcessedPosition;
   private ulong? currentSweepPosition;
   private int interestsRegisteredSinceStartup;
@@ -19,23 +19,32 @@ internal class DynamicConsistencyBoundaryDaemon(
 
   private bool isSweepCompleted;
 
-  public DynamicConsistencyBoundaryDaemonInsights Insights(ulong lastEventPositon) =>
-    new(
-      currentProcessedPosition ?? lastEventPositon,
-      Math.Min(
-        100,
-        lastEventPositon == 0
-          ? 100m
-          : 100m * Convert.ToDecimal(currentProcessedPosition ?? 0) / Convert.ToDecimal(lastEventPositon)),
+  public DynamicConsistencyBoundaryDaemonInsights Insights(ulong lastEventPositon)
+  {
+    return new DynamicConsistencyBoundaryDaemonInsights(
+      ProcessedPosition(),
+      CurrentPercentageComplete(),
       currentSweepPosition,
       isSweepCompleted,
       interestsRegisteredSinceStartup,
       interestsRemovedSinceStartup,
+      SweepPercentageComplete());
+
+    ulong ProcessedPosition() => currentProcessedPosition ?? lastEventPositon;
+
+    decimal CurrentPercentageComplete() => Math.Min(
+      100,
+      lastEventPositon == 0
+        ? 100m
+        : 100m * Convert.ToDecimal(currentProcessedPosition ?? 0) / Convert.ToDecimal(lastEventPositon));
+
+    decimal SweepPercentageComplete() =>
       Math.Min(
         100,
         lastEventPositon == 0 || isSweepCompleted
           ? 100m
-          : 100m * Convert.ToDecimal(currentSweepPosition ?? 0) / Convert.ToDecimal(lastEventPositon)));
+          : 100m * Convert.ToDecimal(currentSweepPosition ?? 0) / Convert.ToDecimal(lastEventPositon));
+  }
 
   internal void Initialize()
   {
@@ -139,30 +148,39 @@ internal class DynamicConsistencyBoundaryDaemon(
     InterestedEntityEntity[] entities,
     string originatingEventId) =>
     interests
-      .Select(s => (s,
-        entities.FirstOrNone(ie => ie.InterestedEntityStreamName == s.InterestedEntityStreamName)))
-      .Where(t => t.Item2.Match(
-        e =>
-          !e.OriginatingEventIds.Contains(originatingEventId)
-          && e.ConcernedStreams.Select(cs => cs.name).Contains(t.s.ConcernedEntityStreamName),
-        () => false))
-      .Select(t => t.s)
+      .Select(manifest => (manifest,
+        entity: entities.FirstOrNone(ie => ie.InterestedEntityStreamName == manifest.InterestedEntityStreamName)))
+      .Where(WillStopExistingInterest(originatingEventId))
+      .Select(t => t.manifest)
       .ToArray();
+
+  private static Func<(EntityInterestManifest manifest, Option<InterestedEntityEntity> entity), bool>
+    WillStopExistingInterest(string originatingEventId) =>
+    t => t.entity.Match(
+      e =>
+        !e.OriginatingEventIds.Contains(originatingEventId)
+        && e.ConcernedStreams.Select(cs => cs.name).Contains(t.manifest.ConcernedEntityStreamName),
+      () => false);
 
   private static EntityInterestManifest[] FilterOutIrrelevantStarts(
     EntityInterestManifest[] interests,
     InterestedEntityEntity[] entities,
     string originatingEventId) =>
     interests
-      .Select(s => (s,
-        entities.FirstOrNone(ie => ie.InterestedEntityStreamName == s.InterestedEntityStreamName)))
-      .Where(t => t.Item2.Match(
-        e =>
-          !e.OriginatingEventIds.Contains(originatingEventId)
-          && !e.ConcernedStreams.Select(cs => cs.name).Contains(t.s.ConcernedEntityStreamName),
-        () => true))
-      .Select(t => t.s)
+      .Select(manifest =>
+        (manifest,
+          entity: entities.FirstOrNone(ie => ie.InterestedEntityStreamName == manifest.InterestedEntityStreamName)))
+      .Where(WillInitiateNewInterest(originatingEventId))
+      .Select(t => t.manifest)
       .ToArray();
+
+  private static Func<(EntityInterestManifest manifest, Option<InterestedEntityEntity> entity), bool>
+    WillInitiateNewInterest(string originatingEventId) =>
+    t => t.entity.Match(
+      e =>
+        !e.OriginatingEventIds.Contains(originatingEventId)
+        && !e.ConcernedStreams.Select(cs => cs.name).Contains(t.manifest.ConcernedEntityStreamName),
+      () => true);
 
   private async Task RegisterNewInterests(EntityInterestManifest[] interests, Uuid originatingEventId) =>
     await interests
@@ -214,16 +232,6 @@ internal class DynamicConsistencyBoundaryDaemon(
 
   private async Task InsertEvent(EventModelEvent evt)
   {
-    switch (evt)
-    {
-      case InterestedEntityRegisteredInterest:
-        Interlocked.Increment(ref interestsRegisteredSinceStartup);
-        break;
-      case InterestedEntityHadInterestRemoved:
-        Interlocked.Increment(ref interestsRemovedSinceStartup);
-        break;
-    }
-
     await client.AppendToStreamAsync(
       evt.GetStreamName(),
       StreamState.Any,
@@ -240,6 +248,16 @@ internal class DynamicConsistencyBoundaryDaemon(
               null)
             .ToBytes())
       ]);
+
+    switch (evt)
+    {
+      case InterestedEntityRegisteredInterest:
+        Interlocked.Increment(ref interestsRegisteredSinceStartup);
+        break;
+      case InterestedEntityHadInterestRemoved:
+        Interlocked.Increment(ref interestsRemovedSinceStartup);
+        break;
+    }
   }
 
   private static Dictionary<string, string> ToDictionary(StrongId id)

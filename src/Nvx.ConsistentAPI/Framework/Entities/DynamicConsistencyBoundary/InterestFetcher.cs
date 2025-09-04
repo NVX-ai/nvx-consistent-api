@@ -3,18 +3,19 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace Nvx.ConsistentAPI;
 
-internal interface InterestRelation
+public interface InterestRelation
 {
   string StreamName { get; }
 }
 
-internal record Concern(string StreamName, StrongId Id) : InterestRelation;
+public record Concern(string StreamName, StrongId Id) : InterestRelation;
 
-internal record Interest(string StreamName, StrongId Id) : InterestRelation;
+public record Interest(string StreamName, StrongId Id) : InterestRelation;
 
-internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
+public class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
 {
-  private readonly MemoryCache cache = new(new MemoryCacheOptions { SizeLimit = 500 });
+  private readonly MemoryCache concernCache = new(new MemoryCacheOptions { SizeLimit = 25_000 });
+  private readonly MemoryCache interestCache = new(new MemoryCacheOptions { SizeLimit = 25_000 });
 
   private static async Task<TOut[]> Relations<TOut, TEntity>(
     string streamName,
@@ -53,9 +54,28 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
       Concerned,
       ce => ce.InterestedStreams.Choose(t => t.id.GetStrongId().Map(id => new Concern(t.name, id))));
 
+  public long? GetCachedRevision(string streamName)
+  {
+    if (streamName.StartsWith(InterestedEntityEntity.StreamPrefix)
+        && interestCache.Get<InterestCacheElement<InterestedEntityEntity>>(
+          streamName[InterestedEntityEntity.StreamPrefix.Length..]) is { } ie)
+    {
+      return ie.Revision;
+    }
+
+    if (streamName.StartsWith(ConcernedEntityEntity.StreamPrefix)
+        && concernCache.Get<InterestCacheElement<ConcernedEntityEntity>>(
+          streamName[ConcernedEntityEntity.StreamPrefix.Length..]) is { } ce)
+    {
+      return ce.Revision;
+    }
+
+    return null;
+  }
+
   private async Task<Option<ConcernedEntityEntity>> Concerned(string streamName)
   {
-    var entity = cache.Get(streamName) as InterestCacheElement<ConcernedEntityEntity>
+    var entity = concernCache.Get<InterestCacheElement<ConcernedEntityEntity>>(streamName)
                  ?? new InterestCacheElement<ConcernedEntityEntity>(
                    ConcernedEntityEntity.Defaulted(new ConcernedEntityId(streamName)),
                    -1);
@@ -82,7 +102,7 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
       return None;
     }
 
-    cache.Set(
+    concernCache.Set(
       streamName,
       entity,
       new MemoryCacheEntryOptions { Size = 1, AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(1) });
@@ -98,7 +118,7 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
 
   public async Task<Option<InterestedEntityEntity>> Interested(string streamName)
   {
-    var entity = cache.Get(streamName) as InterestCacheElement<InterestedEntityEntity>
+    var entity = interestCache.Get<InterestCacheElement<InterestedEntityEntity>>(streamName)
                  ?? new InterestCacheElement<InterestedEntityEntity>(
                    InterestedEntityEntity.Defaulted(new InterestedEntityId(streamName)),
                    -1);
@@ -125,7 +145,7 @@ internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Opti
       return None;
     }
 
-    cache.Set(
+    interestCache.Set(
       streamName,
       entity,
       new MemoryCacheEntryOptions { Size = 1, AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(1) });
