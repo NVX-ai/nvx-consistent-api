@@ -223,16 +223,6 @@ internal class DynamicConsistencyBoundaryDaemon(
 
   private async Task InsertEvent(EventModelEvent evt)
   {
-    switch (evt)
-    {
-      case InterestedEntityRegisteredInterest:
-        Interlocked.Increment(ref interestsRegisteredSinceStartup);
-        break;
-      case InterestedEntityHadInterestRemoved:
-        Interlocked.Increment(ref interestsRemovedSinceStartup);
-        break;
-    }
-
     await client.AppendToStreamAsync(
       evt.GetStreamName(),
       StreamState.Any,
@@ -249,6 +239,16 @@ internal class DynamicConsistencyBoundaryDaemon(
               null)
             .ToBytes())
       ]);
+
+    switch (evt)
+    {
+      case InterestedEntityRegisteredInterest:
+        Interlocked.Increment(ref interestsRegisteredSinceStartup);
+        break;
+      case InterestedEntityHadInterestRemoved:
+        Interlocked.Increment(ref interestsRemovedSinceStartup);
+        break;
+    }
   }
 
   private static Dictionary<string, string> ToDictionary(StrongId id)
