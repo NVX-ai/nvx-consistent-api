@@ -23,15 +23,7 @@ public class TriggersInterest<T>(
 }
 
 public class InitiatesInterest<T>(Func<T, EntityInterestManifest[]> initiates)
-  : InterestTrigger<T> where T : EventModelEvent
-{
-  protected override EntityInterestManifest[] Initiates(T evt) => initiates(evt);
-  protected override EntityInterestManifest[] Stops(T evt) => [];
-}
+  : TriggersInterest<T>(initiates, _ => []) where T : EventModelEvent;
 
 public class StopsInterest<T>(Func<T, EntityInterestManifest[]> stops)
-  : InterestTrigger<T> where T : EventModelEvent
-{
-  protected override EntityInterestManifest[] Initiates(T evt) => [];
-  protected override EntityInterestManifest[] Stops(T evt) => stops(evt);
-}
+  : TriggersInterest<T>(_ => [], stops) where T : EventModelEvent;
