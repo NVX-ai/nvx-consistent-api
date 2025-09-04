@@ -17,7 +17,7 @@ internal class ReadModelHydrationDaemon(
   InterestFetcher interestFetcher)
 {
   private const int HydrationRetryLimit = 100;
-  private const int InterestParallelism = 3;
+  private const int InterestParallelism = 6;
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
   private static readonly TimeSpan HydrationRetryDelay = TimeSpan.FromSeconds(10);
   private readonly string connectionString = settings.ReadModelConnectionString;
@@ -361,11 +361,7 @@ internal class ReadModelHydrationDaemon(
                _ => None
              })
     {
-      // do a revision check and skip if it's not last
       await TryProcessInterestedStream(tuple.InterestedEntityStreamName, tuple.id);
-      // Since concern-related events are not processed, but they happen symmetrically, this triggers the concerns
-      // in depth for the concerned entity.
-      await TryProcessConcernedStreams(tuple.ConcernedEntityStreamName);
     }
   }
 
