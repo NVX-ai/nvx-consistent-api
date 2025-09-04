@@ -12,6 +12,7 @@ internal class DynamicConsistencyBoundaryDaemon(
   ILogger logger,
   InterestFetcher interestFetcher)
 {
+  private readonly SemaphoreSlim semaphore = new(25);
   private ulong? currentProcessedPosition;
   private ulong? currentSweepPosition;
   private int interestsRegisteredSinceStartup;
@@ -87,6 +88,7 @@ internal class DynamicConsistencyBoundaryDaemon(
     {
       var shouldKeepRunning = true;
       var position = Position.Start;
+      var tasks = new List<Task>();
       while (shouldKeepRunning)
       {
         try
@@ -96,9 +98,25 @@ internal class DynamicConsistencyBoundaryDaemon(
                            position,
                            EventTypeFilter.ExcludeSystemEvents()))
           {
-            foreach (var parsed in parser(re))
+            tasks.AddRange(
+              parser(re)
+                .Select(parsed => Task.Run(async () =>
+                {
+                  try
+                  {
+                    await semaphore.WaitAsync();
+                    await TriggerInterests(parsed, re.Event.EventId);
+                  }
+                  finally
+                  {
+                    semaphore.Release();
+                  }
+                })));
+
+            if (tasks.Count > 250)
             {
-              await TriggerInterests(parsed, re.Event.EventId);
+              await Task.WhenAll(tasks);
+              tasks.Clear();
             }
 
             // ReSharper disable once RedundantAssignment
