@@ -151,8 +151,9 @@ public class EventModel
     var esClient = new EventStoreClient(EventStoreClientSettings.Create(settings.EventStoreConnectionString));
     var emitter = new Emitter(esClient, logger);
     var parser = Parser();
+    var interestFetcher = new InterestFetcher(esClient, parser);
 
-    var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(esClient, parser)));
+    var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(esClient, parser, interestFetcher)));
 
     await FileDefinitions.InitializeEndpoint(app, emitter, fetcher, settings);
     UserSecurityDefinitions.InitializeEndpoints(app, emitter, fetcher, settings);
@@ -203,7 +204,8 @@ public class EventModel
       fetcher,
       parser,
       ReadModels.Where(rm => rm is IdempotentReadModel).Cast<IdempotentReadModel>().ToArray(),
-      logger);
+      logger,
+      interestFetcher);
 
     await hydrationDaemon.Initialize();
 
@@ -220,7 +222,7 @@ public class EventModel
 
     processor.Initialize();
 
-    var dcbDaemon = new DynamicConsistencyBoundaryDaemon(esClient, parser, InterestTriggers, logger);
+    var dcbDaemon = new DynamicConsistencyBoundaryDaemon(esClient, parser, InterestTriggers, logger, interestFetcher);
     dcbDaemon.Initialize();
 
     CatchUp.Endpoint(ReadModels, hydrationDaemon, settings, fetcher, emitter, app);

@@ -9,9 +9,9 @@ internal class DynamicConsistencyBoundaryDaemon(
   EventStoreClient client,
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   InterestTrigger[] triggers,
-  ILogger logger)
+  ILogger logger,
+  InterestFetcher interestFetcher)
 {
-  private readonly InterestFetcher interestFetcher = new(client, parser);
   private ulong? currentProcessedPosition;
   private ulong? currentSweepPosition;
   private int interestsRegisteredSinceStartup;

@@ -14,7 +14,8 @@ public static class MultiTenantModel
       {
         Defaulter = MultiTenantEntity.Defaulted,
         StreamPrefix = MultiTenantEntity.StreamPrefix
-      }
+      },
+
     ],
     ReadModels = [MultiTenantEntityReadModel.Definition]
   };

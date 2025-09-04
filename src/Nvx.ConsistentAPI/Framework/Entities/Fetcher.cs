@@ -112,7 +112,8 @@ public class Fetcher<Entity> : EntityFetcher
     int cacheSize,
     TimeSpan cacheExpiration,
     bool isSlidingCache,
-    string streamPrefix)
+    string streamPrefix,
+    InterestFetcher interestFetcher)
   {
     this.streamPrefix = streamPrefix;
     cache = new MemoryCache(new MemoryCacheOptions { SizeLimit = cacheSize });
@@ -122,7 +123,8 @@ public class Fetcher<Entity> : EntityFetcher
       parser,
       cache,
       cacheExpiration,
-      isSlidingCache);
+      isSlidingCache,
+      interestFetcher);
   }
 
   public AsyncOption<FoundEntity> DaemonFetch(Option<StrongId> id, Fetcher fetcher, bool resetCache = false) =>
@@ -174,9 +176,9 @@ public class Fetcher<Entity> : EntityFetcher
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     MemoryCache cache,
     TimeSpan cacheExpiration,
-    bool isSlidingCache)
+    bool isSlidingCache,
+    InterestFetcher interestFetcher)
   {
-    var interestFetcher = new InterestFetcher(client, parser);
     var entryOptions = new MemoryCacheEntryOptions { Size = 1 };
     if (isSlidingCache)
     {

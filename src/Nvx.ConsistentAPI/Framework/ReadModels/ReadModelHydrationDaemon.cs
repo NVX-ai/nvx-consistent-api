@@ -13,7 +13,8 @@ internal class ReadModelHydrationDaemon(
   Fetcher fetcher,
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   IdempotentReadModel[] readModels,
-  ILogger logger)
+  ILogger logger,
+  InterestFetcher interestFetcher)
 {
   private const int HydrationRetryLimit = 100;
   private const int InterestParallelism = 3;
@@ -23,8 +24,6 @@ internal class ReadModelHydrationDaemon(
 
   private readonly DatabaseHandlerFactory databaseHandlerFactory =
     new(settings.ReadModelConnectionString, logger);
-
-  private readonly InterestFetcher interestFetcher = new(client, parser);
 
   private readonly SemaphoreSlim lastPositionSemaphore = new(1);
   private readonly SemaphoreSlim semaphore = new(1);
@@ -357,6 +356,7 @@ internal class ReadModelHydrationDaemon(
                _ => None
              })
     {
+        // do a revision check and skip if it's not last
       await TryProcessInterestedStream(tuple.InterestedEntityStreamName, tuple.id);
       // Since concern-related events are not processed, but they happen symmetrically, this triggers the concerns
       // in depth for the concerned entity.

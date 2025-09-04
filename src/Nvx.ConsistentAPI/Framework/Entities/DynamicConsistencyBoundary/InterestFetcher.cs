@@ -3,18 +3,18 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace Nvx.ConsistentAPI;
 
-internal interface InterestRelation
+public interface InterestRelation
 {
   string StreamName { get; }
 }
 
-internal record Concern(string StreamName, StrongId Id) : InterestRelation;
+public record Concern(string StreamName, StrongId Id) : InterestRelation;
 
-internal record Interest(string StreamName, StrongId Id) : InterestRelation;
+public record Interest(string StreamName, StrongId Id) : InterestRelation;
 
-internal class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
+public class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
 {
-  private readonly MemoryCache cache = new(new MemoryCacheOptions { SizeLimit = 500 });
+  private readonly MemoryCache cache = new(new MemoryCacheOptions { SizeLimit = 25_000 });
 
   private static async Task<TOut[]> Relations<TOut, TEntity>(
     string streamName,
