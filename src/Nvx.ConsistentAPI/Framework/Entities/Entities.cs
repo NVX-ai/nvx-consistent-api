@@ -36,7 +36,11 @@ public interface EventModelEntity<Entity> : EventModelEntity
 public interface EntityDefinition
 {
   string StreamPrefix { get; }
-  EntityFetcher GetFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser, InterestFetcher interestFetcher);
+
+  EntityFetcher GetFetcher(
+    EventStoreClient client,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    InterestFetcher interestFetcher);
 }
 
 public class EntityDefinition<EntityShape, EntityId> :
@@ -50,7 +54,10 @@ public class EntityDefinition<EntityShape, EntityId> :
   public bool IsSlidingCache { get; init; } = true;
   public required string StreamPrefix { get; init; }
 
-  public EntityFetcher GetFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser, InterestFetcher interestFetcher) =>
+  public EntityFetcher GetFetcher(
+    EventStoreClient client,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    InterestFetcher interestFetcher) =>
     new Fetcher<EntityShape>(
       client,
       sid => Optional(sid as EntityId).Bind<EntityShape>(eid => Defaulter(eid)),
