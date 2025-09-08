@@ -18,7 +18,6 @@ internal class ReadModelHydrationDaemon
   private readonly EventStoreClient client;
   private readonly string connectionString;
 
-  private readonly DatabaseHandlerFactory databaseHandlerFactory;
   private readonly Fetcher fetcher;
   private readonly InterestFetcher interestFetcher;
 
@@ -30,7 +29,6 @@ internal class ReadModelHydrationDaemon
   private readonly SemaphoreSlim semaphore = new(1);
   private readonly GeneratorSettings settings;
 
-  private readonly CentralHydrationStateMachine stateMachine;
 
   private readonly HydrationDaemonWorker[] workers;
   private HydrationCountTracker? hydrationCountTracker;
@@ -56,8 +54,7 @@ internal class ReadModelHydrationDaemon
     this.logger = logger;
     this.interestFetcher = interestFetcher;
     connectionString = settings.ReadModelConnectionString;
-    databaseHandlerFactory = new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger);
-    stateMachine = new CentralHydrationStateMachine(settings, logger);
+    var databaseHandlerFactory1 = new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger);
     modelHash = Convert.ToBase64String(
       SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(string.Empty, readModels.Select(rm => rm.TableName))))
     );
@@ -69,7 +66,7 @@ internal class ReadModelHydrationDaemon
         settings.ReadModelConnectionString,
         fetcher,
         readModels,
-        databaseHandlerFactory,
+        databaseHandlerFactory1,
         logger))
       .ToArray();
   }
@@ -199,7 +196,7 @@ internal class ReadModelHydrationDaemon
             {
               try
               {
-                await stateMachine.Queue(evt, TryProcess);
+                await TryProcess(evt);
               }
               catch (Exception ex)
               {
@@ -216,7 +213,7 @@ internal class ReadModelHydrationDaemon
             }
             case StreamMessage.AllStreamCheckpointReached(var pos):
             {
-              await stateMachine.Checkpoint(pos, Checkpoint);
+              await Checkpoint(pos);
               lastCheckpoint = pos.CommitPosition;
               break;
             }
@@ -224,7 +221,7 @@ internal class ReadModelHydrationDaemon
             {
               if (lastPosition is { } pos)
               {
-                await stateMachine.Checkpoint(pos, Checkpoint);
+                await Checkpoint(pos);
               }
 
               ClearTracker();
@@ -283,12 +280,14 @@ internal class ReadModelHydrationDaemon
 
           if (IsInterestEvent(@event))
           {
-            await TryProcessInterestedEvent(@event);
+            await TryProcessInterestedEvent(@event, Convert.ToInt64(evt.Event.Position.CommitPosition));
             await UpdateLastPosition(evt.Event.Position);
             return;
           }
 
-          var concernedTask = TryProcessConcernedStreams(@event.GetStreamName());
+          var concernedTask = TryProcessConcernedStreams(
+            @event.GetStreamName(),
+            Convert.ToInt64(evt.Event.Position.CommitPosition));
 
           var ableReadModels =
             ModelsForEvent.GetOrAdd(
@@ -331,7 +330,7 @@ internal class ReadModelHydrationDaemon
       or ConcernedEntityReceivedInterest
       or ConcernedEntityHadInterestRemoved;
 
-  private async Task TryProcessInterestedEvent(EventModelEvent @event)
+  private async Task TryProcessInterestedEvent(EventModelEvent @event, long position)
   {
     var interested = @event switch
     {
@@ -346,7 +345,12 @@ internal class ReadModelHydrationDaemon
 
     foreach (var tuple in interested)
     {
-      await TryProcessInterestedStream(tuple.InterestedEntityStreamName, tuple.id);
+      await HydrationDaemonWorker.Register(
+        modelHash,
+        connectionString,
+        tuple.InterestedEntityStreamName,
+        tuple.id,
+        position);
     }
 
     var concerned = @event switch
@@ -362,20 +366,20 @@ internal class ReadModelHydrationDaemon
 
     foreach (var concernedEntityStreamName in concerned)
     {
-      await TryProcessConcernedStreams(concernedEntityStreamName);
+      await TryProcessConcernedStreams(concernedEntityStreamName, position);
     }
   }
 
-  private async Task TryProcessConcernedStreams(string streamName) =>
+  private async Task TryProcessConcernedStreams(string streamName, long position) =>
     await interestFetcher
       .Concerns(streamName)
       .Map(ies =>
         ies
           .Select<Concern, Func<Task<Unit>>>(interestedStream => async () =>
-            await TryProcessInterestedStream(interestedStream.StreamName, interestedStream.Id))
+            await TryProcessInterestedStream(interestedStream.StreamName, interestedStream.Id, position))
           .Parallel(InterestParallelism));
 
-  private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId)
+  private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId, long position)
   {
     var ableReadModels = readModels.Where(rm => rm.CanProject(streamName)).ToArray();
     if (ableReadModels.Length == 0)
@@ -383,24 +387,14 @@ internal class ReadModelHydrationDaemon
       return unit;
     }
 
-    return await fetcher
-      .DaemonFetch(entityId, streamName, true)
-      .Iter(async entity =>
-      {
-        await ableReadModels
-          .Select<IdempotentReadModel, Func<Task<Unit>>>(rm =>
-            async () =>
-            {
-              await rm.TryProcess(
-                entity,
-                databaseHandlerFactory,
-                entityId,
-                null,
-                logger);
-              return unit;
-            })
-          .Parallel(InterestParallelism);
-      });
+    await HydrationDaemonWorker.Register(
+      modelHash,
+      connectionString,
+      streamName,
+      entityId,
+      position);
+
+    return unit;
   }
 
   private async Task Checkpoint(Position position)
