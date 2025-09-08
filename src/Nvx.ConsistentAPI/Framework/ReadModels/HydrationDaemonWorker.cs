@@ -39,7 +39,7 @@ public class HydrationDaemonWorker
     """
     UPDATE [HydrationQueue]
     SET [WorkerId] = @WorkerId,
-        [LockedUntil] = DATEADD(SECOND, 240, GETUTCDATE()),
+        [LockedUntil] = DATEADD(SECOND, 10, GETUTCDATE()),
         [TimesLocked] = @TimesLocked + 1
     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
       AND [StreamName] = @StreamName
@@ -141,9 +141,9 @@ public class HydrationDaemonWorker
       {
         await TryProcess();
       }
-      catch
+      catch (Exception ex)
       {
-        // ignore for now
+        logger.LogError(ex, "error hydrating");
       }
     }
     // ReSharper disable once FunctionNeverReturns
@@ -161,7 +161,7 @@ public class HydrationDaemonWorker
       {
         if (candidate is null)
         {
-          shouldPoll = false;
+          // shouldPoll = false;
           return;
         }
       }
