@@ -115,7 +115,6 @@ internal class ReadModelHydrationDaemon
 
       await DoInitialize();
       _ = Task.Run(Hydrate);
-      _ = Task.Run(RetryFailedHydrations);
 
       isInitialized = true;
     }
@@ -151,25 +150,6 @@ internal class ReadModelHydrationDaemon
         END 
       """;
     await connection.ExecuteAsync(sql);
-
-    const string failedHydrationSql =
-      """
-      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'FailedReadModelHydration')
-        BEGIN
-          CREATE TABLE [FailedReadModelHydration]
-          (
-            [StreamName] NVARCHAR(255) NOT NULL,
-            [EventId] NVARCHAR(255) NOT NULL,
-            [EventType] NVARCHAR(255) NOT NULL,
-            [HappenedAt] DATETIME2 NOT NULL,
-            [RetryCount] INT NOT NULL DEFAULT 0,
-            [ErrorMessage] NVARCHAR(MAX) NOT NULL,
-            [NextRetryFrom] DATETIME2 NOT NULL,
-          )
-        END
-      """;
-
-    await connection.ExecuteAsync(failedHydrationSql);
   }
 
   private async Task<FromAll> GetCheckpoint()
@@ -349,40 +329,7 @@ internal class ReadModelHydrationDaemon
     }
     catch (Exception ex)
     {
-      try
-      {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.ExecuteAsync(
-          """
-          IF NOT EXISTS (
-            SELECT 1 FROM [FailedReadModelHydration]
-            WHERE [StreamName] = @StreamName AND [EventId] = @EventId
-          )
-          INSERT INTO [FailedReadModelHydration] (
-            [StreamName], [EventId], [EventType], [HappenedAt], [ErrorMessage], [NextRetryFrom]
-          ) VALUES (
-            @StreamName, @EventId, @EventType, @HappenedAt, @ErrorMessage, @NextRetryFrom
-          )
-          """,
-          new
-          {
-            StreamName = evt.Event.EventStreamId,
-            EventId = evt.Event.EventId.ToString(),
-            evt.Event.EventType,
-            HappenedAt = DateTime.UtcNow,
-            ErrorMessage = ex.Message,
-            NextRetryFrom = DateTime.UtcNow
-          });
-      }
-      catch (Exception dbEx)
-      {
-        logger.LogError(
-          dbEx,
-          "Error logging failed read model hydration for event {EventId} on stream {StreamName}",
-          evt.Event.EventId,
-          evt.Event.EventStreamId);
-        throw;
-      }
+      //ignore for now
     }
   }
 
@@ -492,121 +439,6 @@ internal class ReadModelHydrationDaemon
         await transaction.RollbackAsync();
       }
     }
-  }
-
-  private async Task RetryFailedHydrations()
-  {
-    while (settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration))
-    {
-      try
-      {
-        await using var connection = new SqlConnection(connectionString);
-        var failedHydrations = await connection
-          .QueryAsync<FailedHydration>(
-            """
-            SELECT TOP 500
-              [StreamName],
-              [EventId],
-              [EventType],
-              [HappenedAt],
-              [RetryCount],
-              [ErrorMessage],
-              [NextRetryFrom]
-            FROM [FailedReadModelHydration]
-            WHERE [RetryCount] < @RetryLimit
-            AND [NextRetryFrom] < GETUTCDATE()
-            ORDER BY [RetryCount] ASC
-            """,
-            new
-            {
-              RetryLimit = HydrationRetryLimit
-            })
-          .Map(Enumerable.ToArray);
-
-        FailedHydrations = failedHydrations;
-
-        if (failedHydrations.Length == 0)
-        {
-          await Task.Delay(2_500);
-          continue;
-        }
-
-        foreach (var fh in failedHydrations)
-        {
-          const string increaseRetrySql =
-            """
-            UPDATE [FailedReadModelHydration]
-            SET [RetryCount] = [RetryCount] + 1, [NextRetryFrom] = @NextRetryFrom
-            WHERE [EventId] = @EventId AND [StreamName] = @StreamName
-            """;
-
-          await connection.ExecuteAsync(
-            increaseRetrySql,
-            new
-            {
-              fh.EventId,
-              fh.StreamName,
-              NextRetryFrom = DateTime.UtcNow + HydrationRetryDelay * fh.RetryCount
-            });
-
-          // Starts on 0, retry up to HydrationRetryLimit - 1 times.
-          if (fh.RetryCount >= HydrationRetryLimit - 1)
-          {
-            logger.LogCritical(
-              "Event {EventId} on stream {StreamName} has failed to hydrate {RetryCount} times, giving up",
-              fh.EventId,
-              fh.StreamName,
-              fh.RetryCount);
-            continue;
-          }
-
-          var streamRead = client.ReadStreamAsync(Direction.Backwards, fh.StreamName, StreamPosition.End, 1);
-          if (await streamRead.ReadState == ReadState.StreamNotFound)
-          {
-            continue;
-          }
-
-          await foreach (var resolvedEvent in streamRead.Take(1))
-          {
-            await TryProcess(resolvedEvent);
-            await connection.ExecuteAsync(
-              "DELETE FROM [FailedReadModelHydration] WHERE [EventId] = @EventId AND [StreamName] = @StreamName",
-              new { fh.EventId, fh.StreamName });
-          }
-        }
-      }
-      catch (Exception ex)
-      {
-        logger.LogError(ex, "Error retrying failed read model hydrations");
-        await Task.Delay(500);
-      }
-    }
-  }
-
-  internal async Task<FailedHydration[]> GetLingeringFailedHydrations()
-  {
-    if (!settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration))
-    {
-      return [];
-    }
-
-    await using var connection = new SqlConnection(connectionString);
-    return await connection
-      .QueryAsync<FailedHydration>(
-        """
-        SELECT
-          [StreamName],
-          [EventId],
-          [EventType],
-          [HappenedAt],
-          [RetryCount],
-          [ErrorMessage],
-          [NextRetryFrom]
-        FROM [FailedReadModelHydration]
-        WHERE [RetryCount] > 10
-        ORDER BY [RetryCount] ASC
-        """)
-      .Map(Enumerable.ToArray);
   }
 }
 
