@@ -199,12 +199,12 @@ internal class ReadModelHydrationDaemon(
             }
             case StreamMessage.CaughtUp:
             {
+              ClearTracker();
               if (lastPosition is { } pos)
               {
                 await stateMachine.Checkpoint(pos, Checkpoint);
               }
 
-              ClearTracker();
               break;
             }
             case StreamMessage.FellBehind:
@@ -421,8 +421,9 @@ internal class ReadModelHydrationDaemon(
       await transaction.CommitAsync();
       await UpdateLastPosition(position);
     }
-    catch
+    catch (Exception ex)
     {
+      logger.LogError(ex, "Error updating the central daemon checkpoint");
       // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
       if (transaction is not null)
       {
