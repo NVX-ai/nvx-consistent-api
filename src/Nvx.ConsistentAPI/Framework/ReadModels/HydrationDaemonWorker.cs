@@ -4,13 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Nvx.ConsistentAPI;
 
-public class HydrationDaemonWorker(
-  string modelHash,
-  string connectionString,
-  Fetcher fetcher,
-  IdempotentReadModel[] readModels,
-  DatabaseHandlerFactory dbFactory,
-  ILogger logger)
+public class HydrationDaemonWorker
 {
   public const string QueueTableSql =
     """
@@ -44,7 +38,7 @@ public class HydrationDaemonWorker(
     """
     UPDATE [HydrationQueue]
     SET [WorkerId] = @WorkerId,
-        [LockedUntil] = DATEADD(SECOND, 120, GETUTCDATE()),
+        [LockedUntil] = DATEADD(SECOND, 240, GETUTCDATE()),
         [TimesLocked] = @TimesLocked + 1
     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
       AND [StreamName] = @StreamName
@@ -59,14 +53,71 @@ public class HydrationDaemonWorker(
       AND [ModelHash] = @ModelHash
     """;
 
+  private readonly string connectionString;
+  private readonly DatabaseHandlerFactory dbFactory;
+  private readonly Fetcher fetcher;
+
   private readonly Lock @lock = new();
+  private readonly ILogger logger;
+  private readonly string modelHash;
+
+  // ReSharper disable once NotAccessedField.Local
+  private readonly Task processTask;
+  private readonly IdempotentReadModel[] readModels;
 
   private readonly Guid workerId = Guid.NewGuid();
   private bool shouldPoll = true;
 
+  public HydrationDaemonWorker(
+    string modelHash,
+    string connectionString,
+    Fetcher fetcher,
+    IdempotentReadModel[] readModels,
+    DatabaseHandlerFactory dbFactory,
+    ILogger logger)
+  {
+    this.modelHash = modelHash;
+    this.connectionString = connectionString;
+    this.fetcher = fetcher;
+    this.readModels = readModels;
+    this.dbFactory = dbFactory;
+    this.logger = logger;
+    processTask = Process();
+  }
+
+  public void Trigger()
+  {
+    lock (@lock)
+    {
+      shouldPoll = true;
+    }
+  }
+
+  private async Task Process()
+  {
+    while (true)
+    {
+      if (!shouldPoll)
+      {
+        await Task.Delay(Random.Shared.Next(1, 500));
+        continue;
+      }
+
+      try
+      {
+        await TryProcess();
+      }
+      catch
+      {
+        // ignore for now
+      }
+    }
+    // ReSharper disable once FunctionNeverReturns
+  }
+
   private async Task TryProcess()
   {
-    HydrationQueueEntry? candidate = null;
+    HydrationQueueEntry? candidate;
     await using (var connection = new SqlConnection(connectionString))
     {
       var candidates =
@@ -103,7 +154,6 @@ public class HydrationDaemonWorker(
     {
       return;
     }
-
 
     var maybeEntity = await candidate
       .GetStrongId()
