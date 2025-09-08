@@ -1,4 +1,6 @@
 ﻿using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using Dapper;
 using EventStore.Client;
 using Microsoft.Data.SqlClient;
@@ -22,11 +24,11 @@ internal class ReadModelHydrationDaemon
 
   private readonly SemaphoreSlim lastPositionSemaphore = new(1);
   private readonly ILogger logger;
+  private readonly string modelHash;
   private readonly Func<ResolvedEvent, Option<EventModelEvent>> parser;
   private readonly IdempotentReadModel[] readModels;
   private readonly SemaphoreSlim semaphore = new(1);
   private readonly GeneratorSettings settings;
-  private readonly string modelHash;
 
   private readonly CentralHydrationStateMachine stateMachine;
 
@@ -56,9 +58,8 @@ internal class ReadModelHydrationDaemon
     connectionString = settings.ReadModelConnectionString;
     databaseHandlerFactory = new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger);
     stateMachine = new CentralHydrationStateMachine(settings, logger);
-    var allTableNames = string.Join(string.Empty, readModels.Select(rm => rm.TableName));
     modelHash = Convert.ToBase64String(
-      System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(allTableNames))
+      SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(string.Empty, readModels.Select(rm => rm.TableName))))
     );
 
     workers = Enumerable
