@@ -21,7 +21,8 @@ public class HydrationDaemonWorker
         [WorkerId] [uniqueidentifier] NULL,
         [LockedUntil] [datetime2](7) NULL,
         [TimesLocked] [int] NOT NULL,
-        [CreatedAt] [datetime2](7) NOT NULL DEFAULT (GETUTCDATE()))
+        [CreatedAt] [datetime2](7) NOT NULL DEFAULT (GETUTCDATE()),
+        [IsDynamicConsistencyBoundary] [bit] NOT NULL DEFAULT (0))
     END
     """;
 
@@ -53,14 +54,15 @@ public class HydrationDaemonWorker
     DELETE FROM [HydrationQueue]
     WHERE [StreamName] = @StreamName
       AND [ModelHash] = @ModelHash
+      AND [WorkerId] = @WorkerId
     """;
 
   private const string InsertSql =
     """
     INSERT INTO [HydrationQueue]
-    ([StreamName], [SerializedId], [IdTypeName], [IdTypeNamespace], [ModelHash], [Position], [TimesLocked])
+    ([StreamName], [SerializedId], [IdTypeName], [IdTypeNamespace], [ModelHash], [Position], [TimesLocked], [IsDynamicConsistencyBoundary])
     VALUES
-    (@StreamName, @SerializedId, @IdTypeName, @IdTypeNamespace, @ModelHash, @Position, 0)
+    (@StreamName, @SerializedId, @IdTypeName, @IdTypeNamespace, @ModelHash, @Position, 0, @IsDynamicConsistencyBoundary)
     """;
 
   private const string PendingEventsCountSql =
@@ -103,7 +105,8 @@ public class HydrationDaemonWorker
     string connectionString,
     string streamName,
     StrongId id,
-    long position)
+    long position,
+    bool isDynamicConsistencyBoundary)
   {
     var idType = id.GetType();
     await using var connection = new SqlConnection(connectionString);
@@ -116,7 +119,8 @@ public class HydrationDaemonWorker
         IdTypeName = idType.Name,
         IdTypeNamespace = idType.Namespace,
         ModelHash = modelHash,
-        Position = position
+        Position = position,
+        IsDynamicConsistencyBoundary = isDynamicConsistencyBoundary
       });
   }
 
@@ -196,7 +200,9 @@ public class HydrationDaemonWorker
     var maybeEntity = await candidate
       .GetStrongId()
       .Async()
-      .Bind(id => fetcher.DaemonFetch(id, candidate.StreamName).Map(e => (id, e)));
+      .Bind(id => fetcher
+        .DaemonFetch(id, candidate.StreamName, candidate.IsDynamicConsistencyBoundary)
+        .Map(e => (id, e)));
 
     foreach (var t in maybeEntity)
     {
@@ -208,7 +214,9 @@ public class HydrationDaemonWorker
 
     await using (var connection = new SqlConnection(connectionString))
     {
-      await connection.ExecuteAsync(RemoveEntySql, new { candidate.StreamName, ModelHash = modelHash });
+      await connection.ExecuteAsync(
+        RemoveEntySql,
+        new { candidate.StreamName, ModelHash = modelHash, WorkerId = workerId });
     }
   }
 
@@ -229,4 +237,5 @@ public record HydrationQueueEntry(
   Guid? WorkerId,
   DateTime? LockedUntil,
   int TimesLocked,
-  DateTime CreatedAt);
+  DateTime CreatedAt,
+  bool IsDynamicConsistencyBoundary);

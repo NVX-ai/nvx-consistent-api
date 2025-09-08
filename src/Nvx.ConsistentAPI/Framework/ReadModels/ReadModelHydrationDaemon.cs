@@ -14,7 +14,6 @@ internal class ReadModelHydrationDaemon
   private const int HydrationRetryLimit = 100;
   private const int InterestParallelism = 6;
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
-  private static readonly TimeSpan HydrationRetryDelay = TimeSpan.FromSeconds(10);
   private readonly EventStoreClient client;
   private readonly string connectionString;
 
@@ -306,7 +305,8 @@ internal class ReadModelHydrationDaemon
             settings.ReadModelConnectionString,
             evt.OriginalStreamId,
             @event.GetEntityId(),
-            Convert.ToInt64(evt.Event.Position.CommitPosition));
+            Convert.ToInt64(evt.Event.Position.CommitPosition),
+            false);
 
           foreach (var worker in workers)
           {
@@ -350,7 +350,8 @@ internal class ReadModelHydrationDaemon
         connectionString,
         tuple.InterestedEntityStreamName,
         tuple.id,
-        position);
+        position,
+        true);
     }
 
     var concerned = @event switch
@@ -392,7 +393,8 @@ internal class ReadModelHydrationDaemon
       connectionString,
       streamName,
       entityId,
-      position);
+      position,
+      true);
 
     return unit;
   }
