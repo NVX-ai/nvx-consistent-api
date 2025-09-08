@@ -21,6 +21,7 @@ internal class ReadModelHydrationDaemon(
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
   private static readonly TimeSpan HydrationRetryDelay = TimeSpan.FromSeconds(10);
   private readonly string connectionString = settings.ReadModelConnectionString;
+  private DateTime lastMessageReceivedAt = DateTime.MaxValue;
 
   private readonly DatabaseHandlerFactory databaseHandlerFactory =
     new(settings.ReadModelConnectionString, logger);
@@ -51,6 +52,7 @@ internal class ReadModelHydrationDaemon(
 
   public bool IsUpToDate(Position? position) =>
     hydrationCountTracker is null
+    || lastMessageReceivedAt < DateTime.UtcNow.AddMinutes(-5)
     || (position.HasValue && lastPosition.HasValue && position.Value <= lastPosition.Value);
 
   public async Task Initialize()
@@ -170,6 +172,7 @@ internal class ReadModelHydrationDaemon(
           filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()));
         await foreach (var message in subscription.Messages)
         {
+          lastMessageReceivedAt = DateTime.UtcNow;
           switch (message)
           {
             case StreamMessage.Event(var evt):
