@@ -39,7 +39,7 @@ public class HydrationDaemonWorker
     """
     UPDATE [HydrationQueue]
     SET [WorkerId] = @WorkerId,
-        [LockedUntil] = DATEADD(SECOND, 10, GETUTCDATE()),
+        [LockedUntil] = DATEADD(SECOND, 5, GETUTCDATE()),
         [TimesLocked] = @TimesLocked + 1
     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
       AND [StreamName] = @StreamName
@@ -64,7 +64,7 @@ public class HydrationDaemonWorker
     """;
 
   private const string PendingEventsCountSql =
-    "SELECT COUNT(*) FROM [HydrationQueue] WHERE [ModelHash] = @ModelHash";
+    "SELECT COUNT(*) FROM [HydrationQueue] WHERE [ModelHash] = @ModelHash AND [TimesLocked] < 25";
 
   private readonly string connectionString;
   private readonly DatabaseHandlerFactory dbFactory;
@@ -158,11 +158,13 @@ public class HydrationDaemonWorker
       var candidates =
         await connection.QueryAsync<HydrationQueueEntry>(GetCandidatesSql, new { ModelHash = modelHash });
       candidate = candidates.OrderBy(_ => Guid.NewGuid()).FirstOrDefault();
-      lock (@lock)
+
+      if (candidate is null)
       {
-        if (candidate is null)
+        var count = await PendingEventsCount(modelHash, connectionString);
+        lock (@lock)
         {
-          // shouldPoll = false;
+          shouldPoll = count > 0;
           return;
         }
       }
