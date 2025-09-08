@@ -1,6 +1,7 @@
 ﻿using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Nvx.ConsistentAPI.Framework;
 
 namespace Nvx.ConsistentAPI;
 
@@ -46,12 +47,40 @@ public class HydrationDaemonWorker
       AND [TimesLocked] = @TimesLocked
     """;
 
-  public const string RemoveEntySql =
+  private const string RemoveEntySql =
     """
     DELETE FROM [HydrationQueue]
     WHERE [StreamName] = @StreamName
       AND [ModelHash] = @ModelHash
     """;
+
+  private const string InsertSql =
+    """
+    INSERT INTO [HydrationQueue]
+    ([StreamName], [SerializedId], [IdTypeName], [IdTypeNamespace], [ModelHash], [Position], [TimesLocked])
+    VALUES
+    (@StreamName, @SerializedId, @IdTypeName, @IdTypeNamespace, @ModelHash, @Position, 0)
+    """;
+
+  public static async Task Register(
+    string modelHash,
+    string connectionString,
+    string streamName,
+    StrongId id,
+    long position)
+  {
+    var idType = id.GetType();
+    await using var connection = new SqlConnection(connectionString);
+    await connection.ExecuteAsync(InsertSql, new
+    {
+      StreamName = streamName,
+      SerializedId = Serialization.Serialize(id),
+      IdTypeName = idType.Name,
+      IdTypeNamespace = idType.Namespace,
+      ModelHash = modelHash,
+      Position = position
+    });
+  }
 
   private readonly string connectionString;
   private readonly DatabaseHandlerFactory dbFactory;

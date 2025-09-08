@@ -304,25 +304,18 @@ internal class ReadModelHydrationDaemon
             return;
           }
 
-          await fetcher
-            .DaemonFetch(@event.GetEntityId(), @event.GetStreamName())
-            .Iter(async entity =>
-            {
-              await ableReadModels
-                .Select<IdempotentReadModel, Func<Task<Unit>>>(rm =>
-                  async () =>
-                  {
-                    await rm.TryProcess(
-                      entity,
-                      databaseHandlerFactory,
-                      @event.GetEntityId(),
-                      null,
-                      logger);
-                    await UpdateLastPosition(evt.Event.Position);
-                    return unit;
-                  })
-                .Parallel(InterestParallelism);
-            });
+          await HydrationDaemonWorker.Register(
+            modelHash,
+            settings.ReadModelConnectionString,
+            evt.OriginalStreamId,
+            @event.GetEntityId(),
+            Convert.ToInt64(evt.Event.Position.CommitPosition));
+
+          foreach (var worker in workers)
+          {
+            worker.Trigger();
+          }
+
           await concernedTask;
           await UpdateLastPosition(evt.Event.Position);
         });
