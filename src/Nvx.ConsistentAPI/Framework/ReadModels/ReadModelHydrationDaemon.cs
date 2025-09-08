@@ -74,8 +74,6 @@ internal class ReadModelHydrationDaemon
       .ToArray();
   }
 
-  internal FailedHydration[] FailedHydrations { get; private set; } = [];
-
   public async Task<HydrationDaemonInsights> Insights(ulong lastEventPosition)
   {
     var currentPosition = lastPosition?.CommitPosition ?? 0UL;
@@ -86,7 +84,7 @@ internal class ReadModelHydrationDaemon
       currentPosition,
       lastCheckpoint ?? 0,
       Math.Min(100m, percentageComplete),
-      await stateMachine.EventsBeingProcessedCount());
+      await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString));
   }
 
   public bool IsUpToDate(Position? position) =>

@@ -62,25 +62,8 @@ public class HydrationDaemonWorker
     (@StreamName, @SerializedId, @IdTypeName, @IdTypeNamespace, @ModelHash, @Position, 0)
     """;
 
-  public static async Task Register(
-    string modelHash,
-    string connectionString,
-    string streamName,
-    StrongId id,
-    long position)
-  {
-    var idType = id.GetType();
-    await using var connection = new SqlConnection(connectionString);
-    await connection.ExecuteAsync(InsertSql, new
-    {
-      StreamName = streamName,
-      SerializedId = Serialization.Serialize(id),
-      IdTypeName = idType.Name,
-      IdTypeNamespace = idType.Namespace,
-      ModelHash = modelHash,
-      Position = position
-    });
-  }
+  private const string PendingEventsCountSql =
+    "SELECT COUNT(*) FROM [HydrationQueue] WHERE [ModelHash] = @ModelHash";
 
   private readonly string connectionString;
   private readonly DatabaseHandlerFactory dbFactory;
@@ -114,6 +97,28 @@ public class HydrationDaemonWorker
     processTask = Process();
   }
 
+  public static async Task Register(
+    string modelHash,
+    string connectionString,
+    string streamName,
+    StrongId id,
+    long position)
+  {
+    var idType = id.GetType();
+    await using var connection = new SqlConnection(connectionString);
+    await connection.ExecuteAsync(
+      InsertSql,
+      new
+      {
+        StreamName = streamName,
+        SerializedId = Serialization.Serialize(id),
+        IdTypeName = idType.Name,
+        IdTypeNamespace = idType.Namespace,
+        ModelHash = modelHash,
+        Position = position
+      });
+  }
+
   public void Trigger()
   {
     lock (@lock)
@@ -128,7 +133,7 @@ public class HydrationDaemonWorker
     {
       if (!shouldPoll)
       {
-        await Task.Delay(Random.Shared.Next(1, 500));
+        await Task.Delay(Random.Shared.Next(1, 150));
         continue;
       }
 
@@ -201,6 +206,12 @@ public class HydrationDaemonWorker
     {
       await connection.ExecuteAsync(RemoveEntySql, new { candidate.StreamName, ModelHash = modelHash });
     }
+  }
+
+  public static async Task<int> PendingEventsCount(string modelHash, string connectionString)
+  {
+    await using var connection = new SqlConnection(connectionString);
+    return await connection.QuerySingleAsync<int>(PendingEventsCountSql, new { ModelHash = modelHash });
   }
 }
 
