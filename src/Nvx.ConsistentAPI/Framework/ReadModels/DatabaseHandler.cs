@@ -530,42 +530,16 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     }
   }
 
-  private async Task Delete(Shape[] rms, StrongId id, SqlConnection connection)
-  {
-    var ids = rms.Select((r, idx) => (r.Id, idx)).Distinct().ToArray();
-    if (ids.Length == 0)
-    {
-      await connection.ExecuteAsync(
-        $"DELETE FROM [{tableName}] WHERE [FrameworkRelatedEntityId] = @Id",
-        new { Id = id.StreamId() });
-      return;
-    }
-
-    var idParams = new DynamicParameters();
-    foreach (var idTuple in ids)
-    {
-      idParams.Add($"id{idTuple.idx}", idTuple.Id);
-    }
-
-    idParams.Add("Id", id.StreamId());
-
-    var selectiveDeleteSql =
-      $"""
-       DELETE FROM [{tableName}]
-       WHERE [Id] NOT IN ({string.Join(", ", ids.Select(idTuple => $"@id{idTuple.idx}"))})
-       AND   [FrameworkRelatedEntityId] = @Id
-       """;
-
+  private async Task Delete(StrongId id, SqlConnection connection) =>
     await connection.ExecuteAsync(
-      selectiveDeleteSql,
-      idParams);
-  }
+      $"DELETE FROM [{tableName}] WHERE [FrameworkRelatedEntityId] = @Id",
+      new { Id = id.StreamId() });
 
   public async Task<Unit> Update(Shape[] rms, string? checkpoint, TraceabilityFields traceabilityFields, StrongId id)
   {
     await using var connection = new SqlConnection(connectionString);
 
-    await Delete(rms, id, connection);
+    await Delete(id, connection);
     try
     {
       foreach (var rm in rms.DistinctBy(r => r.Id))
@@ -595,14 +569,17 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     try
     {
       var parameters = new DynamicParameters(rm);
-      
-      var traceabilityFieldsTruncated = traceabilityFields with { FrameworkRelatedEntityId = traceabilityFields.FrameworkRelatedEntityId.Length > StringSizes.InlinedId
-        ? new StringInfo(traceabilityFields.FrameworkRelatedEntityId).SubstringByTextElements(
-          0,
-          StringSizes.InlinedId)
-        : traceabilityFields.FrameworkRelatedEntityId };
+
+      var traceabilityFieldsTruncated = traceabilityFields with
+      {
+        FrameworkRelatedEntityId = traceabilityFields.FrameworkRelatedEntityId.Length > StringSizes.InlinedId
+          ? new StringInfo(traceabilityFields.FrameworkRelatedEntityId).SubstringByTextElements(
+            0,
+            StringSizes.InlinedId)
+          : traceabilityFields.FrameworkRelatedEntityId
+      };
       parameters.AddDynamicParams(traceabilityFieldsTruncated);
-      
+
       foreach (var prop in stringProperties)
       {
         var strValue = prop.pi.GetValue(rm) as string;
@@ -630,11 +607,11 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
           {
             continue;
           }
-          
+
           parameters.Add(prop.Name, JsonConvert.SerializeObject(values));
         }
       }
-      
+
       await connection.ExecuteAsync(TraceableUpsertSql, parameters);
       foreach (var prop in arrayProperties)
       {
