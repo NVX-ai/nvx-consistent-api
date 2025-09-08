@@ -127,6 +127,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
   public bool CanProject(EventModelEvent e) => e.GetStreamName().StartsWith(StreamPrefix);
   public bool CanProject(string streamName) => streamName.StartsWith(StreamPrefix);
+  public string TableName => DatabaseHandler<Shape>.TableName(typeof(Shape));
 
   private async Task Subscribe(
     EventStoreClient client,

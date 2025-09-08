@@ -62,6 +62,8 @@ public interface IdempotentReadModel
 
   bool CanProject(EventModelEvent e);
   bool CanProject(string streamName);
+
+  string TableName { get; }
 }
 
 public interface EventModelingProjectionArtifact
