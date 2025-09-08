@@ -45,6 +45,7 @@ public class HydrationDaemonWorker
       AND [StreamName] = @StreamName
       AND [ModelHash] = @ModelHash
       AND [TimesLocked] = @TimesLocked
+      AND ([WorkerId] IS NULL AND @ExistingWorkerId IS NULL OR [WorkerId] = @ExistingWorkerId)
     """;
 
   private const string RemoveEntySql =
@@ -173,7 +174,8 @@ public class HydrationDaemonWorker
           WorkerId = workerId,
           candidate.StreamName,
           ModelHash = modelHash,
-          candidate.TimesLocked
+          candidate.TimesLocked,
+          ExistingWorkerId = candidate.WorkerId
         });
 
       if (rowsAffected == 0)
