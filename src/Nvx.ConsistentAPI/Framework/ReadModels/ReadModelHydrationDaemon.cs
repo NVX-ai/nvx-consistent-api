@@ -85,7 +85,12 @@ internal class ReadModelHydrationDaemon(
     }
   }
 
-  private async Task DoInitialize() => await CreateTable();
+  private async Task DoInitialize()
+  {
+    await CreateTable();
+    await using var connection = new SqlConnection(connectionString);
+    await connection.ExecuteAsync(HydrationDaemonWorker.QueueTableSql);
+  }
 
   private async Task CreateTable()
   {
