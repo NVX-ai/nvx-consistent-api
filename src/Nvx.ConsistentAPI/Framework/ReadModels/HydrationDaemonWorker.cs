@@ -66,7 +66,7 @@ public class HydrationDaemonWorker
   private readonly IdempotentReadModel[] readModels;
 
   private readonly Guid workerId = Guid.NewGuid();
-  private bool shouldPoll = true;
+  private bool shouldPoll;
 
   public HydrationDaemonWorker(
     string modelHash,

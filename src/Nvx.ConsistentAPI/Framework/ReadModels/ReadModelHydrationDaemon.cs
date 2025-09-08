@@ -26,6 +26,7 @@ internal class ReadModelHydrationDaemon
   private readonly IdempotentReadModel[] readModels;
   private readonly SemaphoreSlim semaphore = new(1);
   private readonly GeneratorSettings settings;
+  private readonly string modelHash;
 
   private readonly CentralHydrationStateMachine stateMachine;
 
@@ -55,10 +56,15 @@ internal class ReadModelHydrationDaemon
     connectionString = settings.ReadModelConnectionString;
     databaseHandlerFactory = new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger);
     stateMachine = new CentralHydrationStateMachine(settings, logger);
+    var allTableNames = string.Join(string.Empty, readModels.Select(rm => rm.TableName));
+    modelHash = Convert.ToBase64String(
+      System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(allTableNames))
+    );
+
     workers = Enumerable
       .Range(1, HydrationRetryLimit)
       .Select(_ => new HydrationDaemonWorker(
-        "dfsadfsd",
+        modelHash,
         settings.ReadModelConnectionString,
         fetcher,
         readModels,
