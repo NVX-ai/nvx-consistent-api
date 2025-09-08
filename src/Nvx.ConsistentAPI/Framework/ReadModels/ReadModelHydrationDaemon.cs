@@ -350,18 +350,36 @@ internal class ReadModelHydrationDaemon(
 
   private async Task TryProcessInterestedEvent(EventModelEvent @event)
   {
-    foreach (var tuple in @event switch
-             {
-               InterestedEntityRegisteredInterest ie => ie
-                 .InterestedEntityId.GetStrongId()
-                 .Map(id1 => (id: id1, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
-               InterestedEntityHadInterestRemoved ie => ie
-                 .InterestedEntityId.GetStrongId()
-                 .Map(id2 => (id: id2, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
-               _ => None
-             })
+    var interested = @event switch
+    {
+      InterestedEntityRegisteredInterest ie => ie
+        .InterestedEntityId.GetStrongId()
+        .Map(id => (id, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
+      InterestedEntityHadInterestRemoved ie => ie
+        .InterestedEntityId.GetStrongId()
+        .Map(id => (id, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
+      _ => None
+    };
+
+    foreach (var tuple in interested)
     {
       await TryProcessInterestedStream(tuple.InterestedEntityStreamName, tuple.id);
+    }
+
+    var concerned = @event switch
+    {
+      ConcernedEntityReceivedInterest ce => ce
+        .ConcernedEntityId.GetStrongId()
+        .Map(_ => ce.ConcernedEntityStreamName),
+      ConcernedEntityHadInterestRemoved ce => ce
+        .ConcernedEntityId.GetStrongId()
+        .Map(_ => ce.ConcernedEntityStreamName),
+      _ => None
+    };
+
+    foreach (var concernedEntityStreamName in concerned)
+    {
+      await TryProcessConcernedStreams(concernedEntityStreamName);
     }
   }
 

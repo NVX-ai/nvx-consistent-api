@@ -218,10 +218,7 @@ public class Fetcher<Entity> : EntityFetcher
           interests);
     }
   }
-
-
 }
-
 
 public record FetchResult<Entity>(
   Option<Entity> Ent,
