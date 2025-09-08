@@ -1,11 +1,17 @@
-﻿using Microsoft.Data.SqlClient;
+﻿using Dapper;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 
 namespace Nvx.ConsistentAPI;
 
-public class HydrationDaemonWorker(string modelHash, string connectionString)
+public class HydrationDaemonWorker(
+  string modelHash,
+  string connectionString,
+  Fetcher fetcher,
+  IdempotentReadModel[] readModels,
+  DatabaseHandlerFactory dbFactory,
+  ILogger logger)
 {
-  private readonly Guid workerId = Guid.NewGuid();
-
   public const string QueueTableSql =
     """
     IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'HydrationQueue')
@@ -19,14 +25,103 @@ public class HydrationDaemonWorker(string modelHash, string connectionString)
         [Position] [bigint] NOT NULL,
         [WorkerId] [uniqueidentifier] NULL,
         [LockedUntil] [datetime2](7) NULL,
-        [TimesLocked] [int] NOT NULL)
+        [TimesLocked] [int] NOT NULL,
+        [CreatedAt] [datetime2](7) NOT NULL DEFAULT (GETUTCDATE()))
     END
     """;
 
+  private const string GetCandidatesSql =
+    """
+    SELECT TOP 50 *
+    FROM [HydrationQueue]
+    WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
+      AND [ModelHash] = @ModelHash
+      AND [TimesLocked] < 25
+    ORDER BY [Position] ASC
+    """;
+
+  private const string TryReserveStream =
+    """
+    UPDATE [HydrationQueue]
+    SET [WorkerId] = @WorkerId,
+        [LockedUntil] = DATEADD(SECOND, 120, GETUTCDATE()),
+        [TimesLocked] = @TimesLocked + 1
+    WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
+      AND [StreamName] = @StreamName
+      AND [ModelHash] = @ModelHash
+      AND [TimesLocked] = @TimesLocked
+    """;
+
+  public const string RemoveEntySql =
+    """
+    DELETE FROM [HydrationQueue]
+    WHERE [StreamName] = @StreamName
+      AND [ModelHash] = @ModelHash
+    """;
+
+  private readonly Lock @lock = new();
+
+  private readonly Guid workerId = Guid.NewGuid();
+  private bool shouldPoll = true;
+
   private async Task TryProcess()
   {
-    await using var connection = new SqlConnection(connectionString);
+    HydrationQueueEntry? candidate = null;
+    await using (var connection = new SqlConnection(connectionString))
+    {
+      var candidates =
+        await connection.QueryAsync<HydrationQueueEntry>(GetCandidatesSql, new { ModelHash = modelHash });
+      candidate = candidates.OrderBy(_ => Guid.NewGuid()).FirstOrDefault();
+      lock (@lock)
+      {
+        if (candidate is null)
+        {
+          shouldPoll = false;
+          return;
+        }
+      }
 
+      var rowsAffected = await connection.ExecuteAsync(
+        TryReserveStream,
+        new
+        {
+          WorkerId = workerId,
+          candidate.StreamName,
+          ModelHash = modelHash,
+          candidate.TimesLocked
+        });
+
+      if (rowsAffected == 0)
+      {
+        await Task.Delay(15);
+        return;
+      }
+    }
+
+    var ableReadModels = readModels.Where(rm => rm.CanProject(candidate.StreamName)).ToArray();
+    if (ableReadModels.Length == 0)
+    {
+      return;
+    }
+
+
+    var maybeEntity = await candidate
+      .GetStrongId()
+      .Async()
+      .Bind(id => fetcher.DaemonFetch(id, candidate.StreamName).Map(e => (id, e)));
+
+    foreach (var t in maybeEntity)
+    {
+      foreach (var readModel in ableReadModels)
+      {
+        await readModel.TryProcess(t.e, dbFactory, t.id, null, logger);
+      }
+    }
+
+    await using (var connection = new SqlConnection(connectionString))
+    {
+      await connection.ExecuteAsync(RemoveEntySql, new { candidate.StreamName, ModelHash = modelHash });
+    }
   }
 }
 
@@ -39,4 +134,5 @@ public record HydrationQueueEntry(
   long Position,
   Guid? WorkerId,
   DateTime? LockedUntil,
-  int TimesLocked);
+  int TimesLocked,
+  DateTime CreatedAt);
