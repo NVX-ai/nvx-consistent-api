@@ -1,7 +1,11 @@
-﻿namespace Nvx.ConsistentAPI;
+﻿using Microsoft.Data.SqlClient;
 
-public class HydrationDaemonWorker
+namespace Nvx.ConsistentAPI;
+
+public class HydrationDaemonWorker(string modelHash, string connectionString)
 {
+  private readonly Guid workerId = Guid.NewGuid();
+
   public const string QueueTableSql =
     """
     IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'HydrationQueue')
@@ -18,4 +22,21 @@ public class HydrationDaemonWorker
         [TimesLocked] [int] NOT NULL)
     END
     """;
+
+  private async Task TryProcess()
+  {
+    await using var connection = new SqlConnection(connectionString);
+
+  }
 }
+
+public record HydrationQueueEntry(
+  string StreamName,
+  string SerializedId,
+  string IdTypeName,
+  string? IdTypeNamespace,
+  string ModelHash,
+  long Position,
+  Guid? WorkerId,
+  DateTime? LockedUntil,
+  int TimesLocked);
