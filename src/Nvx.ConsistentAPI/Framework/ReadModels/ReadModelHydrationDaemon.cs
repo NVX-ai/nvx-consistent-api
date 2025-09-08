@@ -7,33 +7,66 @@ using Nvx.ConsistentAPI.InternalTooling;
 
 namespace Nvx.ConsistentAPI;
 
-internal class ReadModelHydrationDaemon(
-  GeneratorSettings settings,
-  EventStoreClient client,
-  Fetcher fetcher,
-  Func<ResolvedEvent, Option<EventModelEvent>> parser,
-  IdempotentReadModel[] readModels,
-  ILogger logger,
-  InterestFetcher interestFetcher)
+internal class ReadModelHydrationDaemon
 {
   private const int HydrationRetryLimit = 100;
   private const int InterestParallelism = 6;
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
   private static readonly TimeSpan HydrationRetryDelay = TimeSpan.FromSeconds(10);
-  private readonly string connectionString = settings.ReadModelConnectionString;
+  private readonly EventStoreClient client;
+  private readonly string connectionString;
 
-  private readonly DatabaseHandlerFactory databaseHandlerFactory =
-    new(settings.ReadModelConnectionString, logger);
+  private readonly DatabaseHandlerFactory databaseHandlerFactory;
+  private readonly Fetcher fetcher;
+  private readonly InterestFetcher interestFetcher;
 
   private readonly SemaphoreSlim lastPositionSemaphore = new(1);
+  private readonly ILogger logger;
+  private readonly Func<ResolvedEvent, Option<EventModelEvent>> parser;
+  private readonly IdempotentReadModel[] readModels;
   private readonly SemaphoreSlim semaphore = new(1);
+  private readonly GeneratorSettings settings;
 
-  private readonly CentralHydrationStateMachine stateMachine = new(settings, logger);
+  private readonly CentralHydrationStateMachine stateMachine;
+
+  private readonly HydrationDaemonWorker[] workers;
   private HydrationCountTracker? hydrationCountTracker;
 
   private bool isInitialized;
   private ulong? lastCheckpoint;
   private Position? lastPosition;
+
+  public ReadModelHydrationDaemon(
+    GeneratorSettings settings,
+    EventStoreClient client,
+    Fetcher fetcher,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    IdempotentReadModel[] readModels,
+    ILogger logger,
+    InterestFetcher interestFetcher)
+  {
+    this.settings = settings;
+    this.client = client;
+    this.fetcher = fetcher;
+    this.parser = parser;
+    this.readModels = readModels;
+    this.logger = logger;
+    this.interestFetcher = interestFetcher;
+    connectionString = settings.ReadModelConnectionString;
+    databaseHandlerFactory = new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger);
+    stateMachine = new CentralHydrationStateMachine(settings, logger);
+    workers = Enumerable
+      .Range(1, HydrationRetryLimit)
+      .Select(_ => new HydrationDaemonWorker(
+        "dfsadfsd",
+        settings.ReadModelConnectionString,
+        fetcher,
+        readModels,
+        databaseHandlerFactory,
+        logger))
+      .ToArray();
+  }
+
   internal FailedHydration[] FailedHydrations { get; private set; } = [];
 
   public async Task<HydrationDaemonInsights> Insights(ulong lastEventPosition)
