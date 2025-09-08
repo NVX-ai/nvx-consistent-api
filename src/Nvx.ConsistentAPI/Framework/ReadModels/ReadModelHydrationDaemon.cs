@@ -52,7 +52,7 @@ internal class ReadModelHydrationDaemon(
 
   public bool IsUpToDate(Position? position) =>
     hydrationCountTracker is null
-    || lastMessageReceivedAt < DateTime.UtcNow.AddMinutes(5)
+    || lastMessageReceivedAt < DateTime.UtcNow.AddMinutes(-5)
     || (position.HasValue && lastPosition.HasValue && position.Value <= lastPosition.Value);
 
   public async Task Initialize()
