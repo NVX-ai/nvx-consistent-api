@@ -28,7 +28,6 @@ internal class ReadModelHydrationDaemon
   private readonly SemaphoreSlim semaphore = new(1);
   private readonly GeneratorSettings settings;
 
-
   private readonly HydrationDaemonWorker[] workers;
   private HydrationCountTracker? hydrationCountTracker;
 
@@ -109,6 +108,7 @@ internal class ReadModelHydrationDaemon
 
       await DoInitialize();
       _ = Task.Run(Hydrate);
+      TriggerWorkers();
 
       isInitialized = true;
     }
@@ -306,12 +306,9 @@ internal class ReadModelHydrationDaemon
             evt.OriginalStreamId,
             @event.GetEntityId(),
             Convert.ToInt64(evt.Event.Position.CommitPosition),
-            false);
-
-          foreach (var worker in workers)
-          {
-            worker.Trigger();
-          }
+            false,
+            readModels);
+          TriggerWorkers();
 
           await concernedTask;
           await UpdateLastPosition(evt.Event.Position);
@@ -319,7 +316,16 @@ internal class ReadModelHydrationDaemon
     }
     catch (Exception ex)
     {
-      //ignore for now
+      logger.LogError(ex, "Failed to queue hydrations");
+      await Task.Delay(250);
+    }
+  }
+
+  private void TriggerWorkers()
+  {
+    foreach (var worker in workers)
+    {
+      worker.Trigger();
     }
   }
 
@@ -351,7 +357,9 @@ internal class ReadModelHydrationDaemon
         tuple.InterestedEntityStreamName,
         tuple.id,
         position,
-        true);
+        true,
+        readModels);
+      TriggerWorkers();
     }
 
     var concerned = @event switch
@@ -394,8 +402,9 @@ internal class ReadModelHydrationDaemon
       streamName,
       entityId,
       position,
-      true);
-
+      true,
+      readModels);
+    TriggerWorkers();
     return unit;
   }
 

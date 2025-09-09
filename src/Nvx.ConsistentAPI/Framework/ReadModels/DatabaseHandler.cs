@@ -599,7 +599,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
         foreach (var batch in BatchedArrayValues(prop, rm))
         {
           var values = batch
-            .Select(x => x)
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
             .Where(y => y != null)
             .ToArray();
 
@@ -616,17 +616,29 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       foreach (var prop in arrayProperties)
       {
         var propTableName = DatabaseHandler.GetArrayPropTableName(prop.Name, tableName);
-        await connection.ExecuteAsync(
-          $"DELETE FROM [{propTableName}] WHERE [Id] = @Id",
-          new { rm.Id });
 
         foreach (var batch in BatchedArrayValues(prop, rm))
         {
-          var values = batch
-            .Select(x => new { rm.Id, Value = x })
-            .Where(y => y.Value != null);
-            
-          await connection.ExecuteAsync($"INSERT INTO [{propTableName}] VALUES (@Id, @Value)", values);
+          // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+          var values = batch.Where(y => y != null).ToArray();
+
+          if (values.Length == 0)
+          {
+            continue;
+          }
+
+          var arrayParamNames = string.Join(", ", values.Select((_, i) => $"(@Id, @Value{i})"));
+
+          var arrayParams = new DynamicParameters();
+          arrayParams.Add("Id", rm.Id);
+          foreach (var tuple in values.Select((v, i) => (v, i)))
+          {
+            arrayParams.Add($"Value{tuple.i}", tuple.v);
+          }
+
+          await connection.ExecuteAsync(
+            $"INSERT INTO [{propTableName}] ([Id], [Value]) VALUES {arrayParamNames}",
+            arrayParams);
         }
       }
     }

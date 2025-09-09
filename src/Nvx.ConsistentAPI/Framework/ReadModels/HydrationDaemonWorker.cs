@@ -26,6 +26,8 @@ public class HydrationDaemonWorker
     END
     """;
 
+  // This prioritizes non-dynamic consistency boundary records to reduce the load, then will focus on the oldest
+  // pending hydrations.
   private const string GetCandidatesSql =
     """
     SELECT TOP 50 *
@@ -36,17 +38,26 @@ public class HydrationDaemonWorker
     ORDER BY [Position] ASC
     """;
 
-  private const string TryReserveStream =
+  private const string TryLockStreamSql =
     """
     UPDATE [HydrationQueue]
     SET [WorkerId] = @WorkerId,
-        [LockedUntil] = DATEADD(SECOND, 5, GETUTCDATE()),
-        [TimesLocked] = @TimesLocked + 1
+        [LockedUntil] = DATEADD(SECOND, 60, GETUTCDATE()),
+        [TimesLocked] = [TimesLocked] + 1
     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
       AND [StreamName] = @StreamName
       AND [ModelHash] = @ModelHash
       AND [TimesLocked] = @TimesLocked
       AND ([WorkerId] IS NULL AND @ExistingWorkerId IS NULL OR [WorkerId] = @ExistingWorkerId)
+    """;
+
+  private const string TryRefreshStreamLockSql =
+    """
+    UPDATE [HydrationQueue]
+    SET [LockedUntil] = DATEADD(SECOND, 60, GETUTCDATE())
+    WHERE [WorkerId] = @WorkerId
+      AND [StreamName] = @StreamName
+      AND [ModelHash] = @ModelHash
     """;
 
   private const string RemoveEntySql =
@@ -55,18 +66,64 @@ public class HydrationDaemonWorker
     WHERE [StreamName] = @StreamName
       AND [ModelHash] = @ModelHash
       AND [WorkerId] = @WorkerId
+      AND [Position] = @Position
     """;
 
-  private const string InsertSql =
+  private const string UpsertSql =
     """
-    INSERT INTO [HydrationQueue]
-    ([StreamName], [SerializedId], [IdTypeName], [IdTypeNamespace], [ModelHash], [Position], [TimesLocked], [IsDynamicConsistencyBoundary])
-    VALUES
-    (@StreamName, @SerializedId, @IdTypeName, @IdTypeNamespace, @ModelHash, @Position, 0, @IsDynamicConsistencyBoundary)
+    MERGE [HydrationQueue] AS target
+    USING (
+      SELECT
+        @StreamName AS StreamName,
+        @ModelHash AS ModelHash,
+        @Position AS Position,
+        @SerializedId AS SerializedId,
+        @IdTypeName AS IdTypeName,
+        @IdTypeNamespace AS IdTypeNamespace,
+        @IsDynamicConsistencyBoundary AS IsDynamicConsistencyBoundary
+    ) AS source
+    ON target.[StreamName] = source.StreamName
+       AND target.[ModelHash] = source.ModelHash
+    WHEN MATCHED THEN
+        UPDATE SET 
+          [TimesLocked] = 0,
+          [Position] = CASE WHEN target.[Position] > source.Position THEN target.[Position] ELSE source.Position END,
+          [IsDynamicConsistencyBoundary] = CASE WHEN target.[IsDynamicConsistencyBoundary] = 1 THEN 1 ELSE source.IsDynamicConsistencyBoundary END
+    WHEN NOT MATCHED THEN
+        INSERT (
+          [StreamName],
+          [SerializedId],
+          [IdTypeName],
+          [IdTypeNamespace],
+          [ModelHash],
+          [Position],
+          [TimesLocked],
+          [IsDynamicConsistencyBoundary]
+        )
+        VALUES (
+          source.StreamName,
+          source.SerializedId,
+          source.IdTypeName,
+          source.IdTypeNamespace,
+          source.ModelHash,
+          source.Position,
+          0,
+          source.IsDynamicConsistencyBoundary
+        );
     """;
 
   private const string PendingEventsCountSql =
     "SELECT COUNT(*) FROM [HydrationQueue] WHERE [ModelHash] = @ModelHash AND [TimesLocked] < 25";
+
+  private const string ReleaseSql =
+    """
+    UPDATE [HydrationQueue]
+    SET [WorkerId] = NULL,
+        [LockedUntil] = NULL
+    WHERE [WorkerId] = @WorkerId
+      AND [StreamName] = @StreamName
+      AND [ModelHash] = @ModelHash
+    """;
 
   private readonly string connectionString;
   private readonly DatabaseHandlerFactory dbFactory;
@@ -76,8 +133,6 @@ public class HydrationDaemonWorker
   private readonly ILogger logger;
   private readonly string modelHash;
 
-  // ReSharper disable once NotAccessedField.Local
-  private readonly Task processTask;
   private readonly IdempotentReadModel[] readModels;
 
   private readonly Guid workerId = Guid.NewGuid();
@@ -97,7 +152,7 @@ public class HydrationDaemonWorker
     this.readModels = readModels;
     this.dbFactory = dbFactory;
     this.logger = logger;
-    processTask = Process();
+    _ = Task.Run(Process);
   }
 
   public static async Task Register(
@@ -106,12 +161,18 @@ public class HydrationDaemonWorker
     string streamName,
     StrongId id,
     long position,
-    bool isDynamicConsistencyBoundary)
+    bool isDynamicConsistencyBoundary,
+    IdempotentReadModel[] readModels)
   {
+    if (!readModels.Any(rm => rm.CanProject(streamName)))
+    {
+      return;
+    }
+
     var idType = id.GetType();
     await using var connection = new SqlConnection(connectionString);
     await connection.ExecuteAsync(
-      InsertSql,
+      UpsertSql,
       new
       {
         StreamName = streamName,
@@ -136,19 +197,20 @@ public class HydrationDaemonWorker
   {
     while (true)
     {
-      if (!shouldPoll)
-      {
-        await Task.Delay(Random.Shared.Next(1, 150));
-        continue;
-      }
-
       try
       {
+        if (!shouldPoll)
+        {
+          await Task.Delay(Random.Shared.Next(1, 150));
+          continue;
+        }
+
         await TryProcess();
       }
       catch (Exception ex)
       {
         logger.LogError(ex, "error hydrating");
+        await Task.Delay(Random.Shared.Next(1, 750));
       }
     }
     // ReSharper disable once FunctionNeverReturns
@@ -174,7 +236,7 @@ public class HydrationDaemonWorker
       }
 
       var rowsAffected = await connection.ExecuteAsync(
-        TryReserveStream,
+        TryLockStreamSql,
         new
         {
           WorkerId = workerId,
@@ -194,6 +256,7 @@ public class HydrationDaemonWorker
     var ableReadModels = readModels.Where(rm => rm.CanProject(candidate.StreamName)).ToArray();
     if (ableReadModels.Length == 0)
     {
+      await RemoveEntry(candidate);
       return;
     }
 
@@ -204,19 +267,54 @@ public class HydrationDaemonWorker
         .DaemonFetch(id, candidate.StreamName, candidate.IsDynamicConsistencyBoundary)
         .Map(e => (id, e)));
 
-    foreach (var t in maybeEntity)
+    // This mechanism will benefit from a cancellation token.
+    var hydrateTask = Hydrate();
+    await Task.WhenAny(hydrateTask, RefreshLock());
+    await RemoveEntry(candidate);
+    return;
+
+    async Task RefreshLock()
     {
-      foreach (var readModel in ableReadModels)
+      while (!hydrateTask.IsCompleted)
       {
-        await readModel.TryProcess(t.e, dbFactory, t.id, null, logger);
+        await Task.Delay(30_000);
+        try
+        {
+          await using var connection = new SqlConnection(connectionString);
+          await connection.ExecuteAsync(
+            TryRefreshStreamLockSql,
+            new { WorkerId = workerId, candidate.StreamName, ModelHash = modelHash });
+        }
+        catch (Exception ex)
+        {
+          logger.LogError(ex, "error refreshing lock");
+        }
       }
     }
 
-    await using (var connection = new SqlConnection(connectionString))
+    async Task Hydrate()
+    {
+      foreach (var t in maybeEntity)
+      {
+        foreach (var readModel in ableReadModels)
+        {
+          await readModel.TryProcess(t.e, dbFactory, t.id, null, logger);
+        }
+      }
+    }
+  }
+
+  private async Task RemoveEntry(HydrationQueueEntry entry)
+  {
+    await using var connection = new SqlConnection(connectionString);
+    var rowsAffected = await connection.ExecuteAsync(
+      RemoveEntySql,
+      new { entry.StreamName, ModelHash = modelHash, WorkerId = workerId, entry.Position });
+    if (rowsAffected == 0)
     {
       await connection.ExecuteAsync(
-        RemoveEntySql,
-        new { candidate.StreamName, ModelHash = modelHash, WorkerId = workerId });
+        ReleaseSql,
+        new { entry.StreamName, ModelHash = modelHash, WorkerId = workerId });
     }
   }
 
