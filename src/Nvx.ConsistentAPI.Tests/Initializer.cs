@@ -7,6 +7,6 @@ public static class Initializer
     new TestSettings
     {
       LogsFolder = "logs",
-      UsePersistentTestContainers = false
+      UsePersistentTestContainers = true
     });
 }
