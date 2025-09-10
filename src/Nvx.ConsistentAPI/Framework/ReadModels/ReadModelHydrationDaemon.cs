@@ -354,6 +354,8 @@ internal class ReadModelHydrationDaemon
 
     foreach (var tuple in interested)
     {
+      // TODO: Get cached global position from fetcher and bail out if needed.
+
       await HydrationDaemonWorker.Register(
         modelHash,
         connectionString,
@@ -398,6 +400,8 @@ internal class ReadModelHydrationDaemon
     {
       return unit;
     }
+
+    // TODO: Get cached global position from fetcher and bail out if needed.
 
     await HydrationDaemonWorker.Register(
       modelHash,
