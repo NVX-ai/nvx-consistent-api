@@ -26,8 +26,6 @@ public class HydrationDaemonWorker
     END
     """;
 
-  // This prioritizes non-dynamic consistency boundary records to reduce the load, then will focus on the oldest
-  // pending hydrations.
   private const string GetCandidatesSql =
     """
     SELECT TOP 50 *
@@ -35,26 +33,27 @@ public class HydrationDaemonWorker
     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
       AND [ModelHash] = @ModelHash
       AND [TimesLocked] < 25
-    ORDER BY [Position] ASC
+    ORDER BY [IsDynamicConsistencyBoundary], [Position] ASC
     """;
 
   private const string TryLockStreamSql =
     """
     UPDATE [HydrationQueue]
     SET [WorkerId] = @WorkerId,
-        [LockedUntil] = DATEADD(SECOND, 60, GETUTCDATE()),
+        [LockedUntil] = DATEADD(SECOND, 90, GETUTCDATE()),
         [TimesLocked] = [TimesLocked] + 1
     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
       AND [StreamName] = @StreamName
       AND [ModelHash] = @ModelHash
       AND [TimesLocked] = @TimesLocked
-      AND ([WorkerId] IS NULL AND @ExistingWorkerId IS NULL OR [WorkerId] = @ExistingWorkerId)
+      AND ([WorkerId] IS NULL OR [WorkerId] = @ExistingWorkerId)
+      AND [Position] = @Position
     """;
 
   private const string TryRefreshStreamLockSql =
     """
     UPDATE [HydrationQueue]
-    SET [LockedUntil] = DATEADD(SECOND, 60, GETUTCDATE())
+    SET [LockedUntil] = DATEADD(SECOND, 90, GETUTCDATE())
     WHERE [WorkerId] = @WorkerId
       AND [StreamName] = @StreamName
       AND [ModelHash] = @ModelHash
@@ -134,9 +133,11 @@ public class HydrationDaemonWorker
   private readonly string modelHash;
 
   private readonly IdempotentReadModel[] readModels;
+  // ReSharper disable once NotAccessedField.Local
+  private readonly Task task;
 
   private readonly Guid workerId = Guid.NewGuid();
-  private bool shouldPoll;
+  private DateTime resumePolling = DateTime.MaxValue;
 
   public HydrationDaemonWorker(
     string modelHash,
@@ -152,8 +153,11 @@ public class HydrationDaemonWorker
     this.readModels = readModels;
     this.dbFactory = dbFactory;
     this.logger = logger;
-    _ = Task.Run(Process);
+    task = Task.Run(Process);
+    this.logger.LogInformation("Hydration worker with ID {ID} started", workerId);
   }
+
+  private bool ShouldPoll => resumePolling <= DateTime.UtcNow;
 
   public static async Task Register(
     string modelHash,
@@ -189,7 +193,7 @@ public class HydrationDaemonWorker
   {
     lock (@lock)
     {
-      shouldPoll = true;
+      resumePolling = DateTime.UtcNow;
     }
   }
 
@@ -199,7 +203,7 @@ public class HydrationDaemonWorker
     {
       try
       {
-        if (!shouldPoll)
+        if (!ShouldPoll)
         {
           await Task.Delay(Random.Shared.Next(1, 150));
           continue;
@@ -230,12 +234,16 @@ public class HydrationDaemonWorker
         var count = await PendingEventsCount(modelHash, connectionString);
         lock (@lock)
         {
-          shouldPoll = count > 0;
+          if (count == 0)
+          {
+            resumePolling = DateTime.UtcNow.AddSeconds(Random.Shared.Next(15));
+          }
+
           return;
         }
       }
 
-      var rowsAffected = await connection.ExecuteAsync(
+      var streamsLocked = await connection.ExecuteAsync(
         TryLockStreamSql,
         new
         {
@@ -243,10 +251,11 @@ public class HydrationDaemonWorker
           candidate.StreamName,
           ModelHash = modelHash,
           candidate.TimesLocked,
-          ExistingWorkerId = candidate.WorkerId
+          ExistingWorkerId = candidate.WorkerId,
+          candidate.Position
         });
 
-      if (rowsAffected == 0)
+      if (streamsLocked == 0)
       {
         await Task.Delay(15);
         return;
@@ -260,40 +269,39 @@ public class HydrationDaemonWorker
       return;
     }
 
-    var maybeEntity = await candidate
-      .GetStrongId()
-      .Async()
-      .Bind(id => fetcher
-        .DaemonFetch(id, candidate.StreamName, candidate.IsDynamicConsistencyBoundary)
-        .Map(e => (id, e)));
+
 
     // This mechanism will benefit from a cancellation token.
     var hydrateTask = Hydrate();
-    await Task.WhenAny(hydrateTask, RefreshLock());
+    var nextRefreshAt = DateTime.UtcNow.AddSeconds(2);
+
+    while (!hydrateTask.IsCompleted)
+    {
+      if (nextRefreshAt < DateTime.UtcNow)
+      {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.ExecuteAsync(
+          TryRefreshStreamLockSql,
+          new { WorkerId = workerId, candidate.StreamName, ModelHash = modelHash });
+        nextRefreshAt = DateTime.UtcNow.AddSeconds(30);
+      }
+
+      await Task.Delay(10);
+    }
+
+    await hydrateTask;
     await RemoveEntry(candidate);
     return;
 
-    async Task RefreshLock()
-    {
-      while (!hydrateTask.IsCompleted)
-      {
-        await Task.Delay(30_000);
-        try
-        {
-          await using var connection = new SqlConnection(connectionString);
-          await connection.ExecuteAsync(
-            TryRefreshStreamLockSql,
-            new { WorkerId = workerId, candidate.StreamName, ModelHash = modelHash });
-        }
-        catch (Exception ex)
-        {
-          logger.LogError(ex, "error refreshing lock");
-        }
-      }
-    }
-
     async Task Hydrate()
     {
+      var maybeEntity = await candidate
+        .GetStrongId()
+        .Async()
+        .Bind(id => fetcher
+          .DaemonFetch(id, candidate.StreamName, candidate.IsDynamicConsistencyBoundary)
+          .Map(e => (id, e)));
+
       foreach (var t in maybeEntity)
       {
         foreach (var readModel in ableReadModels)

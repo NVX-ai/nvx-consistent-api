@@ -113,7 +113,7 @@ internal class DynamicConsistencyBoundaryDaemon(
                   }
                 })));
 
-            if (tasks.Count > 250)
+            if (tasks.Count > 10)
             {
               await Task.WhenAll(tasks);
               tasks.Clear();

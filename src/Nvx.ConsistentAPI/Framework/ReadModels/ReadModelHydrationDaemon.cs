@@ -28,6 +28,8 @@ internal class ReadModelHydrationDaemon
   private readonly SemaphoreSlim semaphore = new(1);
   private readonly GeneratorSettings settings;
 
+  private readonly CentralHydrationStateMachine stateMachine;
+
   private readonly HydrationDaemonWorker[] workers;
   private HydrationCountTracker? hydrationCountTracker;
 
@@ -52,19 +54,20 @@ internal class ReadModelHydrationDaemon
     this.logger = logger;
     this.interestFetcher = interestFetcher;
     connectionString = settings.ReadModelConnectionString;
-    var databaseHandlerFactory1 = new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger);
+    stateMachine = new CentralHydrationStateMachine(settings, logger);
+
     modelHash = Convert.ToBase64String(
       SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(string.Empty, readModels.Select(rm => rm.TableName))))
     );
 
     workers = Enumerable
-      .Range(1, HydrationRetryLimit)
+      .Range(1, settings.ParallelHydration)
       .Select(_ => new HydrationDaemonWorker(
         modelHash,
         settings.ReadModelConnectionString,
         fetcher,
         readModels,
-        databaseHandlerFactory1,
+        new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger),
         logger))
       .ToArray();
   }
@@ -195,7 +198,7 @@ internal class ReadModelHydrationDaemon
             {
               try
               {
-                await TryProcess(evt);
+                await stateMachine.Queue(evt, TryProcess);
               }
               catch (Exception ex)
               {
@@ -212,7 +215,7 @@ internal class ReadModelHydrationDaemon
             }
             case StreamMessage.AllStreamCheckpointReached(var pos):
             {
-              await Checkpoint(pos);
+              await stateMachine.Checkpoint(pos, Checkpoint);
               lastCheckpoint = pos.CommitPosition;
               break;
             }
@@ -220,7 +223,7 @@ internal class ReadModelHydrationDaemon
             {
               if (lastPosition is { } pos)
               {
-                await Checkpoint(pos);
+                await stateMachine.Checkpoint(pos, Checkpoint);
               }
 
               ClearTracker();
