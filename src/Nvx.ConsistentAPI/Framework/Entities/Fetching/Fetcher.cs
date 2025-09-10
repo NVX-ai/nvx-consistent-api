@@ -18,6 +18,7 @@ public interface EntityFetcher
 
   internal bool CanProcessStream(string streamName);
   internal Option<long> GetCachedStreamRevision(StrongId id);
+  internal Option<ulong> GetCachedLastPosition(StrongId id);
 }
 
 public interface RevisionFetcher
@@ -48,6 +49,12 @@ public class Fetcher
     fetchers
       .SingleOrNone(f => f.CanProcessStream(streamName))
       .Bind(f => f.GetCachedStreamRevision(id));
+
+  internal Option<ulong> GetCachedLastPosition(string streamName, StrongId id) =>
+    fetchers
+      .SingleOrNone(f => f.CanProcessStream(streamName))
+      .Bind(f => f.GetCachedLastPosition(id))
+      .Map(r => (ulong)r);
 
   internal AsyncOption<T> WrappedFetch<T>(Option<StrongId> id, Position? upToRevision, bool resetCache)
     where T : EventModelEntity<T> =>
@@ -140,6 +147,16 @@ public class Fetcher<Entity> : EntityFetcher
         SingleStreamCacheResult<Entity> single => single.Revision,
         MultipleStreamCacheResult<Entity> multiple =>
           multiple.StreamRevisions.TryGetValue(id.StreamId(), out var revision) ? Some(revision) : None,
+        _ => None
+      }
+      : None;
+
+  public Option<ulong> GetCachedLastPosition(StrongId id) =>
+    cache.TryGetValue<CacheResult>(id.StreamId(), out var cachedEntity)
+      ? cachedEntity switch
+      {
+        SingleStreamCacheResult<Entity> single => single.GlobalPosition.Map(p => p.CommitPosition),
+        MultipleStreamCacheResult<Entity> multiple => multiple.GlobalPosition.Map(p => p.CommitPosition),
         _ => None
       }
       : None;

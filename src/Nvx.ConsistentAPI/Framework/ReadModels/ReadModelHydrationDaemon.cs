@@ -354,7 +354,12 @@ internal class ReadModelHydrationDaemon
 
     foreach (var tuple in interested)
     {
-      // TODO: Get cached global position from fetcher and bail out if needed.
+      if (fetcher
+          .GetCachedStreamRevision(tuple.InterestedEntityStreamName, tuple.id)
+          .Match(cachedRevision => cachedRevision > position, () => false))
+      {
+        continue;
+      }
 
       await HydrationDaemonWorker.Register(
         modelHash,
@@ -396,12 +401,12 @@ internal class ReadModelHydrationDaemon
   private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId, long position)
   {
     var ableReadModels = readModels.Where(rm => rm.CanProject(streamName)).ToArray();
-    if (ableReadModels.Length == 0)
+    if (ableReadModels.Length == 0 || fetcher
+          .GetCachedStreamRevision(streamName, entityId)
+          .Match(cachedRevision => cachedRevision > position, () => false))
     {
       return unit;
     }
-
-    // TODO: Get cached global position from fetcher and bail out if needed.
 
     await HydrationDaemonWorker.Register(
       modelHash,
