@@ -111,8 +111,8 @@ public class HydrationDaemonWorker
     WHEN MATCHED THEN
         UPDATE SET 
           [TimesLocked] = 0,
-          [Position] = CASE WHEN target.[Position] > source.Position THEN target.[Position] ELSE source.Position END,
-          [IsDynamicConsistencyBoundary] = CASE WHEN target.[IsDynamicConsistencyBoundary] = 1 THEN 1 ELSE source.IsDynamicConsistencyBoundary END
+          [Position] = source.Position,
+          [IsDynamicConsistencyBoundary] = source.IsDynamicConsistencyBoundary
     WHEN NOT MATCHED THEN
         INSERT (
           [StreamName],
