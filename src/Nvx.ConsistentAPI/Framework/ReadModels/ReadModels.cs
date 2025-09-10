@@ -363,7 +363,10 @@ public class ReadModelDefinition<Shape, EntityShape> :
   public override int GetHashCode() => Naming.ToSpinalCase<Shape>().GetHashCode();
 }
 
-public interface FoundEntity;
+public interface FoundEntity
+{
+  long? Position { get; }
+}
 
 public record FoundEntity<T>(
   T Entity,
@@ -386,6 +389,8 @@ public record FoundEntity<T>(
       fr.LastUserSubFound,
       fr.Revision,
       tuple.gp));
+
+  public long? Position => GlobalPosition.Match(long? (p) => Convert.ToInt64(p.CommitPosition), () => null);
 }
 
 internal record ReadModelSyncState(

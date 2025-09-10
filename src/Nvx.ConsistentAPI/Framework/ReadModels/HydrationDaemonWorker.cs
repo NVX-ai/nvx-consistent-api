@@ -22,7 +22,8 @@ public class HydrationDaemonWorker
         [LockedUntil] [datetime2](7) NULL,
         [TimesLocked] [int] NOT NULL,
         [CreatedAt] [datetime2](7) NOT NULL DEFAULT (GETUTCDATE()),
-        [IsDynamicConsistencyBoundary] [bit] NOT NULL DEFAULT (0))
+        [IsDynamicConsistencyBoundary] [bit] NOT NULL DEFAULT (0),
+        [LastHydratedPosition] [bigint] NULL DEFAULT NULL)
     END
     """;
 
@@ -33,6 +34,7 @@ public class HydrationDaemonWorker
     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
       AND [ModelHash] = @ModelHash
       AND [TimesLocked] < 25
+      AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])
     ORDER BY [IsDynamicConsistencyBoundary], [Position] ASC
     """;
 
@@ -61,11 +63,13 @@ public class HydrationDaemonWorker
 
   private const string RemoveEntySql =
     """
-    DELETE FROM [HydrationQueue]
+    UPDATE [HydrationQueue]
+    SET [WorkerId] = NULL,
+        [LockedUntil] = NULL,
+        [LastHydratedPosition] = @LastHydratedPosition
     WHERE [StreamName] = @StreamName
       AND [ModelHash] = @ModelHash
       AND [WorkerId] = @WorkerId
-      AND [Position] = @Position
     """;
 
   private const string UpsertSql =
@@ -112,7 +116,7 @@ public class HydrationDaemonWorker
     """;
 
   private const string PendingEventsCountSql =
-    "SELECT COUNT(*) FROM [HydrationQueue] WHERE [ModelHash] = @ModelHash AND [TimesLocked] < 25";
+    "SELECT COUNT(*) FROM [HydrationQueue] WHERE [ModelHash] = @ModelHash AND [TimesLocked] < 25 AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])";
 
   private const string ReleaseSql =
     """
@@ -133,6 +137,7 @@ public class HydrationDaemonWorker
   private readonly string modelHash;
 
   private readonly IdempotentReadModel[] readModels;
+
   // ReSharper disable once NotAccessedField.Local
   private readonly Task task;
 
@@ -265,10 +270,9 @@ public class HydrationDaemonWorker
     var ableReadModels = readModels.Where(rm => rm.CanProject(candidate.StreamName)).ToArray();
     if (ableReadModels.Length == 0)
     {
-      await RemoveEntry(candidate);
+      await RemoveEntry(candidate with { LastHydratedPosition = candidate.Position });
       return;
     }
-
 
 
     // This mechanism will benefit from a cancellation token.
@@ -289,11 +293,10 @@ public class HydrationDaemonWorker
       await Task.Delay(10);
     }
 
-    await hydrateTask;
-    await RemoveEntry(candidate);
+    await RemoveEntry(candidate with { LastHydratedPosition = await hydrateTask });
     return;
 
-    async Task Hydrate()
+    async Task<long?> Hydrate()
     {
       var maybeEntity = await candidate
         .GetStrongId()
@@ -309,6 +312,8 @@ public class HydrationDaemonWorker
           await readModel.TryProcess(t.e, dbFactory, t.id, null, logger);
         }
       }
+
+      return maybeEntity.Match(t => t.e.Position, () => null);
     }
   }
 
@@ -317,7 +322,7 @@ public class HydrationDaemonWorker
     await using var connection = new SqlConnection(connectionString);
     var rowsAffected = await connection.ExecuteAsync(
       RemoveEntySql,
-      new { entry.StreamName, ModelHash = modelHash, WorkerId = workerId, entry.Position });
+      new { entry.StreamName, ModelHash = modelHash, WorkerId = workerId, entry.Position, entry.LastHydratedPosition });
     if (rowsAffected == 0)
     {
       await connection.ExecuteAsync(
@@ -344,4 +349,5 @@ public record HydrationQueueEntry(
   DateTime? LockedUntil,
   int TimesLocked,
   DateTime CreatedAt,
-  bool IsDynamicConsistencyBoundary);
+  bool IsDynamicConsistencyBoundary,
+  long? LastHydratedPosition);
