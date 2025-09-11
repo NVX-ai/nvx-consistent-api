@@ -309,9 +309,9 @@ public class HydrationDaemonWorker
       return;
     }
 
-
     // This mechanism will benefit from a cancellation token.
-    var hydrateTask = Hydrate();
+    var cancellationSource = new CancellationTokenSource();
+    var hydrateTask = Hydrate(cancellationSource.Token);
     var nextRefreshAt = DateTime.UtcNow.AddSeconds(2);
 
     while (!hydrateTask.IsCompleted)
@@ -325,19 +325,21 @@ public class HydrationDaemonWorker
         nextRefreshAt = DateTime.UtcNow.AddSeconds(30);
       }
 
+      // It might mask the error from the cancellation of the hydration.
+      // ReSharper disable once MethodSupportsCancellation
       await Task.Delay(10);
     }
 
     await MarkAsHydrated(candidate with { LastHydratedPosition = await hydrateTask });
     return;
 
-    async Task<long?> Hydrate()
+    async Task<long?> Hydrate(CancellationToken cancellationToken)
     {
       var maybeEntity = await candidate
         .GetStrongId()
         .Async()
         .Bind(id => fetcher
-          .DaemonFetch(id, candidate.StreamName, candidate.IsDynamicConsistencyBoundary)
+          .DaemonFetch(id, candidate.StreamName, candidate.IsDynamicConsistencyBoundary, cancellationToken)
           .Map(e => (id, e)));
 
       foreach (var t in maybeEntity)

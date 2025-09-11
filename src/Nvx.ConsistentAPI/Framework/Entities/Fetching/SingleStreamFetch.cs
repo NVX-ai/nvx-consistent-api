@@ -3,7 +3,7 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace Nvx.ConsistentAPI;
 
-internal class SingleStreamFetch
+internal static class SingleStreamFetch
 {
   internal static async Task<FetchResult<Entity>> Do<Entity>(
     MemoryCache cache,
@@ -13,7 +13,8 @@ internal class SingleStreamFetch
     EventStoreClient client,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     MemoryCacheEntryOptions entryOptions,
-    Fetcher fetcher) where Entity : EventModelEntity<Entity>
+    Fetcher fetcher,
+    CancellationToken cancellationToken) where Entity : EventModelEntity<Entity>
   {
     var cached = resetCache ? new Miss() : cache.Find(defaulted.GetStreamName());
     (Entity e, Option<long> r, Option<Position> gp, DateTime? fe, DateTime? le, string? fu, string? lu) seed =
@@ -36,7 +37,8 @@ internal class SingleStreamFetch
     var read = client.ReadStreamAsync(
       Direction.Forwards,
       seed.e.GetStreamName(),
-      seed.r.Match(r => StreamPosition.FromInt64(r + 1), () => StreamPosition.Start));
+      seed.r.Match(r => StreamPosition.FromInt64(r + 1), () => StreamPosition.Start),
+      cancellationToken: cancellationToken);
 
     if (await read.ReadState == ReadState.StreamNotFound)
     {
@@ -91,7 +93,8 @@ internal class SingleStreamFetch
                     lastUserSubFound));
               }),
         tuple => ValueTask.FromResult(
-          new FetchResult<Entity>(tuple.entity, tuple.rev, tuple.gp, tuple.fe, tuple.le, tuple.fu, tuple.lu)));
+          new FetchResult<Entity>(tuple.entity, tuple.rev, tuple.gp, tuple.fe, tuple.le, tuple.fu, tuple.lu)),
+        cancellationToken);
 
     if (result.Revision < 0 || upToRevision is not null)
     {

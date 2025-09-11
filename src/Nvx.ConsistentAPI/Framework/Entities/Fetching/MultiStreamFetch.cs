@@ -1,4 +1,5 @@
-﻿using EventStore.Client;
+﻿using System.Runtime.CompilerServices;
+using EventStore.Client;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Nvx.ConsistentAPI;
@@ -14,7 +15,8 @@ internal static class MultiStreamFetch
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     MemoryCacheEntryOptions entryOptions,
     Fetcher fetcher,
-    string[] interests) where Entity : EventModelEntity<Entity>
+    string[] interests,
+    CancellationToken cancellationToken) where Entity : EventModelEntity<Entity>
   {
     var cached = resetCache ? new Miss() : cache.Find(defaulted.GetStreamName());
     var allStreams = interests
@@ -42,7 +44,7 @@ internal static class MultiStreamFetch
       };
 
     var hadEvents = seed.gp.IsSome;
-    await foreach (var re in Zip(allStreams, client, revisions))
+    await foreach (var re in Zip(allStreams, client, revisions, cancellationToken))
     {
       foreach (var parsed in parser(re))
       {
@@ -104,7 +106,8 @@ internal static class MultiStreamFetch
    private static async IAsyncEnumerable<ResolvedEvent> Zip(
     string[] streamNames,
     EventStoreClient client,
-    Dictionary<string, long> streamRevisions)
+    Dictionary<string, long> streamRevisions,
+    [EnumeratorCancellation] CancellationToken cancellationToken)
   {
     var zipWrappers = streamNames
       .Select(s => new StreamZipWrapper(
@@ -113,7 +116,8 @@ internal static class MultiStreamFetch
           s,
           streamRevisions.TryGetValue(s, out var r)
             ? StreamPosition.FromInt64(r + 1)
-            : StreamPosition.Start)))
+            : StreamPosition.Start,
+          cancellationToken: cancellationToken)))
       .ToArray();
 
     while (zipWrappers.Any(w => !w.IsDone))

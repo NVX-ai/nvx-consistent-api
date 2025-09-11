@@ -12,7 +12,11 @@ public interface EntityFetcher
   internal AsyncOption<T> WrappedFetch<T>(Option<StrongId> id, Fetcher fetcher, Position? upToRevision, bool resetCache)
     where T : EventModelEntity<T>;
 
-  internal AsyncOption<FoundEntity> DaemonFetch(Option<StrongId> id, Fetcher fetcher, bool resetCache = false);
+  internal AsyncOption<FoundEntity> DaemonFetch(
+    Option<StrongId> id,
+    Fetcher fetcher,
+    bool resetCache = false,
+    CancellationToken cancellationToken = default);
 
   Type GetFetchType();
 
@@ -54,7 +58,7 @@ public class Fetcher
     fetchers
       .SingleOrNone(f => f.CanProcessStream(streamName))
       .Bind(f => f.GetCachedLastPosition(id))
-      .Map(r => (ulong)r);
+      .Map(r => r);
 
   internal AsyncOption<T> WrappedFetch<T>(Option<StrongId> id, Position? upToRevision, bool resetCache)
     where T : EventModelEntity<T> =>
@@ -63,11 +67,15 @@ public class Fetcher
       .Match(f => f.WrappedFetch<T>(id, this, upToRevision, resetCache), () => throw new InvalidOperationException());
 
 
-  internal AsyncOption<FoundEntity> DaemonFetch(Option<StrongId> id, string streamName, bool resetCache = false) =>
+  internal AsyncOption<FoundEntity> DaemonFetch(
+    Option<StrongId> id,
+    string streamName,
+    bool resetCache = false,
+    CancellationToken cancellationToken = default) =>
     fetchers
       .SingleOrNone(f => f.CanProcessStream(streamName))
       .Match(
-        f => f.DaemonFetch(id, this, resetCache),
+        f => f.DaemonFetch(id, this, resetCache, cancellationToken),
         () => Option<FoundEntity>.None.ToTask());
 
   public Task<FetchResult<T>> Fetch<T>(Option<StrongId> id, Position? upToRevision = null)
@@ -108,7 +116,7 @@ public class Fetcher<Entity> : EntityFetcher
   private readonly MemoryCache cache;
   private readonly Type entityType = typeof(Entity);
 
-  private readonly Func<Option<StrongId>, Position?, Fetcher, bool, Task<FetchResult<Entity>>> fetch;
+  private readonly Func<Option<StrongId>, Position?, Fetcher, bool, CancellationToken, Task<FetchResult<Entity>>> fetch;
 
   private readonly string streamPrefix;
 
@@ -134,8 +142,15 @@ public class Fetcher<Entity> : EntityFetcher
       interestFetcher);
   }
 
-  public AsyncOption<FoundEntity> DaemonFetch(Option<StrongId> id, Fetcher fetcher, bool resetCache = false) =>
-    Fetch(id, null, fetcher, resetCache).Map(FoundEntity<Entity>.From).Async().Map(FoundEntity (fe) => fe);
+  public AsyncOption<FoundEntity> DaemonFetch(
+    Option<StrongId> id,
+    Fetcher fetcher,
+    bool resetCache = false,
+    CancellationToken cancellationToken = default) =>
+    Fetch(id, null, fetcher, resetCache, cancellationToken)
+      .Map(FoundEntity<Entity>.From)
+      .Async()
+      .Map(FoundEntity (fe) => fe);
 
   public Type GetFetchType() => entityType;
   public bool CanProcessStream(string streamName) => streamName.StartsWith(streamPrefix);
@@ -184,10 +199,11 @@ public class Fetcher<Entity> : EntityFetcher
     Option<StrongId> id,
     Position? upToRevision,
     Fetcher fetcher,
-    bool resetCache = false) =>
-    fetch(id, upToRevision, fetcher, resetCache);
+    bool resetCache = false,
+    CancellationToken cancellationToken = default) =>
+    fetch(id, upToRevision, fetcher, resetCache, cancellationToken);
 
-  private static Func<Option<StrongId>, Position?, Fetcher, bool, Task<FetchResult<Entity>>> Build(
+  private static Func<Option<StrongId>, Position?, Fetcher, bool, CancellationToken, Task<FetchResult<Entity>>> Build(
     EventStoreClient client,
     Func<StrongId, Option<Entity>> defaulter,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
@@ -206,13 +222,18 @@ public class Fetcher<Entity> : EntityFetcher
       entryOptions.AbsoluteExpirationRelativeToNow = cacheExpiration;
     }
 
-    return (id, r, f, sk) => id
+    return (id, r, f, sk, ct) => id
       .Bind(defaulter)
       .Match(
-        e => Fetch(e, r, f, sk),
+        e => Fetch(e, r, f, sk, ct),
         () => new FetchResult<Entity>(None, -1, None, null, null, null, null).Apply(Task.FromResult));
 
-    async Task<FetchResult<Entity>> Fetch(Entity defaulted, Position? upToRevision, Fetcher fetcher, bool resetCache)
+    async Task<FetchResult<Entity>> Fetch(
+      Entity defaulted,
+      Position? upToRevision,
+      Fetcher fetcher,
+      bool resetCache,
+      CancellationToken cancellationToken)
     {
       var interests = (await interestFetcher.Interests(defaulted.GetStreamName())).Select(i => i.StreamName).ToArray();
 
@@ -222,7 +243,16 @@ public class Fetcher<Entity> : EntityFetcher
       }
 
       return interests.Length == 0
-        ? await SingleStreamFetch.Do(cache, resetCache, defaulted, upToRevision, client, parser, entryOptions, fetcher)
+        ? await SingleStreamFetch.Do(
+          cache,
+          resetCache,
+          defaulted,
+          upToRevision,
+          client,
+          parser,
+          entryOptions,
+          fetcher,
+          cancellationToken)
         : await MultiStreamFetch.Do(
           cache,
           resetCache,
@@ -232,7 +262,8 @@ public class Fetcher<Entity> : EntityFetcher
           parser,
           entryOptions,
           fetcher,
-          interests);
+          interests,
+          cancellationToken);
     }
   }
 }
