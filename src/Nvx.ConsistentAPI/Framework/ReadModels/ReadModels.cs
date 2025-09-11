@@ -80,7 +80,8 @@ public class ReadModelDefinition<Shape, EntityShape> :
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
     GeneratorSettings settings,
-    ILogger logger)
+    ILogger logger,
+    string modelHash)
   {
     var factory = new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger);
     var databaseHandler = factory.Get<Shape>();
@@ -101,7 +102,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
         Defaulter,
         logger);
 
-    await Initialize(esClient, fetcher, parser, databaseHandler, settings, logger);
+    await Initialize(esClient, fetcher, parser, databaseHandler, settings, modelHash, logger);
   }
 
   public Type ShapeType { get; } = typeof(Shape);
@@ -136,13 +137,14 @@ public class ReadModelDefinition<Shape, EntityShape> :
     Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     DatabaseHandler<Shape> databaseHandler,
-    ILogger logger)
+    ILogger logger,
+    string modelHash)
   {
     reset = async () =>
     {
       await databaseHandler.Reset(false);
       isUpToDate = false;
-      _ = Task.Run(() => Subscribe(client, fetcher, parser, databaseHandler, logger));
+      _ = Task.Run(() => Subscribe(client, fetcher, parser, databaseHandler, logger, modelHash));
       return unit;
     };
 
@@ -254,6 +256,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
                        _ => None
                      })
             {
+              // await HydrationDaemonWorker.Register(modelHash, c
               await fetcher
                 .DaemonFetch(t.id, t.InterestedEntityStreamName)
                 .Iter(async entity =>
@@ -313,6 +316,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     DatabaseHandler<Shape> databaseHandler,
     GeneratorSettings settings,
+    string modelHash,
     ILogger logger)
   {
     if (!settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration))
@@ -321,7 +325,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
     }
 
     await databaseHandler.Initialize();
-    _ = Task.Run(() => Subscribe(client, fetcher, parser, databaseHandler, logger));
+    _ = Task.Run(() => Subscribe(client, fetcher, parser, databaseHandler, logger, modelHash));
   }
 
   private async Task UpdateReadModel(

@@ -1,6 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Security.Cryptography;
-using System.Text;
 using Dapper;
 using EventStore.Client;
 using Microsoft.Data.SqlClient;
@@ -43,7 +41,8 @@ internal class ReadModelHydrationDaemon
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     IdempotentReadModel[] readModels,
     ILogger logger,
-    InterestFetcher interestFetcher)
+    InterestFetcher interestFetcher,
+    string modelHash)
   {
     this.settings = settings;
     this.client = client;
@@ -52,12 +51,9 @@ internal class ReadModelHydrationDaemon
     this.readModels = readModels;
     this.logger = logger;
     this.interestFetcher = interestFetcher;
+    this.modelHash = modelHash;
     connectionString = settings.ReadModelConnectionString;
     stateMachine = new CentralHydrationStateMachine(settings, logger);
-
-    modelHash = Convert.ToBase64String(
-      SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(string.Empty, readModels.Select(rm => rm.TableName))))
-    );
 
     workers = Enumerable
       .Range(1, settings.ParallelHydration)

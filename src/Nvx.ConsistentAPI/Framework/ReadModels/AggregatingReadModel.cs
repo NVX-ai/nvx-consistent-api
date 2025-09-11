@@ -60,7 +60,8 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
     GeneratorSettings settings,
-    ILogger logger)
+    ILogger logger,
+    string modelHash)
   {
     var factory = new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger);
     var handler = factory.Get<Shape>();

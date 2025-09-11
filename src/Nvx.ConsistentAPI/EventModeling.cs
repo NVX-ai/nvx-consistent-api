@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -46,13 +48,16 @@ public interface EventModelingReadModelArtifact : Endpoint
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
     GeneratorSettings settings,
-    ILogger logger);
+    ILogger logger,
+    string modelHash);
 
   bool IsUpToDate(Position? position = null);
 }
 
 public interface IdempotentReadModel
 {
+  string TableName { get; }
+
   Task TryProcess(
     FoundEntity foundEntity,
     DatabaseHandlerFactory dbFactory,
@@ -63,8 +68,6 @@ public interface IdempotentReadModel
 
   bool CanProject(EventModelEvent e);
   bool CanProject(string streamName);
-
-  string TableName { get; }
 }
 
 public interface EventModelingProjectionArtifact
@@ -181,9 +184,15 @@ public class EventModel
       logger);
     await projectionDaemon.Initialize();
 
+    var modelHash = Convert.ToBase64String(
+      SHA256.HashData(
+        Encoding.UTF8.GetBytes(
+          string.Join(string.Empty, ReadModels.OfType<IdempotentReadModel>().Select(rm => rm.TableName))))
+    );
+
     foreach (var readModel in ReadModels)
     {
-      await readModel.ApplyTo(app, esClient, fetcher, parser, emitter, settings, logger);
+      await readModel.ApplyTo(app, esClient, fetcher, parser, emitter, settings, logger, modelHash);
     }
 
     runner.Initialize(RecurringTasks, fetcher, emitter, settings, logger);
@@ -208,7 +217,8 @@ public class EventModel
       parser,
       ReadModels.Where(rm => rm is IdempotentReadModel).Cast<IdempotentReadModel>().ToArray(),
       logger,
-      interestFetcher);
+      interestFetcher,
+      modelHash);
 
     await hydrationDaemon.Initialize();
 
