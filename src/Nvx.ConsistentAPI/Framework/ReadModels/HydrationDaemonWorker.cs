@@ -171,7 +171,7 @@ public class HydrationDaemonWorker
   private readonly Guid workerId = Guid.NewGuid();
   private DateTime resumePollingAt = DateTime.MaxValue;
 
-  public DateTime ResumePollingAt
+  private DateTime ResumePollingAt
   {
     get => resumePollingAt;
     set
@@ -277,7 +277,7 @@ public class HydrationDaemonWorker
       {
         lock (@lock)
         {
-          ResumePollingAt = DateTime.UtcNow.AddSeconds(waitBackoff);
+          ResumePollingAt = DateTime.UtcNow.AddMilliseconds(waitBackoff * 250 + Random.Shared.Next(1, 250));
 
           return;
         }
