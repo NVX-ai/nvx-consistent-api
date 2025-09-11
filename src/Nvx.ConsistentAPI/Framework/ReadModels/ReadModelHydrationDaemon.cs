@@ -125,7 +125,10 @@ internal class ReadModelHydrationDaemon
   {
     await CreateTable();
     await using var connection = new SqlConnection(connectionString);
-    await connection.ExecuteAsync(HydrationDaemonWorker.QueueTableSql);
+    foreach (var sql in HydrationDaemonWorker.TableCreationScripts)
+    {
+      await connection.ExecuteAsync(sql);
+    }
   }
 
   private async Task CreateTable()
@@ -401,7 +404,8 @@ internal class ReadModelHydrationDaemon
   private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId, long position)
   {
     var ableReadModels = readModels.Where(rm => rm.CanProject(streamName)).ToArray();
-    if (ableReadModels.Length == 0 || fetcher
+    if (ableReadModels.Length == 0
+        || fetcher
           .GetCachedStreamRevision(streamName, entityId)
           .Match(cachedRevision => cachedRevision > position, () => false))
     {

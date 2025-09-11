@@ -7,7 +7,10 @@ namespace Nvx.ConsistentAPI;
 
 public class HydrationDaemonWorker
 {
-  public const string QueueTableSql =
+  public static readonly string[] TableCreationScripts =
+    [QueueTableCreationSql, GetCandidatesIndexCreationSql, TryLockIndexCreationSql];
+
+  private const string QueueTableCreationSql =
     """
     IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'HydrationQueue')
     BEGIN
@@ -27,11 +30,25 @@ public class HydrationDaemonWorker
     END
     """;
 
-  /*
-  CREATE NONCLUSTERED INDEX [IX_HydrationQueue_GetCandidates]
-  ON [dbo].[HydrationQueue] ([ModelHash], [TimesLocked], [IsDynamicConsistencyBoundary], [Position])
-  INCLUDE ([LockedUntil], [LastHydratedPosition]);
-   */
+  private const string GetCandidatesIndexCreationSql =
+    """
+    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_HydrationQueue_GetCandidates')
+    BEGIN
+      CREATE NONCLUSTERED INDEX [IX_HydrationQueue_GetCandidates]
+      ON [dbo].[HydrationQueue] ([ModelHash], [TimesLocked], [IsDynamicConsistencyBoundary], [Position])
+      INCLUDE ([LockedUntil], [LastHydratedPosition]);
+    END
+    """;
+
+  private const string TryLockIndexCreationSql =
+    """
+    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_HydrationQueue_TryLock')
+    BEGIN
+      CREATE NONCLUSTERED INDEX [IX_HydrationQueue_TryLock]
+      ON [dbo].[HydrationQueue] ([StreamName], [ModelHash], [Position], [TimesLocked])
+      INCLUDE ([LockedUntil], [WorkerId]);
+    END
+    """;
 
   private const string GetCandidatesSql =
     """
