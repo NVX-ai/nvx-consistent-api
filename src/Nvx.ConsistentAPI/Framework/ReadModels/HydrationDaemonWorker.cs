@@ -67,7 +67,7 @@ public class HydrationDaemonWorker
       AND [ModelHash] = @ModelHash
     """;
 
-  private const string RemoveEntySql =
+  private const string UpdateHydrationState =
     """
     UPDATE [HydrationQueue]
     SET [WorkerId] = NULL,
@@ -327,7 +327,7 @@ public class HydrationDaemonWorker
   {
     await using var connection = new SqlConnection(connectionString);
     var rowsAffected = await connection.ExecuteAsync(
-      RemoveEntySql,
+      UpdateHydrationState,
       new { entry.StreamName, ModelHash = modelHash, WorkerId = workerId, entry.Position, entry.LastHydratedPosition });
     if (rowsAffected == 0)
     {
