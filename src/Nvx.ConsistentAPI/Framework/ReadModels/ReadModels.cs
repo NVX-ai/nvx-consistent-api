@@ -134,17 +134,24 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
   private async Task Subscribe(
     EventStoreClient client,
-    Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     DatabaseHandler<Shape> databaseHandler,
     ILogger logger,
-    string modelHash)
+    string modelHash,
+    string readModelConnectionString)
   {
     reset = async () =>
     {
       await databaseHandler.Reset(false);
+      await HydrationDaemonWorker.ResetStream(modelHash, readModelConnectionString, StreamPrefix);
       isUpToDate = false;
-      _ = Task.Run(() => Subscribe(client, fetcher, parser, databaseHandler, logger, modelHash));
+      _ = Task.Run(() => Subscribe(
+        client,
+        parser,
+        databaseHandler,
+        logger,
+        modelHash,
+        readModelConnectionString));
       return unit;
     };
 
@@ -256,42 +263,27 @@ public class ReadModelDefinition<Shape, EntityShape> :
                        _ => None
                      })
             {
-              // await HydrationDaemonWorker.Register(modelHash, c
-              await fetcher
-                .DaemonFetch(t.id, t.InterestedEntityStreamName)
-                .Iter(async entity =>
-                {
-                  if (entity is FoundEntity<EntityShape> foundEntity)
-                  {
-                    await UpdateReadModel(
-                      t.id,
-                      position.ToString(),
-                      false,
-                      foundEntity,
-                      databaseHandler,
-                      logger);
-                  }
-                });
+              await HydrationDaemonWorker.Register(
+                modelHash,
+                readModelConnectionString,
+                t.InterestedEntityStreamName,
+                t.id,
+                Convert.ToInt64(position.CommitPosition),
+                false,
+                [this]);
             }
 
             return;
           }
 
-          if (fetcher
-              .GetCachedStreamRevision(me.GetStreamName(), me.GetEntityId())
-              .Match(r => r >= eventNumber, () => false))
-          {
-            return;
-          }
-
-          await UpdateReadModel(
+          await HydrationDaemonWorker.Register(
+            modelHash,
+            readModelConnectionString,
+            me.GetStreamName(),
             me.GetEntityId(),
-            position.ToString(),
-            true,
-            fetcher,
-            databaseHandler,
-            logger);
-
+            Convert.ToInt64(position.CommitPosition),
+            false,
+            [this]);
           break;
         }
         catch (Exception ex)
@@ -325,7 +317,13 @@ public class ReadModelDefinition<Shape, EntityShape> :
     }
 
     await databaseHandler.Initialize();
-    _ = Task.Run(() => Subscribe(client, fetcher, parser, databaseHandler, logger, modelHash));
+    _ = Task.Run(() => Subscribe(
+      client,
+      parser,
+      databaseHandler,
+      logger,
+      modelHash,
+      settings.ReadModelConnectionString));
   }
 
   private async Task UpdateReadModel(
@@ -390,6 +388,8 @@ public record FoundEntity<T>(
   : FoundEntity
   where T : EventModelEntity<T>
 {
+  public long? Position => GlobalPosition.Match(long? (p) => Convert.ToInt64(p.CommitPosition), () => null);
+
   public static Option<FoundEntity<T>> From(FetchResult<T> fr) => fr
     .Ent.Bind(e => fr.GlobalPosition.Map(gp => (e, gp)))
     .Map(tuple => new FoundEntity<T>(
@@ -400,8 +400,6 @@ public record FoundEntity<T>(
       fr.LastUserSubFound,
       fr.Revision,
       tuple.gp));
-
-  public long? Position => GlobalPosition.Match(long? (p) => Convert.ToInt64(p.CommitPosition), () => null);
 }
 
 internal record ReadModelSyncState(

@@ -152,6 +152,13 @@ public class HydrationDaemonWorker
       AND [ModelHash] = @ModelHash
     """;
 
+  private const string ResetStreamSql =
+    """
+    DELETE FROM [HydrationQueue]
+    WHERE [StreamName] LIKE @StreamPrefix + '%'
+      AND [ModelHash] = @ModelHash
+    """;
+
   public static readonly string[] TableCreationScripts =
     [QueueTableCreationSql, GetCandidatesIndexCreationSql, TryLockIndexCreationSql];
 
@@ -171,16 +178,6 @@ public class HydrationDaemonWorker
   private readonly Guid workerId = Guid.NewGuid();
   private DateTime resumePollingAt = DateTime.MaxValue;
 
-  private DateTime ResumePollingAt
-  {
-    get => resumePollingAt;
-    set
-    {
-      waitBackoff = value == DateTime.MinValue ? 1 : waitBackoff + 1;
-      resumePollingAt = value;
-    }
-  }
-
   private int waitBackoff = 1;
 
   public HydrationDaemonWorker(
@@ -199,6 +196,16 @@ public class HydrationDaemonWorker
     this.logger = logger;
     task = Task.Run(Process);
     this.logger.LogInformation("Hydration worker with ID {ID} started", workerId);
+  }
+
+  private DateTime ResumePollingAt
+  {
+    get => resumePollingAt;
+    set
+    {
+      waitBackoff = value == DateTime.MinValue ? 1 : waitBackoff + 1;
+      resumePollingAt = value;
+    }
   }
 
   private bool ShouldPoll => ResumePollingAt <= DateTime.UtcNow;
@@ -230,6 +237,21 @@ public class HydrationDaemonWorker
         ModelHash = modelHash,
         Position = position,
         IsDynamicConsistencyBoundary = isDynamicConsistencyBoundary
+      });
+  }
+
+  public static async Task ResetStream(
+    string modelHash,
+    string connectionString,
+    string streamPrefix)
+  {
+    await using var connection = new SqlConnection(connectionString);
+    await connection.ExecuteAsync(
+      ResetStreamSql,
+      new
+      {
+        StreamPrefix = streamPrefix,
+        ModelHash = modelHash
       });
   }
 
@@ -333,6 +355,7 @@ public class HydrationDaemonWorker
             modelHash);
           return;
         }
+
         nextRefreshAt = DateTime.UtcNow.AddSeconds(30);
       }
 
