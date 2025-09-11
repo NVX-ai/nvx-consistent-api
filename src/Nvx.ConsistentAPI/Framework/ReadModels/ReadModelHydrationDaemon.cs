@@ -11,7 +11,6 @@ namespace Nvx.ConsistentAPI;
 
 internal class ReadModelHydrationDaemon
 {
-  private const int HydrationRetryLimit = 100;
   private const int InterestParallelism = 6;
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
   private readonly EventStoreClient client;
