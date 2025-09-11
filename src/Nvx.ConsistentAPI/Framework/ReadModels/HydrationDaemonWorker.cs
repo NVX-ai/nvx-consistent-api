@@ -305,7 +305,7 @@ public class HydrationDaemonWorker
     var ableReadModels = readModels.Where(rm => rm.CanProject(candidate.StreamName)).ToArray();
     if (ableReadModels.Length == 0)
     {
-      await RemoveEntry(candidate with { LastHydratedPosition = candidate.Position });
+      await MarkAsHydrated(candidate with { LastHydratedPosition = candidate.Position });
       return;
     }
 
@@ -328,7 +328,7 @@ public class HydrationDaemonWorker
       await Task.Delay(10);
     }
 
-    await RemoveEntry(candidate with { LastHydratedPosition = await hydrateTask });
+    await MarkAsHydrated(candidate with { LastHydratedPosition = await hydrateTask });
     return;
 
     async Task<long?> Hydrate()
@@ -352,7 +352,7 @@ public class HydrationDaemonWorker
     }
   }
 
-  private async Task RemoveEntry(HydrationQueueEntry entry)
+  private async Task MarkAsHydrated(HydrationQueueEntry entry)
   {
     await using var connection = new SqlConnection(connectionString);
     var rowsAffected = await connection.ExecuteAsync(
