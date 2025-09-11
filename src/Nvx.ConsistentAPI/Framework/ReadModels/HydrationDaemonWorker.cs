@@ -319,9 +319,20 @@ public class HydrationDaemonWorker
       if (nextRefreshAt < DateTime.UtcNow)
       {
         await using var connection = new SqlConnection(connectionString);
-        await connection.ExecuteAsync(
+        var rowsUpdated = await connection.ExecuteAsync(
           TryRefreshStreamLockSql,
           new { WorkerId = workerId, candidate.StreamName, ModelHash = modelHash });
+        if (rowsUpdated == 0)
+        {
+          await cancellationSource.CancelAsync();
+          logger.LogWarning(
+            "Lost lock on stream {Stream} at position {Position} for worker {WorkerId} and model {ModelHash}",
+            candidate.StreamName,
+            candidate.Position,
+            workerId,
+            modelHash);
+          return;
+        }
         nextRefreshAt = DateTime.UtcNow.AddSeconds(30);
       }
 
