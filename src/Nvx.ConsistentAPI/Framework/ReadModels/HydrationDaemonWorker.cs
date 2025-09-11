@@ -7,9 +7,6 @@ namespace Nvx.ConsistentAPI;
 
 public class HydrationDaemonWorker
 {
-  public static readonly string[] TableCreationScripts =
-    [QueueTableCreationSql, GetCandidatesIndexCreationSql, TryLockIndexCreationSql];
-
   private const string QueueTableCreationSql =
     """
     IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'HydrationQueue')
@@ -52,7 +49,7 @@ public class HydrationDaemonWorker
 
   private const string GetCandidatesSql =
     """
-    SELECT TOP 50 *
+    SELECT TOP 25 *
     FROM [HydrationQueue]
     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
       AND [ModelHash] = @ModelHash
@@ -155,6 +152,9 @@ public class HydrationDaemonWorker
       AND [ModelHash] = @ModelHash
     """;
 
+  public static readonly string[] TableCreationScripts =
+    [QueueTableCreationSql, GetCandidatesIndexCreationSql, TryLockIndexCreationSql];
+
   private readonly string connectionString;
   private readonly DatabaseHandlerFactory dbFactory;
   private readonly Fetcher fetcher;
@@ -169,7 +169,19 @@ public class HydrationDaemonWorker
   private readonly Task task;
 
   private readonly Guid workerId = Guid.NewGuid();
-  private DateTime resumePolling = DateTime.MaxValue;
+  private DateTime resumePollingAt = DateTime.MaxValue;
+
+  public DateTime ResumePollingAt
+  {
+    get => resumePollingAt;
+    set
+    {
+      waitBackoff = value == DateTime.MinValue ? 1 : waitBackoff + 1;
+      resumePollingAt = value;
+    }
+  }
+
+  private int waitBackoff = 1;
 
   public HydrationDaemonWorker(
     string modelHash,
@@ -189,7 +201,7 @@ public class HydrationDaemonWorker
     this.logger.LogInformation("Hydration worker with ID {ID} started", workerId);
   }
 
-  private bool ShouldPoll => resumePolling <= DateTime.UtcNow;
+  private bool ShouldPoll => ResumePollingAt <= DateTime.UtcNow;
 
   public static async Task Register(
     string modelHash,
@@ -225,7 +237,7 @@ public class HydrationDaemonWorker
   {
     lock (@lock)
     {
-      resumePolling = DateTime.UtcNow;
+      ResumePollingAt = DateTime.MinValue;
     }
   }
 
@@ -263,13 +275,9 @@ public class HydrationDaemonWorker
 
       if (candidate is null)
       {
-        var count = await PendingEventsCount(modelHash, connectionString);
         lock (@lock)
         {
-          if (count == 0)
-          {
-            resumePolling = DateTime.UtcNow.AddSeconds(Random.Shared.Next(15));
-          }
+          ResumePollingAt = DateTime.UtcNow.AddSeconds(waitBackoff);
 
           return;
         }
