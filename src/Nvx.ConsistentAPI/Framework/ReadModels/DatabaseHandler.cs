@@ -530,26 +530,33 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     }
   }
 
-  private async Task Delete(StrongId id, SqlConnection connection) =>
+  private async Task Delete(StrongId id, SqlConnection connection, CancellationToken cancellationToken) =>
     await connection.ExecuteAsync(
-      $"DELETE FROM [{tableName}] WHERE [FrameworkRelatedEntityId] = @Id",
-      new { Id = id.StreamId() });
+      new CommandDefinition(
+        $"DELETE FROM [{tableName}] WHERE [FrameworkRelatedEntityId] = @Id",
+        new { Id = id.StreamId() },
+        cancellationToken: cancellationToken));
 
-  public async Task<Unit> Update(Shape[] rms, string? checkpoint, TraceabilityFields traceabilityFields, StrongId id)
+  public async Task<Unit> Update(
+    Shape[] rms,
+    string? checkpoint,
+    TraceabilityFields traceabilityFields,
+    StrongId id,
+    CancellationToken cancellationToken)
   {
     await using var connection = new SqlConnection(connectionString);
 
-    await Delete(id, connection);
+    await Delete(id, connection, cancellationToken);
     try
     {
       foreach (var rm in rms.DistinctBy(r => r.Id))
       {
-        await Upsert(rm, traceabilityFields, connection);
+        await Upsert(rm, traceabilityFields, connection, cancellationToken);
       }
 
       if (checkpoint is not null)
       {
-        await UpdateCheckpoint(connection, checkpoint, null);
+        await UpdateCheckpoint(connection, checkpoint, null, cancellationToken);
       }
     }
     catch (Exception ex) when (!ex.Message.Contains("Cannot insert duplicate key in object"))
@@ -564,7 +571,8 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
   private async Task Upsert(
     Shape rm,
     TraceabilityFields traceabilityFields,
-    SqlConnection connection)
+    SqlConnection connection,
+    CancellationToken cancellationToken)
   {
     try
     {
@@ -612,7 +620,8 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
         }
       }
 
-      await connection.ExecuteAsync(TraceableUpsertSql, parameters);
+      await connection.ExecuteAsync(
+        new CommandDefinition(TraceableUpsertSql, parameters, cancellationToken: cancellationToken));
       foreach (var prop in arrayProperties)
       {
         var propTableName = DatabaseHandler.GetArrayPropTableName(prop.Name, tableName);
@@ -637,8 +646,10 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
           }
 
           await connection.ExecuteAsync(
-            $"INSERT INTO [{propTableName}] ([Id], [Value]) VALUES {arrayParamNames}",
-            arrayParams);
+            new CommandDefinition(
+              $"INSERT INTO [{propTableName}] ([Id], [Value]) VALUES {arrayParamNames}",
+              arrayParams,
+              cancellationToken: cancellationToken));
         }
       }
     }
@@ -829,7 +840,11 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     );
   }
 
-  internal async Task UpdateCheckpoint(IDbConnection connection, string checkpoint, IDbTransaction? transaction)
+  internal async Task UpdateCheckpoint(
+    IDbConnection connection,
+    string checkpoint,
+    IDbTransaction? transaction,
+    CancellationToken cancellationToken = default)
   {
     const string sqlCheckpoint =
       """
@@ -839,7 +854,12 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
         INSERT INTO [ReadModelCheckpoints] ([ModelName], [Checkpoint]) VALUES (@ModelName, @Checkpoint)
       """;
 
-    await connection.ExecuteAsync(sqlCheckpoint, new { ModelName = tableName, Checkpoint = checkpoint }, transaction);
+    await connection.ExecuteAsync(
+      new CommandDefinition(
+        sqlCheckpoint,
+        new { ModelName = tableName, Checkpoint = checkpoint },
+        transaction,
+        cancellationToken: cancellationToken));
   }
 
   private static string SortColumn(Type type, SortBy? sortBy)

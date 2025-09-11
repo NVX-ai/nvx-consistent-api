@@ -111,7 +111,8 @@ public class ReadModelDefinition<Shape, EntityShape> :
     DatabaseHandlerFactory dbFactory,
     StrongId entityId,
     string? checkpoint,
-    ILogger logger)
+    ILogger logger,
+    CancellationToken cancellationToken)
   {
     if (foundEntity is FoundEntity<EntityShape> thisEntity)
     {
@@ -121,7 +122,8 @@ public class ReadModelDefinition<Shape, EntityShape> :
         false,
         thisEntity,
         dbFactory.Get<Shape>(),
-        logger);
+        logger,
+        cancellationToken);
     }
   }
 
@@ -328,14 +330,18 @@ public class ReadModelDefinition<Shape, EntityShape> :
     bool isBackwards,
     Du<Fetcher, FoundEntity<EntityShape>> toProject,
     DatabaseHandler<Shape> databaseHandler,
-    ILogger logger)
+    ILogger logger,
+    CancellationToken cancellationToken = default)
   {
     try
     {
       await
         toProject
           .Match<AsyncOption<FoundEntity<EntityShape>>>(
-            fetcher => fetcher.Fetch<EntityShape>(Some(id)).Map(FoundEntity<EntityShape>.From).Async(),
+            fetcher => fetcher
+              .Fetch<EntityShape>(Some(id), cancellationToken: cancellationToken)
+              .Map(FoundEntity<EntityShape>.From)
+              .Async(),
             fe => fe)
           .Match(
             e => ShouldHydrate(e.Entity, isBackwards)
@@ -348,7 +354,8 @@ public class ReadModelDefinition<Shape, EntityShape> :
                   e.FirstUserSubFound,
                   e.LastUserSubFound,
                   id.StreamId()),
-                id)
+                id,
+                cancellationToken)
               : unit.ToTask(),
             () => unit.ToTask());
       holder.Etag = IdempotentUuid.Generate(checkpoint ?? Guid.NewGuid().ToString()).ToString();

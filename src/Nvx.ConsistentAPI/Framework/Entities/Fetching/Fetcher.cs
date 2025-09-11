@@ -6,7 +6,11 @@ namespace Nvx.ConsistentAPI;
 
 public interface EntityFetcher
 {
-  Task<FetchResult<T>> Fetch<T>(Option<StrongId> id, Position? upToRevision, Fetcher fetcher)
+  Task<FetchResult<T>> Fetch<T>(
+    Option<StrongId> id,
+    Position? upToRevision,
+    Fetcher fetcher,
+    CancellationToken cancellationToken = default)
     where T : EventModelEntity<T>;
 
   internal AsyncOption<T> WrappedFetch<T>(Option<StrongId> id, Fetcher fetcher, Position? upToRevision, bool resetCache)
@@ -78,11 +82,14 @@ public class Fetcher
         f => f.DaemonFetch(id, this, resetCache, cancellationToken),
         () => Option<FoundEntity>.None.ToTask());
 
-  public Task<FetchResult<T>> Fetch<T>(Option<StrongId> id, Position? upToRevision = null)
+  public Task<FetchResult<T>> Fetch<T>(
+    Option<StrongId> id,
+    Position? upToRevision = null,
+    CancellationToken cancellationToken = default)
     where T : EventModelEntity<T> =>
     fetchers
       .SingleOrNone(f => f.GetFetchType() == typeof(T))
-      .Match(f => f.Fetch<T>(id, upToRevision, this), () => throw new InvalidOperationException());
+      .Match(f => f.Fetch<T>(id, upToRevision, this, cancellationToken), () => throw new InvalidOperationException());
 
   public AsyncResult<FetchResult<T>, ApiError> SafeFetch<T>(
     Option<StrongId> id,
@@ -176,9 +183,13 @@ public class Fetcher<Entity> : EntityFetcher
       }
       : None;
 
-  public Task<FetchResult<T>> Fetch<T>(Option<StrongId> id, Position? upToRevision, Fetcher fetcher)
+  public Task<FetchResult<T>> Fetch<T>(
+    Option<StrongId> id,
+    Position? upToRevision,
+    Fetcher fetcher,
+    CancellationToken cancellationToken)
     where T : EventModelEntity<T> =>
-    Fetch(id, upToRevision, fetcher)
+    Fetch(id, upToRevision, fetcher, cancellationToken: cancellationToken)
       .Map(fr => new FetchResult<T>(
         fr.Ent.Map(e => (T)(object)e),
         fr.Revision,

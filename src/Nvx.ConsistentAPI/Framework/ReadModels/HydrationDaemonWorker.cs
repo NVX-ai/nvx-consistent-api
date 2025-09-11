@@ -346,7 +346,7 @@ public class HydrationDaemonWorker
       {
         foreach (var readModel in ableReadModels)
         {
-          await readModel.TryProcess(t.e, dbFactory, t.id, null, logger);
+          await readModel.TryProcess(t.e, dbFactory, t.id, null, logger, cancellationToken);
         }
       }
 
