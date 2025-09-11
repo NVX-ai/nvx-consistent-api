@@ -241,7 +241,7 @@ internal class ReadModelHydrationDaemon
       }
       catch (Exception ex)
       {
-        logger.LogError(ex, "Error hydrating read models");
+        logger.LogError(ex, "Error queuing read models hydration");
       }
     }
 
@@ -356,6 +356,7 @@ internal class ReadModelHydrationDaemon
 
     foreach (var tuple in interested)
     {
+      // Skip processing if the event is known to not be the last of the stream.
       if (fetcher
           .GetCachedStreamRevision(tuple.InterestedEntityStreamName, tuple.id)
           .Match(cachedRevision => cachedRevision > position, () => false))
@@ -402,11 +403,10 @@ internal class ReadModelHydrationDaemon
 
   private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId, long position)
   {
-    var ableReadModels = readModels.Where(rm => rm.CanProject(streamName)).ToArray();
-    if (ableReadModels.Length == 0
-        || fetcher
-          .GetCachedStreamRevision(streamName, entityId)
-          .Match(cachedRevision => cachedRevision > position, () => false))
+    // Skip processing if the event is known to not be the last of the stream.
+    if (fetcher
+        .GetCachedStreamRevision(streamName, entityId)
+        .Match(cachedRevision => cachedRevision > position, () => false))
     {
       return unit;
     }
@@ -452,12 +452,3 @@ internal class ReadModelHydrationDaemon
     }
   }
 }
-
-public record FailedHydration(
-  string StreamName,
-  string EventId,
-  string EventType,
-  DateTime HappenedAt,
-  int RetryCount,
-  string? ErrorMessage,
-  DateTime NextRetryFrom);
