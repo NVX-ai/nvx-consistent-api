@@ -28,24 +28,9 @@ public class HydrationDaemonWorker
     """;
 
   /*
-  -- Primary index for the main query pattern in GetCandidatesSql
-  CREATE NONCLUSTERED INDEX [IX_HydrationQueue_ModelHash_TimesLocked_Position]
-  ON [dbo].[HydrationQueue] ([ModelHash], [TimesLocked], [Position])
-  INCLUDE ([StreamName], [SerializedId], [IdTypeName], [IdTypeNamespace], [WorkerId], [LockedUntil], [CreatedAt], [IsDynamicConsistencyBoundary], [LastHydratedPosition]);
-
-  -- Index for lock operations (TryLockStreamSql, TryRefreshStreamLockSql, ReleaseSql, RemoveEntySql)
-  CREATE NONCLUSTERED INDEX [IX_HydrationQueue_StreamName_ModelHash_WorkerId]
-  ON [dbo].[HydrationQueue] ([StreamName], [ModelHash], [WorkerId])
-  INCLUDE ([Position], [TimesLocked], [LastHydratedPosition]);
-
-  -- Index for LockedUntil filtering (used in multiple queries)
-  CREATE NONCLUSTERED INDEX [IX_HydrationQueue_LockedUntil]
-  ON [dbo].[HydrationQueue] ([LockedUntil])
-  WHERE [LockedUntil] IS NOT NULL;
-
-  -- Index to optimize the ORDER BY clause in GetCandidatesSql
-  CREATE NONCLUSTERED INDEX [IX_HydrationQueue_IsDynamicConsistencyBoundary_Position]
-  ON [dbo].[HydrationQueue] ([IsDynamicConsistencyBoundary], [Position]);
+  CREATE NONCLUSTERED INDEX [IX_HydrationQueue_GetCandidates]
+  ON [dbo].[HydrationQueue] ([ModelHash], [TimesLocked], [IsDynamicConsistencyBoundary], [Position])
+  INCLUDE ([LockedUntil], [LastHydratedPosition]);
    */
 
   private const string GetCandidatesSql =
