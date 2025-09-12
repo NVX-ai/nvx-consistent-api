@@ -7,11 +7,19 @@ using Nvx.ConsistentAPI.InternalTooling;
 
 namespace Nvx.ConsistentAPI;
 
-internal class ReadModelHydrationDaemon
+internal class ReadModelHydrationDaemon(
+  GeneratorSettings settings,
+  EventStoreClient client,
+  Fetcher fetcher,
+  Func<ResolvedEvent, Option<EventModelEvent>> parser,
+  IdempotentReadModel[] readModels,
+  ILogger logger,
+  InterestFetcher interestFetcher,
+  string modelHash)
 {
   private const int InterestParallelism = 6;
 
-  // To be deprecated once the swarm model is 100% active
+  // To be deprecated once the swarm model is 100% active.
   private const string CreateCheckpointTableSql =
     """
     IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CentralDaemonCheckpoint')
@@ -40,61 +48,29 @@ internal class ReadModelHydrationDaemon
     "SELECT [Checkpoint] FROM [CentralDaemonCheckpoint] ORDER BY [Checkpoint] DESC";
 
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
-  private readonly EventStoreClient client;
-  private readonly string connectionString;
-
-  private readonly Fetcher fetcher;
-  private readonly InterestFetcher interestFetcher;
+  private readonly string connectionString = settings.ReadModelConnectionString;
 
   private readonly SemaphoreSlim lastPositionSemaphore = new(1);
-  private readonly ILogger logger;
-  private readonly string modelHash;
-  private readonly Func<ResolvedEvent, Option<EventModelEvent>> parser;
-  private readonly IdempotentReadModel[] readModels;
   private readonly SemaphoreSlim semaphore = new(1);
-  private readonly GeneratorSettings settings;
 
-  private readonly CentralHydrationStateMachine stateMachine;
+  private readonly CentralHydrationStateMachine stateMachine = new(settings, logger);
 
-  private readonly HydrationDaemonWorker[] workers;
+  private readonly HydrationDaemonWorker[] workers = Enumerable
+    .Range(1, settings.ParallelHydration)
+    .Select(_ => new HydrationDaemonWorker(
+      modelHash,
+      settings.ReadModelConnectionString,
+      fetcher,
+      readModels,
+      new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger),
+      logger))
+    .ToArray();
+
   private HydrationCountTracker? hydrationCountTracker;
 
   private bool isInitialized;
   private ulong? lastCheckpoint;
   private Position? lastPosition;
-
-  public ReadModelHydrationDaemon(
-    GeneratorSettings settings,
-    EventStoreClient client,
-    Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
-    IdempotentReadModel[] readModels,
-    ILogger logger,
-    InterestFetcher interestFetcher,
-    string modelHash)
-  {
-    this.settings = settings;
-    this.client = client;
-    this.fetcher = fetcher;
-    this.parser = parser;
-    this.readModels = readModels;
-    this.logger = logger;
-    this.interestFetcher = interestFetcher;
-    this.modelHash = modelHash;
-    connectionString = settings.ReadModelConnectionString;
-    stateMachine = new CentralHydrationStateMachine(settings, logger);
-
-    workers = Enumerable
-      .Range(1, settings.ParallelHydration)
-      .Select(_ => new HydrationDaemonWorker(
-        modelHash,
-        settings.ReadModelConnectionString,
-        fetcher,
-        readModels,
-        new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger),
-        logger))
-      .ToArray();
-  }
 
   public async Task<HydrationDaemonInsights> Insights(ulong lastEventPosition)
   {
@@ -300,14 +276,14 @@ internal class ReadModelHydrationDaemon
 
           if (IsInterestEvent(@event))
           {
-            await TryProcessInterestedEvent(@event, Convert.ToInt64(evt.Event.Position.CommitPosition));
+            await TryProcessInterestedEvent(@event, evt.Event.Position.CommitPosition);
             await UpdateLastPosition(evt.Event.Position);
             return;
           }
 
           var concernedTask = TryProcessConcernedStreams(
             @event.GetStreamName(),
-            Convert.ToInt64(evt.Event.Position.CommitPosition));
+            evt.Event.Position.CommitPosition);
 
           var ableReadModels =
             ModelsForEvent.GetOrAdd(
@@ -326,7 +302,7 @@ internal class ReadModelHydrationDaemon
             settings.ReadModelConnectionString,
             evt.OriginalStreamId,
             @event.GetEntityId(),
-            Convert.ToInt64(evt.Event.Position.CommitPosition),
+            evt.Event.Position.CommitPosition,
             false,
             readModels);
           TriggerWorkers();
@@ -357,7 +333,7 @@ internal class ReadModelHydrationDaemon
       or ConcernedEntityReceivedInterest
       or ConcernedEntityHadInterestRemoved;
 
-  private async Task TryProcessInterestedEvent(EventModelEvent @event, long position)
+  private async Task TryProcessInterestedEvent(EventModelEvent @event, ulong globalPosition)
   {
     var interested = @event switch
     {
@@ -372,10 +348,10 @@ internal class ReadModelHydrationDaemon
 
     foreach (var tuple in interested)
     {
-      // Skip processing if the event is known to not be the last of the stream.
+      // Skip processing if the event is known to not be the last of the joint stream.
       if (fetcher
-          .GetCachedStreamRevision(tuple.InterestedEntityStreamName, tuple.id)
-          .Match(cachedRevision => cachedRevision > position, () => false))
+          .GetCachedLastPosition(tuple.InterestedEntityStreamName, tuple.id)
+          .Match(cachedRevision => cachedRevision > globalPosition, () => false))
       {
         continue;
       }
@@ -385,7 +361,7 @@ internal class ReadModelHydrationDaemon
         connectionString,
         tuple.InterestedEntityStreamName,
         tuple.id,
-        position,
+        globalPosition,
         true,
         readModels);
       TriggerWorkers();
@@ -404,25 +380,31 @@ internal class ReadModelHydrationDaemon
 
     foreach (var concernedEntityStreamName in concerned)
     {
-      await TryProcessConcernedStreams(concernedEntityStreamName, position);
+      await TryProcessConcernedStreams(concernedEntityStreamName, globalPosition);
     }
   }
 
-  private async Task TryProcessConcernedStreams(string streamName, long position) =>
+  private async Task TryProcessConcernedStreams(string streamName, ulong globalPosition) =>
     await interestFetcher
       .Concerns(streamName)
       .Map(ies =>
         ies
           .Select<Concern, Func<Task<Unit>>>(interestedStream => async () =>
-            await TryProcessInterestedStream(interestedStream.StreamName, interestedStream.Id, position))
+            await TryProcessInterestedStream(
+              interestedStream.StreamName,
+              interestedStream.Id,
+              globalPosition))
           .Parallel(InterestParallelism));
 
-  private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId, long position)
+  private async Task<Unit> TryProcessInterestedStream(
+    string streamName,
+    StrongId entityId,
+    ulong globalPosition)
   {
-    // Skip processing if the event is known to not be the last of the stream.
+    // Skip processing if the event is known to not be the last of the joint stream.
     if (fetcher
-        .GetCachedStreamRevision(streamName, entityId)
-        .Match(cachedRevision => cachedRevision > position, () => false))
+        .GetCachedLastPosition(streamName, entityId)
+        .Match(cachedRevision => cachedRevision > globalPosition, () => false))
     {
       return unit;
     }
@@ -432,7 +414,7 @@ internal class ReadModelHydrationDaemon
       connectionString,
       streamName,
       entityId,
-      position,
+      globalPosition,
       true,
       readModels);
     TriggerWorkers();

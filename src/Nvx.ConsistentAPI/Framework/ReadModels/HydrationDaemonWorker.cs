@@ -17,13 +17,13 @@ public class HydrationDaemonWorker
         [IdTypeName] [nvarchar](256) NOT NULL,
         [IdTypeNamespace] [nvarchar](256) NULL,
         [ModelHash] [nvarchar](256) NOT NULL,
-        [Position] [bigint] NOT NULL,
+        [Position] NUMERIC(20,0) NOT NULL,
         [WorkerId] [uniqueidentifier] NULL,
         [LockedUntil] [datetime2](7) NULL,
         [TimesLocked] [int] NOT NULL,
         [CreatedAt] [datetime2](7) NOT NULL DEFAULT (GETUTCDATE()),
         [IsDynamicConsistencyBoundary] [bit] NOT NULL DEFAULT (0),
-        [LastHydratedPosition] [bigint] NULL DEFAULT NULL)
+        [LastHydratedPosition] NUMERIC(20,0) NULL DEFAULT NULL)
     END
     """;
 
@@ -215,7 +215,7 @@ public class HydrationDaemonWorker
     string connectionString,
     string streamName,
     StrongId id,
-    long position,
+    ulong position,
     bool isDynamicConsistencyBoundary,
     IdempotentReadModel[] readModels)
   {
@@ -235,7 +235,7 @@ public class HydrationDaemonWorker
         IdTypeName = idType.Name,
         IdTypeNamespace = idType.Namespace,
         ModelHash = modelHash,
-        Position = position,
+        Position = Convert.ToDecimal(position),
         IsDynamicConsistencyBoundary = isDynamicConsistencyBoundary
       });
   }
@@ -367,7 +367,7 @@ public class HydrationDaemonWorker
     await MarkAsHydrated(candidate with { LastHydratedPosition = await hydrateTask });
     return;
 
-    async Task<long?> Hydrate(CancellationToken cancellationToken)
+    async Task<ulong?> Hydrate(CancellationToken cancellationToken)
     {
       var maybeEntity = await candidate
         .GetStrongId()
@@ -415,10 +415,10 @@ public record HydrationQueueEntry(
   string IdTypeName,
   string? IdTypeNamespace,
   string ModelHash,
-  long Position,
+  decimal Position,
   Guid? WorkerId,
   DateTime? LockedUntil,
   int TimesLocked,
   DateTime CreatedAt,
   bool IsDynamicConsistencyBoundary,
-  long? LastHydratedPosition);
+  decimal? LastHydratedPosition);
