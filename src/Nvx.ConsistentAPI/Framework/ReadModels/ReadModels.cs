@@ -268,7 +268,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
                 readModelConnectionString,
                 t.InterestedEntityStreamName,
                 t.id,
-                Convert.ToInt64(position.CommitPosition),
+                position.CommitPosition,
                 false,
                 [this]);
             }
@@ -281,7 +281,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
             readModelConnectionString,
             me.GetStreamName(),
             me.GetEntityId(),
-            Convert.ToInt64(position.CommitPosition),
+            position.CommitPosition,
             false,
             [this]);
           break;
@@ -374,7 +374,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
 public interface FoundEntity
 {
-  long? Position { get; }
+  ulong? Position { get; }
 }
 
 public record FoundEntity<T>(
@@ -388,7 +388,7 @@ public record FoundEntity<T>(
   : FoundEntity
   where T : EventModelEntity<T>
 {
-  public long? Position => GlobalPosition.Match(long? (p) => Convert.ToInt64(p.CommitPosition), () => null);
+  public ulong? Position => GlobalPosition.Match(ulong? (p) => p.CommitPosition, () => null);
 
   public static Option<FoundEntity<T>> From(FetchResult<T> fr) => fr
     .Ent.Bind(e => fr.GlobalPosition.Map(gp => (e, gp)))
