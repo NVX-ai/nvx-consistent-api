@@ -10,6 +10,32 @@ namespace Nvx.ConsistentAPI;
 internal class ReadModelHydrationDaemon
 {
   private const int InterestParallelism = 6;
+
+  // To be deprecated once the swarm model is 100% active
+  private const string CreateCheckpointTableSql =
+    """
+    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CentralDaemonCheckpoint')
+      BEGIN
+        CREATE TABLE [CentralDaemonCheckpoint]
+        (
+         [Checkpoint] NVARCHAR(255) NOT NULL
+        )
+      END 
+    """;
+
+  private const string CreateModelHashedTableSql =
+    """
+    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CentralDaemonHashedCheckpoints')
+      BEGIN
+        CREATE TABLE [HydrationDaemonWorker]
+        (
+         [ModelHash] NVARCHAR(255) NOT NULL,
+         [Checkpoint] NVARCHAR(255) NOT NULL,
+         [LastUpdatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        )
+      END 
+    """;
+
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
   private readonly EventStoreClient client;
   private readonly string connectionString;
@@ -146,28 +172,6 @@ internal class ReadModelHydrationDaemon
       """;
     await connection.ExecuteAsync(sql);
   }
-
-  private const string CreateCheckpointTableSql = """
-                                                  IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CentralDaemonCheckpoint')
-                                                    BEGIN
-                                                      CREATE TABLE [CentralDaemonCheckpoint]
-                                                      (
-                                                       [Checkpoint] NVARCHAR(255) NOT NULL
-                                                      )
-                                                    END 
-                                                  """;
-
-  private const string CreateModelHashedTableSql = """
-                                                   IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CentralDaemonHashedCheckpoints')
-                                                     BEGIN
-                                                       CREATE TABLE [HydrationDaemonWorker]
-                                                       (
-                                                        [ModelHash] NVARCHAR(255) NOT NULL,
-                                                        [Checkpoint] NVARCHAR(255) NOT NULL,
-                                                        [LastUpdatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE()
-                                                       )
-                                                     END 
-                                                   """;
 
   private async Task<FromAll> GetCheckpoint()
   {
