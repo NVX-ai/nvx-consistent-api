@@ -36,6 +36,9 @@ internal class ReadModelHydrationDaemon
       END 
     """;
 
+  private const string GetLegacyCheckpointSql =
+    "SELECT [Checkpoint] FROM [CentralDaemonCheckpoint] ORDER BY [Checkpoint] DESC";
+
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
   private readonly EventStoreClient client;
   private readonly string connectionString;
@@ -160,24 +163,15 @@ internal class ReadModelHydrationDaemon
     }
 
     await using var connection = new SqlConnection(connectionString);
-    const string sql =
-      """
-      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CentralDaemonCheckpoint')
-        BEGIN
-          CREATE TABLE [CentralDaemonCheckpoint]
-          (
-           [Checkpoint] NVARCHAR(255) NOT NULL
-          )
-        END 
-      """;
-    await connection.ExecuteAsync(sql);
+    await connection.ExecuteAsync(CreateCheckpointTableSql);
+    await connection.ExecuteAsync(CreateModelHashedTableSql);
   }
 
   private async Task<FromAll> GetCheckpoint()
   {
     await using var connection = new SqlConnection(connectionString);
-    const string sql = "SELECT [Checkpoint] FROM [CentralDaemonCheckpoint] ORDER BY [Checkpoint] DESC";
-    var value = await connection.QueryFirstOrDefaultAsync<string?>(sql);
+
+    var value = await connection.QueryFirstOrDefaultAsync<string?>(GetLegacyCheckpointSql);
 
     if (value is null)
     {
