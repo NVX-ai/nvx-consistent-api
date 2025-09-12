@@ -7,7 +7,7 @@ internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger 
 {
   private readonly SemaphoreSlim clearanceSemaphore = new(1, 1);
   private readonly SemaphoreSlim hydrationSemaphore = new(settings.ParallelHydration * 2, settings.ParallelHydration * 2);
-  private readonly List<(string stream, Task task)> hydrationTasks = [].;
+  private readonly List<(string stream, Task task)> hydrationTasks = [];
 
   public async Task Queue(ResolvedEvent evt, Func<ResolvedEvent, Task> tryProcess)
   {
