@@ -460,12 +460,12 @@ internal class ReadModelHydrationDaemon(
     try
     {
       await connection.ExecuteAsync(
-        "INSERT INTO [CentralDaemonCheckpoint] ([Checkpoint]) VALUES (@Checkpoint)",
-        new { Checkpoint = serialized },
+        "INSERT INTO [CentralDaemonHashedCheckpoints] ([ModelHash], [Checkpoint]) VALUES (@ModelHash, @Checkpoint)",
+        new { ModelHash = modelHash, Checkpoint = serialized },
         transaction);
       await connection.ExecuteAsync(
-        "DELETE FROM [CentralDaemonCheckpoint] WHERE [Checkpoint] != @Checkpoint",
-        new { Checkpoint = serialized },
+        "DELETE FROM [CentralDaemonHashedCheckpoints] WHERE [ModelHash] = @ModelHash AND [Checkpoint] != @Checkpoint",
+        new { ModelHash = modelHash, Checkpoint = serialized },
         transaction);
       await transaction.CommitAsync();
       await UpdateLastPosition(position);

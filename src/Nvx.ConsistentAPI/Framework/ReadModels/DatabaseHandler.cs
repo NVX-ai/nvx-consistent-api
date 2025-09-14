@@ -223,13 +223,20 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     const string daemonCheckpointTableExistsSql =
       "SELECT Count(*) FROM sys.tables WHERE name = 'CentralDaemonCheckpoint'";
     var daemonCheckpointTableCount = await connection.QueryFirstOrDefaultAsync<int>(daemonCheckpointTableExistsSql);
-    if (daemonCheckpointTableCount == 0)
+    const string hashedDaemonCheckpointTableExistsSql =
+      "SELECT Count(*) FROM sys.tables WHERE name = 'CentralDaemonHashedCheckpoints'";
+    var daemonCheckpointHashedTableCount =
+        await connection.QueryFirstOrDefaultAsync<int>(hashedDaemonCheckpointTableExistsSql);
+    if (daemonCheckpointTableCount == 0 && daemonCheckpointHashedTableCount == 0)
     {
       await MarkAsUpToDate();
       return;
     }
 
-    const string daemonCheckpointCountSql = "SELECT Count(*) FROM [CentralDaemonCheckpoint]";
+    banana
+    // TODO: This breaks for a new SQL after the transition, fix it.
+
+    const string daemonCheckpointCountSql = "SELECT Count(*) FROM [CentralDaemonHashedCheckpoints]";
     var checkpointCount = await connection.QueryFirstOrDefaultAsync<int>(daemonCheckpointCountSql);
     if (checkpointCount == 0)
     {
