@@ -58,11 +58,14 @@ public class HydrationDaemonWorker
     ORDER BY [IsDynamicConsistencyBoundary], [Position] ASC
     """;
 
-  private const string TryLockStreamSql =
-    """
+  private const int StreamLockLengthSeconds = 42;
+  private const int RefreshStreamLockFrequencySeconds = StreamLockLengthSeconds / 3;
+
+  private static readonly string TryLockStreamSql =
+    $"""
     UPDATE [HydrationQueue]
     SET [WorkerId] = @WorkerId,
-        [LockedUntil] = DATEADD(SECOND, 90, GETUTCDATE()),
+        [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()),
         [TimesLocked] = [TimesLocked] + 1
     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
       AND [StreamName] = @StreamName
@@ -72,10 +75,10 @@ public class HydrationDaemonWorker
       AND [Position] = @Position
     """;
 
-  private const string TryRefreshStreamLockSql =
-    """
+  private static readonly string TryRefreshStreamLockSql =
+    $"""
     UPDATE [HydrationQueue]
-    SET [LockedUntil] = DATEADD(SECOND, 90, GETUTCDATE())
+    SET [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE())
     WHERE [WorkerId] = @WorkerId
       AND [StreamName] = @StreamName
       AND [ModelHash] = @ModelHash
@@ -356,7 +359,7 @@ public class HydrationDaemonWorker
           return;
         }
 
-        nextRefreshAt = DateTime.UtcNow.AddSeconds(30);
+        nextRefreshAt = DateTime.UtcNow.AddSeconds(RefreshStreamLockFrequencySeconds);
       }
 
       // It might mask the error from the cancellation of the hydration.

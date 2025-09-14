@@ -31,7 +31,7 @@ internal class ReadModelHydrationDaemon(
       END 
     """;
 
-  private const string CreateModelHashedTableSql =
+  private const string CreateHashedCheckpointTableSql =
     """
     IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CentralDaemonHashedCheckpoints')
       BEGIN
@@ -140,7 +140,7 @@ internal class ReadModelHydrationDaemon(
 
     await using var connection = new SqlConnection(connectionString);
     await connection.ExecuteAsync(CreateCheckpointTableSql);
-    await connection.ExecuteAsync(CreateModelHashedTableSql);
+    await connection.ExecuteAsync(CreateHashedCheckpointTableSql);
   }
 
   private async Task<FromAll> GetCheckpoint()
