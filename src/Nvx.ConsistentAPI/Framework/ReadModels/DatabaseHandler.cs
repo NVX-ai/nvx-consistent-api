@@ -220,25 +220,26 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       await connection.ExecuteAsync(listSql);
     }
 
-    const string daemonCheckpointTableExistsSql =
-      "SELECT Count(*) FROM sys.tables WHERE name = 'CentralDaemonCheckpoint'";
-    var daemonCheckpointTableCount = await connection.QueryFirstOrDefaultAsync<int>(daemonCheckpointTableExistsSql);
-    const string hashedDaemonCheckpointTableExistsSql =
-      "SELECT Count(*) FROM sys.tables WHERE name = 'CentralDaemonHashedCheckpoints'";
+    var daemonCheckpointTableCount = await connection.QueryFirstOrDefaultAsync<int>(
+      "SELECT Count(*) FROM sys.tables WHERE name = 'CentralDaemonCheckpoint'");
     var daemonCheckpointHashedTableCount =
-        await connection.QueryFirstOrDefaultAsync<int>(hashedDaemonCheckpointTableExistsSql);
+      await connection.QueryFirstOrDefaultAsync<int>(
+        "SELECT Count(*) FROM sys.tables WHERE name = 'CentralDaemonHashedCheckpoints'");
     if (daemonCheckpointTableCount == 0 && daemonCheckpointHashedTableCount == 0)
     {
       await MarkAsUpToDate();
       return;
     }
 
-    banana
-    // TODO: This breaks for a new SQL after the transition, fix it.
+    var checkpointCount = daemonCheckpointHashedTableCount == 0
+      ? 0
+      : await connection.QueryFirstOrDefaultAsync<int>("SELECT Count(*) FROM [CentralDaemonCheckpoint]");
 
-    const string daemonCheckpointCountSql = "SELECT Count(*) FROM [CentralDaemonHashedCheckpoints]";
-    var checkpointCount = await connection.QueryFirstOrDefaultAsync<int>(daemonCheckpointCountSql);
-    if (checkpointCount == 0)
+    var hashedCheckpointCount = daemonCheckpointHashedTableCount == 0
+      ? 0
+      : await connection.QueryFirstOrDefaultAsync<int>("SELECT Count(*) FROM [CentralDaemonHashedCheckpoints]");
+
+    if (checkpointCount == 0 && hashedCheckpointCount == 0)
     {
       await MarkAsUpToDate();
     }
