@@ -68,8 +68,8 @@ internal static class InstanceTracking
 
 internal class ConsistencyStateMachine(string url)
 {
-  private const int BaseDelayMilliseconds = 250;
-  private const int MaxDelayMilliseconds = 15_000;
+  private const int BaseDelayMilliseconds = 100;
+  private const int MaxDelayMilliseconds = 7_500;
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private DateTime lastConsistentAt = DateTime.MinValue;
 
@@ -83,8 +83,8 @@ internal class ConsistencyStateMachine(string url)
     var minimumDelayMs = waitType switch
     {
       ConsistencyWaitType.Short => BaseDelayMilliseconds,
-      ConsistencyWaitType.Medium => MaxDelayMilliseconds / 2,
-      _ => MaxDelayMilliseconds
+      ConsistencyWaitType.Medium => BaseDelayMilliseconds * 2,
+      _ => BaseDelayMilliseconds * 4
     };
     var milliseconds = Math.Max(minimumDelayMs, increment * BaseDelayMilliseconds);
     return TimeSpan.FromMilliseconds(milliseconds);

@@ -133,7 +133,13 @@ public class HydrationDaemonWorker
     """;
 
   private const string PendingEventsCountSql =
-    "SELECT COUNT(*) FROM [HydrationQueue] WHERE [ModelHash] = @ModelHash AND [TimesLocked] < 25 AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])";
+    """
+    SELECT COUNT(*)
+    FROM [HydrationQueue]
+    WHERE [ModelHash] = @ModelHash 
+      AND [TimesLocked] < 25
+      AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])";
+    """;
 
   private const string ReleaseSql =
     """
