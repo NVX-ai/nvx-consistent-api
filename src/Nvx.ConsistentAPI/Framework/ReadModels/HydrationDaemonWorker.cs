@@ -322,6 +322,19 @@ public class HydrationDaemonWorker
         ReadModelName = readModelName
       });
 
+  private async Task<bool> TryLockReadModel(string readModelName)
+  {
+    await using var connection = new SqlConnection(connectionString);
+    return await connection.ExecuteAsync(
+             TryModelHashReadModelLockSql,
+             new
+             {
+               ModelHash = modelHash,
+               ReadModelName = readModelName
+             })
+           > 0;
+  }
+
   public void Trigger()
   {
     lock (@lock)
@@ -447,7 +460,10 @@ public class HydrationDaemonWorker
       {
         foreach (var readModel in ableReadModels)
         {
-          await readModel.TryProcess(t.e, dbFactory, t.id, null, logger, cancellationToken);
+          if (await TryLockReadModel(readModel.TableName))
+          {
+            await readModel.TryProcess(t.e, dbFactory, t.id, null, logger, cancellationToken);
+          }
         }
       }
 
@@ -474,6 +490,8 @@ public class HydrationDaemonWorker
     await using var connection = new SqlConnection(connectionString);
     return await connection.QuerySingleAsync<int>(PendingEventsCountSql, new { ModelHash = modelHash });
   }
+
+  private record ForeignReadModelLock(string ModelHash, string ReadModelName);
 }
 
 public record HydrationQueueEntry(
