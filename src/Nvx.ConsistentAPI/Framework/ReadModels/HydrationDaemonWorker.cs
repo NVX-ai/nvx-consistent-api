@@ -138,7 +138,7 @@ public class HydrationDaemonWorker
     FROM [HydrationQueue]
     WHERE [ModelHash] = @ModelHash 
       AND [TimesLocked] < 25
-      AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])";
+      AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition]);
     """;
 
   private const string ReleaseSql =
