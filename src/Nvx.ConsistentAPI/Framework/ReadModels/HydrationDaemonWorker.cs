@@ -59,29 +59,6 @@ public class HydrationDaemonWorker
     END
     """;
 
-  private static readonly string SafeInsertModelHashReadModelLockSql =
-    $"""
-    MERGE [ModelHashReadModelLocks] AS target
-    USING (
-      SELECT
-        @ModelHash AS ModelHash,
-        @ReadModelName AS ReadModelName,
-        DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS LockedUntil
-    ) AS source
-    ON target.[ModelHash] = source.ModelHash
-    WHEN NOT MATCHED THEN
-        INSERT (
-          [ModelHash],
-          [ReadModelName],
-          [LockedUntil]
-        )
-        VALUES (
-          source.ModelHash,
-          source.ReadModelName,
-          source.LockedUntil
-        );
-    """;
-
   private const string GetCandidatesSql =
     """
     SELECT TOP 25 *
@@ -173,6 +150,41 @@ public class HydrationDaemonWorker
     WHERE [StreamName] LIKE @StreamPrefix + '%'
       AND [ModelHash] = @ModelHash
     """;
+
+  private static readonly string SafeInsertModelHashReadModelLockSql =
+    $"""
+     MERGE [ModelHashReadModelLocks] AS target
+     USING (
+       SELECT
+         @ModelHash AS ModelHash,
+         @ReadModelName AS ReadModelName,
+         DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS LockedUntil
+     ) AS source
+     ON target.[ModelHash] = source.ModelHash
+     WHEN NOT MATCHED THEN
+         INSERT (
+           [ModelHash],
+           [ReadModelName],
+           [LockedUntil]
+         )
+         VALUES (
+           source.ModelHash,
+           source.ReadModelName,
+           source.LockedUntil
+         );
+     """;
+
+  private static readonly string TryModelHashReadModelLockSql =
+    $"""
+      UPDATE [ModelHashReadModelLocks]
+      SET [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE())
+      WHERE 
+        [ReadModelName] = @ReadModelName
+        AND 
+         [LockedUntil] IS NULL 
+         OR [LockedUntil] < GETUTCDATE()
+         OR [ModelHash] = @ModelHash
+     """;
 
   private static readonly string TryLockStreamSql =
     $"""
@@ -298,11 +310,10 @@ public class HydrationDaemonWorker
       });
   }
 
-  public static async Task TryLockReadModel(
+  public static async Task TryInitialLockReadModel(
     string modelHash,
     string readModelName,
-    SqlConnection connection)
-  {
+    SqlConnection connection) =>
     await connection.ExecuteAsync(
       SafeInsertModelHashReadModelLockSql,
       new
@@ -310,7 +321,6 @@ public class HydrationDaemonWorker
         ModelHash = modelHash,
         ReadModelName = readModelName
       });
-  }
 
   public void Trigger()
   {

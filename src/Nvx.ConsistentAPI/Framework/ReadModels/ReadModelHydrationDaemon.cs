@@ -132,7 +132,7 @@ internal class ReadModelHydrationDaemon(
 
     foreach (var readModel in readModels)
     {
-      await HydrationDaemonWorker.TryLockReadModel(modelHash, readModel.TableName, connection);
+      await HydrationDaemonWorker.TryInitialLockReadModel(modelHash, readModel.TableName, connection);
     }
   }
 
