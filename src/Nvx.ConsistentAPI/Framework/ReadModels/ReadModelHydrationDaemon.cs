@@ -35,10 +35,10 @@ internal class ReadModelHydrationDaemon(
     """
     IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CentralDaemonHashedCheckpoints')
       BEGIN
-        CREATE TABLE [HydrationDaemonWorker]
+        CREATE TABLE [CentralDaemonHashedCheckpoints]
         (
          [ModelHash] NVARCHAR(255) NOT NULL,
-         [Checkpoint] NVARCHAR(255) NOT NULL,
+         [Checkpoint] NUMERIC(20,0) NOT NULL,
          [LastUpdatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE()
         )
       END 
@@ -146,17 +146,47 @@ internal class ReadModelHydrationDaemon(
   private async Task<FromAll> GetCheckpoint()
   {
     await using var connection = new SqlConnection(connectionString);
+    var forThisHash = await ForThisHash(connection);
 
-    var value = await connection.QueryFirstOrDefaultAsync<string?>(GetLegacyCheckpointSql);
-
-    if (value is null)
+    if (forThisHash is { } forThis)
     {
-      return FromAll.Start;
+      return FromAll.After(new Position(forThis, forThis));
     }
 
-    return Position.TryParse(value, out var position) && position != null
-      ? FromAll.After(position.Value)
-      : FromAll.Start;
+    var forAnyHash = await ForAnyHash(connection);
+
+    if (forAnyHash is { } forAny)
+    {
+      return FromAll.After(new Position(forAny, forAny));
+    }
+
+    return await FromLegacy(connection) is { } legacy ? FromAll.After(legacy) : FromAll.Start;
+
+    async Task<Position?> FromLegacy(SqlConnection conn)
+    {
+      var value = await conn.QueryFirstOrDefaultAsync<string?>(GetLegacyCheckpointSql);
+      return value is not null && Position.TryParse(value, out var position) && position != null ? position : null;
+    }
+
+    async Task<ulong?> ForThisHash(SqlConnection conn)
+    {
+      var value = await conn.QueryFirstOrDefaultAsync<decimal?>(
+        """
+        SELECT TOP 1 [Checkpoint]
+        FROM [CentralDaemonHashedCheckpoints]
+        WHERE [ModelHash] = @ModelHash
+        ORDER BY [LastUpdatedAt] DESC
+        """,
+        new { ModelHash = modelHash });
+      return value is { } val ? Convert.ToUInt64(val) : null;
+    }
+
+    async Task<ulong?> ForAnyHash(SqlConnection conn)
+    {
+      var value = await conn.QueryFirstOrDefaultAsync<decimal?>(
+        "SELECT TOP 1 [Checkpoint] FROM [CentralDaemonHashedCheckpoints] ORDER BY [LastUpdatedAt] DESC");
+      return value is { } val ? Convert.ToUInt64(val) : null;
+    }
   }
 
   private async Task UpdateLastPosition(Position? pos)
