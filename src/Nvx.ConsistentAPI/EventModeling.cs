@@ -4,6 +4,7 @@ using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Nvx.ConsistentAPI.Framework.DaemonCoordination;
 using Nvx.ConsistentAPI.Framework.Projections;
 using Nvx.ConsistentAPI.Framework.StaticEndpoints;
 using Nvx.ConsistentAPI.InternalTooling;
@@ -158,6 +159,7 @@ public class EventModel
     var emitter = new Emitter(esClient, logger);
     var parser = Parser();
     var interestFetcher = new InterestFetcher(esClient, parser);
+    var messageHub = new MessageHub();
 
     var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(esClient, parser, interestFetcher)));
 
@@ -218,6 +220,7 @@ public class EventModel
       ReadModels.Where(rm => rm is IdempotentReadModel).Cast<IdempotentReadModel>().ToArray(),
       logger,
       interestFetcher,
+      messageHub,
       modelHash);
 
     await hydrationDaemon.Initialize();

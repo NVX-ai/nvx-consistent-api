@@ -2,6 +2,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Nvx.ConsistentAPI.Framework;
+using Nvx.ConsistentAPI.Framework.DaemonCoordination;
 
 namespace Nvx.ConsistentAPI;
 
@@ -186,6 +187,15 @@ public class HydrationDaemonWorker
          OR [ModelHash] = @ModelHash
      """;
 
+  private static readonly string GetStreamLastHydratedPositionByHashSql =
+    """
+    SELECT TOP 1 [LastHydratedPosition]
+    FROM [HydrationQueue]
+    WHERE [StreamName] = @StreamName
+      AND [ModelHash] = @ModelHash
+    ORDER BY [LastHydratedPosition] DESC
+    """;
+
   private static readonly string TryLockStreamSql =
     $"""
      UPDATE [HydrationQueue]
@@ -220,8 +230,6 @@ public class HydrationDaemonWorker
   private readonly string connectionString;
   private readonly DatabaseHandlerFactory dbFactory;
   private readonly Fetcher fetcher;
-
-  private readonly Lock @lock = new();
   private readonly ILogger logger;
   private readonly string modelHash;
 
@@ -229,6 +237,8 @@ public class HydrationDaemonWorker
 
   // ReSharper disable once NotAccessedField.Local
   private readonly Task task;
+
+  private readonly SemaphoreSlim wakeUpSemaphore = new(1, 1);
 
   private readonly Guid workerId = Guid.NewGuid();
   private DateTime resumePollingAt = DateTime.MaxValue;
@@ -241,6 +251,7 @@ public class HydrationDaemonWorker
     Fetcher fetcher,
     IdempotentReadModel[] readModels,
     DatabaseHandlerFactory dbFactory,
+    MessageHub messageHub,
     ILogger logger)
   {
     this.modelHash = modelHash;
@@ -250,6 +261,7 @@ public class HydrationDaemonWorker
     this.dbFactory = dbFactory;
     this.logger = logger;
     task = Task.Run(Process);
+    messageHub.Subscribe(this);
     this.logger.LogInformation("Hydration worker with ID {ID} started", workerId);
   }
 
@@ -335,12 +347,28 @@ public class HydrationDaemonWorker
            > 0;
   }
 
-  public void Trigger()
+  private async Task<ulong?> GetStreamLastHydratedPositionByHash(string otherHash, string streamName)
   {
-    lock (@lock)
-    {
-      ResumePollingAt = DateTime.MinValue;
-    }
+    await using var connection = new SqlConnection(connectionString);
+    var result = await connection.QuerySingleOrDefaultAsync<decimal?>(
+      GetStreamLastHydratedPositionByHashSql,
+      new { StreamName = streamName, ModelHash = otherHash });
+    return result.HasValue ? Convert.ToUInt64(result.Value) : null;
+  }
+
+  private async Task<ForeignReadModelLock?> TryGetForeignHash(string readModelName)
+  {
+    await using var connection = new SqlConnection(connectionString);
+    return await connection.QuerySingleOrDefaultAsync<ForeignReadModelLock>(
+      "SELECT [ModelHash], [ReadModelName] FROM [ModelHashReadModelLocks] WHERE [ReadModelName] = @ReadModelName",
+      new { ReadModelName = readModelName });
+  }
+
+  public void WakeUp()
+  {
+    wakeUpSemaphore.Wait();
+    ResumePollingAt = DateTime.MinValue;
+    wakeUpSemaphore.Release();
   }
 
   private async Task Process()
@@ -377,12 +405,10 @@ public class HydrationDaemonWorker
 
       if (candidate is null)
       {
-        lock (@lock)
-        {
-          ResumePollingAt = DateTime.UtcNow.AddMilliseconds(waitBackoff * 250 + Random.Shared.Next(1, 250));
-
-          return;
-        }
+        await wakeUpSemaphore.WaitAsync();
+        ResumePollingAt = DateTime.UtcNow.AddMilliseconds(waitBackoff * 250 + Random.Shared.Next(1, 250));
+        wakeUpSemaphore.Release();
+        return;
       }
 
       var streamsLocked = await connection.ExecuteAsync(
@@ -411,7 +437,6 @@ public class HydrationDaemonWorker
       return;
     }
 
-    // This mechanism will benefit from a cancellation token.
     var cancellationSource = new CancellationTokenSource();
     var hydrateTask = Hydrate(cancellationSource.Token);
     var nextRefreshAt = DateTime.UtcNow.AddSeconds(2);
@@ -456,13 +481,43 @@ public class HydrationDaemonWorker
           .DaemonFetch(id, candidate.StreamName, candidate.IsDynamicConsistencyBoundary, cancellationToken)
           .Map(e => (id, e)));
 
+      var lockedByOtherHash = new List<ForeignReadModelLock>();
+
       foreach (var t in maybeEntity)
       {
         foreach (var readModel in ableReadModels)
         {
-          if (await TryLockReadModel(readModel.TableName))
+          if (!await TryLockReadModel(readModel.TableName))
           {
-            await readModel.TryProcess(t.e, dbFactory, t.id, null, logger, cancellationToken);
+            var owner = await TryGetForeignHash(readModel.TableName);
+            if (owner != null && owner.ModelHash != modelHash)
+            {
+              lockedByOtherHash.Add(owner);
+            }
+
+            continue;
+          }
+
+          var processTask = readModel.TryProcess(t.e, dbFactory, t.id, null, logger, cancellationToken);
+          _ = Task.Run(
+            async () =>
+            {
+              while (processTask is not { IsCompleted: true })
+              {
+                await TryLockReadModel(readModel.TableName);
+                await Task.Delay(TimeSpan.FromSeconds(RefreshStreamLockFrequencySeconds), cancellationToken);
+              }
+            },
+            cancellationToken);
+          await processTask;
+
+          foreach (var other in lockedByOtherHash)
+          {
+            var otherPosition = await GetStreamLastHydratedPositionByHash(other.ModelHash, other.ReadModelName);
+            if (otherPosition is null || otherPosition.Value < candidate.Position)
+            {
+              return null;
+            }
           }
         }
       }

@@ -3,6 +3,7 @@ using Dapper;
 using EventStore.Client;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Nvx.ConsistentAPI.Framework.DaemonCoordination;
 using Nvx.ConsistentAPI.InternalTooling;
 
 namespace Nvx.ConsistentAPI;
@@ -15,6 +16,7 @@ internal class ReadModelHydrationDaemon(
   IdempotentReadModel[] readModels,
   ILogger logger,
   InterestFetcher interestFetcher,
+  MessageHub messageHub,
   string modelHash)
 {
   private const int InterestParallelism = 6;
@@ -63,6 +65,7 @@ internal class ReadModelHydrationDaemon(
       fetcher,
       readModels,
       new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger),
+      messageHub,
       logger))
     .ToArray();
 
@@ -353,13 +356,7 @@ internal class ReadModelHydrationDaemon(
     }
   }
 
-  private void TriggerWorkers()
-  {
-    foreach (var worker in workers)
-    {
-      worker.Trigger();
-    }
-  }
+  private void TriggerWorkers() => messageHub.WakeUpHydrationWorkers();
 
   internal static bool IsInterestEvent(EventModelEvent @event) =>
     @event
