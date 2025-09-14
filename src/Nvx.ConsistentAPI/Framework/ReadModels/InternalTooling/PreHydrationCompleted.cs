@@ -80,7 +80,7 @@ internal static class PreHydrationCompleted
         return true;
       }
 
-      var isCaughtUp = readModels.All(rm => rm.IsUpToDate()) && centralDaemon.IsUpToDate(null);
+      var isCaughtUp = readModels.All(rm => rm.IsUpToDate()) && centralDaemon.HasReachedLive();
       if (isCaughtUp)
       {
         hydratedAt = DateTime.UtcNow;

@@ -296,7 +296,7 @@ internal class TodoProcessor
       {
         // Await for all relevant read models to be up-to-date.
         if (t.definition.DependingReadModels.All(_ => ReadModels.All(rm => rm.IsUpToDate(t.todo.EventPosition)))
-            && HydrationDaemon.IsUpToDate(t.todo.EventPosition))
+            && await HydrationDaemon.IsUpToDate(t.todo.EventPosition))
         {
           return await TryFetch()
             .Option

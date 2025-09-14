@@ -72,6 +72,7 @@ internal class ReadModelHydrationDaemon(
   private HydrationCountTracker? hydrationCountTracker;
 
   private bool isInitialized;
+  private bool hasCaughtUp;
   private ulong? lastCheckpoint;
   private Position? lastPosition;
 
@@ -88,9 +89,19 @@ internal class ReadModelHydrationDaemon(
       await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString));
   }
 
-  public bool IsUpToDate(Position? position) =>
-    hydrationCountTracker is null
-    || (position.HasValue && lastPosition.HasValue && position.Value <= lastPosition.Value);
+  public async Task<bool> IsUpToDate(Position? position)
+  {
+    if (position is null && hasCaughtUp)
+    {
+      return await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString) == 0;
+    }
+
+    return hydrationCountTracker is null
+           || (position.HasValue && lastPosition.HasValue && position.Value <= lastPosition.Value);
+  }
+
+  public bool HasReachedLive() =>
+    hasCaughtUp;
 
   public async Task Initialize()
   {
@@ -253,6 +264,7 @@ internal class ReadModelHydrationDaemon(
             }
             case StreamMessage.CaughtUp:
             {
+              hasCaughtUp = true;
               if (lastPosition is { } pos)
               {
                 await stateMachine.Checkpoint(pos, Checkpoint);
