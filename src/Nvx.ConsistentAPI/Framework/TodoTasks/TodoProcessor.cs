@@ -537,25 +537,30 @@ internal class TodoProcessor
       var aMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
       var now = DateTime.UtcNow;
 
-      var query = $"""
-                      SELECT TOP (@BatchSize)
-                          [Id],
-                          [RelatedEntityId],
-                          [StartsAt],
-                          [ExpiresAt],
-                          [JsonData],
-                          [Name],
-                          [LockedUntil],
-                          [SerializedRelatedEntityId],
-                          [EventPosition],
-                          [RetryCount]
-                      FROM [{tableName}]
-                      WHERE
-                          ([StartsAt] <= @aMinuteAgo) AND
-                          [ExpiresAt] > @now AND
-                          ([LockedUntil] IS NULL OR [LockedUntil] < @aMinuteAgo)
-                      ORDER BY [StartsAt] ASC
-                   """;
+      var query =
+        $"""
+          SELECT TOP (@BatchSize)
+              [Id],
+              [RelatedEntityId],
+              [StartsAt],
+              [ExpiresAt],
+              [CompletedAt],
+              [JsonData],
+              [Name],
+              [LockedUntil],
+              [SerializedRelatedEntityId],
+              [EventPosition],
+              [RetryCount],
+              [IsFailed]
+          FROM [{tableName}]
+          WHERE
+              ([StartsAt] <= @aMinuteAgo)
+              AND [ExpiresAt] > @now
+              AND ([LockedUntil] IS NULL OR [LockedUntil] < @aMinuteAgo)
+              AND [IsFailed] = 0
+              AND [CompletedAt] IS NULL
+          ORDER BY [StartsAt] ASC
+          """;
 
       await using var connection = new SqlConnection(Settings.ReadModelConnectionString);
       return await connection.QueryAsync<TodoEventModelReadModel>(
@@ -576,25 +581,30 @@ internal class TodoProcessor
       const int batchSize = 2_500;
       var now = DateTime.UtcNow;
 
-      var query = $"""
-                              SELECT TOP (@BatchSize)
-                                  [Id],
-                                  [RelatedEntityId],
-                                  [StartsAt],
-                                  [ExpiresAt],
-                                  [JsonData],
-                                  [Name],
-                                  [LockedUntil],
-                                  [SerializedRelatedEntityId],
-                                  [EventPosition],
-                                  [RetryCount]
-                              FROM [{tableName}]
-                              WHERE
-                                  [StartsAt] <= @now AND
-                                  [ExpiresAt] > @now AND
-                                  ([LockedUntil] IS NULL OR [LockedUntil] < @now)
-                              ORDER BY [StartsAt] ASC
-                   """;
+      var query =
+        $"""
+          SELECT TOP (@BatchSize)
+              [Id],
+              [RelatedEntityId],
+              [StartsAt],
+              [ExpiresAt],
+         [CompletedAt],
+              [JsonData],
+              [Name],
+              [LockedUntil],
+              [SerializedRelatedEntityId],
+              [EventPosition],
+              [RetryCount],
+              [IsFailed]
+          FROM [{tableName}]
+          WHERE
+              [StartsAt] <= @now
+              AND [ExpiresAt] > @now
+              AND ([LockedUntil] IS NULL OR [LockedUntil] < @now)
+              AND [IsFailed] = 0
+              AND [CompletedAt] IS NULL
+          ORDER BY [StartsAt] ASC
+         """;
 
       await using var connection = new SqlConnection(Settings.ReadModelConnectionString);
       return await connection.QueryAsync<TodoEventModelReadModel>(

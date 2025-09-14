@@ -9,6 +9,7 @@ public record TodoEventModelReadModel(
   string RelatedEntityId,
   DateTime StartsAt,
   DateTime ExpiresAt,
+  DateTime? CompletedAt,
   [property: MaxLength(StringSizes.Unlimited)]
   string JsonData,
   string Name,
@@ -16,7 +17,8 @@ public record TodoEventModelReadModel(
   [property: MaxLength(StringSizes.Unlimited)]
   string? SerializedRelatedEntityId,
   Position? EventPosition,
-  int RetryCount) : EventModelReadModel
+  int RetryCount,
+  bool IsFailed) : EventModelReadModel
 {
   public StrongId GetStrongId() => new StrongGuid(Guid.Parse(Id));
 
