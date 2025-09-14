@@ -47,6 +47,18 @@ public class HydrationDaemonWorker
     END
     """;
 
+  private const string ModelHashReadModelLockTableCreationSql =
+    """
+    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ModelHashReadModelLocks')
+    BEGIN
+    CREATE TABLE [dbo].[ModelHashReadModelLocks](
+        [ModelHash] [nvarchar](256) NOT NULL PRIMARY KEY,
+        [ReadModelName] [nvarchar](256) NOT NULL,
+        [LockedUntil] [datetime2](7) NOT NULL
+    )
+    END
+    """;
+
   private const string GetCandidatesSql =
     """
     SELECT TOP 25 *
@@ -60,29 +72,6 @@ public class HydrationDaemonWorker
 
   private const int StreamLockLengthSeconds = 42;
   private const int RefreshStreamLockFrequencySeconds = StreamLockLengthSeconds / 3;
-
-  private static readonly string TryLockStreamSql =
-    $"""
-    UPDATE [HydrationQueue]
-    SET [WorkerId] = @WorkerId,
-        [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()),
-        [TimesLocked] = [TimesLocked] + 1
-    WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
-      AND [StreamName] = @StreamName
-      AND [ModelHash] = @ModelHash
-      AND [TimesLocked] = @TimesLocked
-      AND ([WorkerId] IS NULL OR [WorkerId] = @ExistingWorkerId)
-      AND [Position] = @Position
-    """;
-
-  private static readonly string TryRefreshStreamLockSql =
-    $"""
-    UPDATE [HydrationQueue]
-    SET [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE())
-    WHERE [WorkerId] = @WorkerId
-      AND [StreamName] = @StreamName
-      AND [ModelHash] = @ModelHash
-    """;
 
   private const string UpdateHydrationState =
     """
@@ -162,8 +151,36 @@ public class HydrationDaemonWorker
       AND [ModelHash] = @ModelHash
     """;
 
+  private static readonly string TryLockStreamSql =
+    $"""
+     UPDATE [HydrationQueue]
+     SET [WorkerId] = @WorkerId,
+         [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()),
+         [TimesLocked] = [TimesLocked] + 1
+     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
+       AND [StreamName] = @StreamName
+       AND [ModelHash] = @ModelHash
+       AND [TimesLocked] = @TimesLocked
+       AND ([WorkerId] IS NULL OR [WorkerId] = @ExistingWorkerId)
+       AND [Position] = @Position
+     """;
+
+  private static readonly string TryRefreshStreamLockSql =
+    $"""
+     UPDATE [HydrationQueue]
+     SET [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE())
+     WHERE [WorkerId] = @WorkerId
+       AND [StreamName] = @StreamName
+       AND [ModelHash] = @ModelHash
+     """;
+
   public static readonly string[] TableCreationScripts =
-    [QueueTableCreationSql, GetCandidatesIndexCreationSql, TryLockIndexCreationSql];
+  [
+    QueueTableCreationSql,
+    GetCandidatesIndexCreationSql,
+    TryLockIndexCreationSql,
+    ModelHashReadModelLockTableCreationSql
+  ];
 
   private readonly string connectionString;
   private readonly DatabaseHandlerFactory dbFactory;
