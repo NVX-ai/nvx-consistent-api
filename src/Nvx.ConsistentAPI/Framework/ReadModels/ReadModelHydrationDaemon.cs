@@ -129,6 +129,11 @@ internal class ReadModelHydrationDaemon(
     {
       await connection.ExecuteAsync(sql);
     }
+
+    foreach (var readModel in readModels)
+    {
+      await HydrationDaemonWorker.TryLockReadModel(modelHash, readModel.TableName, connection);
+    }
   }
 
   private async Task CreateTable()
