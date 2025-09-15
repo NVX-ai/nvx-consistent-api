@@ -19,6 +19,7 @@ using Nvx.ConsistentAPI.InternalTooling;
 using Testcontainers.Azurite;
 using Testcontainers.EventStoreDb;
 using Testcontainers.MsSql;
+using EventTypeFilter = EventStore.Client.EventTypeFilter;
 
 namespace Nvx.ConsistentAPI.TestUtils;
 
@@ -66,14 +67,75 @@ internal static class InstanceTracking
   internal static Task Dispose(int _) => Task.CompletedTask;
 }
 
-internal class ConsistencyStateMachine(string url)
+internal class ConsistencyStateMachine
 {
-  private const int BaseDelayMilliseconds = 100;
-  private const int MaxDelayMilliseconds = 5_000;
-  private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
-  private DateTime lastConsistentAt = DateTime.MinValue;
+  private const int BaseDelayMilliseconds = 500;
+  private const int MaxDelayMilliseconds = 2_500;
+  private readonly EventStoreClient eventStoreClient;
+  private readonly ILogger logger;
+  private readonly string url;
+  private ApiConsistency lastConsistency = new(0, DateTime.MinValue, DateTime.MaxValue);
+  private ulong lastEventPosition;
 
   private int testsWaiting;
+
+  public ConsistencyStateMachine(string url, EventStoreClient eventStoreClient, ILogger logger)
+  {
+    this.url = url;
+    this.eventStoreClient = eventStoreClient;
+    this.logger = logger;
+    Subscribe();
+    RefreshConsistency();
+  }
+
+  private void Subscribe() =>
+    _ = Task.Run(async () =>
+    {
+      await foreach (var evt in eventStoreClient.SubscribeToAll(
+                       FromAll.End,
+                       filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents())))
+      {
+        lastEventPosition = evt.Event.Position.CommitPosition;
+      }
+    });
+
+  private void RefreshConsistency() =>
+    _ = Task.Run(async () =>
+    {
+      while (true)
+      {
+        try
+        {
+          var status = await $"{url}{CatchUp.Route}"
+            .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
+            .GetJsonAsync<HydrationStatus>();
+
+          var daemonInsights = await $"{url}{DaemonsInsight.Route}"
+            .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
+            .GetJsonAsync<DaemonsInsights>();
+
+          var isConsistent =
+            status.IsCaughtUp
+            && daemonInsights.LastEventPosition == lastEventPosition
+            && daemonInsights.IsFullyIdle;
+
+          if (isConsistent)
+          {
+            lastConsistency = new ApiConsistency(
+              daemonInsights.LastEventPosition,
+              DateTime.UtcNow,
+              daemonInsights.LastEventEmittedAt);
+          }
+        }
+        catch (Exception ex)
+        {
+          logger.LogError(ex, "Error refreshing the consistency status in integration tests");
+        }
+
+        await Task.Delay(250);
+      }
+      // ReSharper disable once FunctionNeverReturns
+    });
 
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
@@ -95,9 +157,9 @@ internal class ConsistencyStateMachine(string url)
     var startedAt = DateTime.UtcNow;
     Interlocked.Increment(ref testsWaiting);
     var timer = Stopwatch.StartNew();
-    while (timer.ElapsedMilliseconds < timeout && !await IsConsistent())
+    while (timer.ElapsedMilliseconds < timeout && !IsConsistent())
     {
-      await Task.Delay(Random.Shared.Next(100, 500));
+      await Task.Delay(Random.Shared.Next(5, 25));
     }
 
     Interlocked.Decrement(ref testsWaiting);
@@ -105,62 +167,17 @@ internal class ConsistencyStateMachine(string url)
     // This will let go, but tests are expected to fail if consistency was not reached.
     return;
 
-    bool IsAlreadyConsistent()
+    bool IsConsistent()
     {
       var startedAgo = DateTime.UtcNow - startedAt;
       var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
-      var lastConsistentAtAgo = DateTime.UtcNow - lastConsistentAt;
+      var lastConsistentAtAgo = DateTime.UtcNow - lastConsistency.LastEventAt;
       var isLastConsistencyOldEnough = lastConsistentAtAgo > GetMinimumDelayForCheck(type);
-      return startedAt < lastConsistentAt
-             && (hasCheckRunLongEnough || isLastConsistencyOldEnough);
-    }
-
-    async Task<bool> IsConsistent()
-    {
-      try
-      {
-        await waitForConsistencySemaphore.WaitAsync();
-
-        if (IsAlreadyConsistent())
-        {
-          return true;
-        }
-
-        var status = await $"{url}{CatchUp.Route}"
-          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-          .GetJsonAsync<HydrationStatus>();
-
-        var daemonInsights = await $"{url}{DaemonsInsight.Route}"
-          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-          .GetJsonAsync<DaemonsInsights>();
-        var startedAgo = DateTime.UtcNow - startedAt;
-        var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
-        var lastEventEmittedAgo = DateTime.UtcNow - daemonInsights.LastEventEmittedAt;
-        var isLastEventOldEnough = lastEventEmittedAgo > GetMinimumDelayForCheck(type);
-
-        var isConsistent =
-          status.IsCaughtUp
-          && daemonInsights.IsFullyIdle
-          && (hasCheckRunLongEnough || isLastEventOldEnough);
-
-        if (isConsistent)
-        {
-          lastConsistentAt = daemonInsights.LastEventEmittedAt;
-        }
-
-        return isConsistent;
-      }
-      catch
-      {
-        await Task.Delay(5_000);
-        return false;
-      }
-      finally
-      {
-        waitForConsistencySemaphore.Release();
-      }
+      return startedAt < lastConsistency.HappenedAt && (hasCheckRunLongEnough || isLastConsistencyOldEnough);
     }
   }
+
+  private record ApiConsistency(ulong Position, DateTime HappenedAt, DateTime LastEventAt);
 }
 
 internal record TestSetupHolder(
@@ -640,14 +657,15 @@ public class TestSetup : IAsyncDisposable
 
     await app.StartAsync();
 
+    var logger = app.WebApp.Services.GetRequiredService<ILogger<TestSetup>>();
     return new TestSetupHolder(
       baseUrl,
       new TestAuth(GetTestUser("admin").Sub, GetTestUser("cando").Sub, n => GetTestUser(n).Sub),
       eventStoreClient,
       model,
       1,
-      app.WebApp.Services.GetRequiredService<ILogger<TestSetup>>(),
-      new ConsistencyStateMachine(baseUrl));
+      logger,
+      new ConsistencyStateMachine(baseUrl, eventStoreClient, logger));
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)

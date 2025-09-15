@@ -38,7 +38,8 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
     var percentageComplete = lastEventPosition == 0
       ? 100m
       : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(lastEventPosition);
-    var hasProcessedRecently = isProcessing || SyncState.LastSync < DateTime.UtcNow.AddSeconds(2);
+    var hasProcessedRecently = isProcessing || SyncState.LastSync > DateTime.UtcNow.AddMilliseconds(-250);
+    var clampedPercentage = Math.Min(100, isCaughtUp && !hasProcessedRecently ? 100 : percentageComplete);
     return Task.FromResult(
       new SingleReadModelInsights(
         DatabaseHandler<Shape>.TableName(typeof(Shape)),
@@ -47,7 +48,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
         true,
         SyncState.HasReachedEndOnce,
         SyncState.LastSync,
-        Math.Min(100, isCaughtUp && !hasProcessedRecently ? 100 : percentageComplete)));
+        clampedPercentage));
   }
 
   public async Task ApplyTo(
