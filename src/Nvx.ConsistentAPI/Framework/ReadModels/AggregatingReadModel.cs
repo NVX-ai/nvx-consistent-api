@@ -132,7 +132,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
   public AuthOptions Auth { get; init; } = new Everyone();
 
-  private bool HasProcessedRecently() => !isIdle || SyncState.LastSync > DateTime.UtcNow.AddMilliseconds(-150);
+  private bool HasProcessedRecently() => !isIdle || SyncState.LastSync > DateTime.UtcNow.AddMilliseconds(-1_000);
 
   public bool IsUpToDate(Position? position)
   {
