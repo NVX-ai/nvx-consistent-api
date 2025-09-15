@@ -222,6 +222,9 @@ internal class TodoProcessor
   private static readonly Type UserWithPermissionIdType = typeof(UserWithPermissionId);
   private static readonly Type StrongStringType = typeof(StrongString);
   private static readonly Type StrongGuidType = typeof(StrongGuid);
+  private readonly SemaphoreSlim runningTodosSemaphore = new(1, 1);
+
+  private readonly List<RunningTodoTaskInsight> runningTodoTasks = [];
 
   private readonly string tableName =
     DatabaseHandler<TodoEventModelReadModel>.TableName(typeof(TodoEventModelReadModel));
@@ -234,11 +237,21 @@ internal class TodoProcessor
   public required ReadModelHydrationDaemon HydrationDaemon { private get; init; }
   internal required EventModelingReadModelArtifact[] ReadModels { get; init; }
 
-  internal RunningTodoTaskInsight[] RunningTodoTasks { get; private set; } = [];
+  internal async Task<RunningTodoTaskInsight[]> GetRunningTodoTasks()
+  {
+    await runningTodosSemaphore.WaitAsync();
+    var currentlyRunning = runningTodoTasks.GroupBy(rtt => rtt.TaskType)
+      .Select(g => new RunningTodoTaskInsight(g.Key, g.SelectMany(rtt => rtt.RelatedEntityIds).ToArray()))
+      .ToArray();
+    runningTodosSemaphore.Release();
+    return currentlyRunning;
+  }
 
   internal async Task<RunningTodoTaskInsight[]> AboutToRunTasks()
   {
-    var currentlyRunning = RunningTodoTasks;
+    await runningTodosSemaphore.WaitAsync();
+    var currentlyRunning = runningTodoTasks.ToArray();
+    runningTodosSemaphore.Release();
     return await GetAboutToRunTodos()
       .Map(ts => ts
         .Choose(todoReadModel =>
@@ -254,10 +267,17 @@ internal class TodoProcessor
         .ToArray());
   }
 
-  internal void Initialize() => RunPeriodically(async () => await Process());
-
-  private async Task Process()
+  internal void Initialize()
   {
+    for (var i = 0; i < 15; i++)
+    {
+      RunPeriodically(async () => await ProcessAsWorker());
+    }
+  }
+
+  private async Task ProcessAsWorker()
+  {
+    RunningTodoTaskInsight? insight = null;
     try
     {
       var todos = await GetAvailableTodos();
@@ -269,21 +289,38 @@ internal class TodoProcessor
         )
         .ToArray();
 
-      RunningTodoTasks = matchedTodos
-        .GroupBy(t => t.todoTaskDefinition.Type)
-        .Select(g => new RunningTodoTaskInsight(g.Key, g.Select(t => t.todoReadModel.RelatedEntityId).ToArray()))
-        .ToArray();
-
-      using var _ = new BatchTodoCountTracker(matchedTodos.Length);
-      await matchedTodos.Select(ProcessOne).Parallel(10);
       if (matchedTodos.Length == 0)
       {
         await Task.Delay(250);
+        return;
       }
+
+      var randomIndex = Random.Shared.Next(matchedTodos.Length);
+      var selectedTodo = matchedTodos[randomIndex];
+      using var _ = new BatchTodoCountTracker(1);
+      await runningTodosSemaphore.WaitAsync();
+      runningTodoTasks.Add(
+        insight =
+          new RunningTodoTaskInsight(
+            selectedTodo.todoTaskDefinition.Type,
+            [selectedTodo.todoReadModel.RelatedEntityId]));
+      runningTodosSemaphore.Release();
+      await ProcessOne(selectedTodo)();
     }
     catch (Exception ex)
     {
-      Logger.LogError(ex, "Failed processing todos");
+      Logger.LogError(ex, "Failed processing todos (worker)");
+    }
+    finally
+    {
+      await runningTodosSemaphore.WaitAsync();
+      if (insight is not null)
+      {
+        runningTodoTasks.RemoveAll(rtt => rtt.TaskType == insight.TaskType
+                                          && insight.RelatedEntityIds.All(id => rtt.RelatedEntityIds.Contains(id)));
+      }
+
+      runningTodosSemaphore.Release();
     }
   }
 
@@ -533,34 +570,34 @@ internal class TodoProcessor
   {
     try
     {
-      const int batchSize = 2_500;
+      const int batchSize = 45;
       var aMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
       var now = DateTime.UtcNow;
 
       var query =
         $"""
-          SELECT TOP (@BatchSize)
-              [Id],
-              [RelatedEntityId],
-              [StartsAt],
-              [ExpiresAt],
-              [CompletedAt],
-              [JsonData],
-              [Name],
-              [LockedUntil],
-              [SerializedRelatedEntityId],
-              [EventPosition],
-              [RetryCount],
-              [IsFailed]
-          FROM [{tableName}]
-          WHERE
-              ([StartsAt] <= @aMinuteAgo)
-              AND [ExpiresAt] > @now
-              AND ([LockedUntil] IS NULL OR [LockedUntil] < @aMinuteAgo)
-              AND [IsFailed] = 0
-              AND [CompletedAt] IS NULL
-          ORDER BY [StartsAt] ASC
-          """;
+         SELECT TOP (@BatchSize)
+             [Id],
+             [RelatedEntityId],
+             [StartsAt],
+             [ExpiresAt],
+             [CompletedAt],
+             [JsonData],
+             [Name],
+             [LockedUntil],
+             [SerializedRelatedEntityId],
+             [EventPosition],
+             [RetryCount],
+             [IsFailed]
+         FROM [{tableName}]
+         WHERE
+             ([StartsAt] <= @aMinuteAgo)
+             AND [ExpiresAt] > @now
+             AND ([LockedUntil] IS NULL OR [LockedUntil] < @aMinuteAgo)
+             AND [IsFailed] = 0
+             AND [CompletedAt] IS NULL
+         ORDER BY [StartsAt] ASC
+         """;
 
       await using var connection = new SqlConnection(Settings.ReadModelConnectionString);
       return await connection.QueryAsync<TodoEventModelReadModel>(
@@ -578,7 +615,7 @@ internal class TodoProcessor
   {
     try
     {
-      const int batchSize = 2_500;
+      const int batchSize = 50;
       var now = DateTime.UtcNow;
 
       var query =

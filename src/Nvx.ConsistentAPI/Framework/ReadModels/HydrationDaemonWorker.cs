@@ -60,17 +60,6 @@ public class HydrationDaemonWorker
     END
     """;
 
-  private const string GetCandidatesSql =
-    """
-    SELECT TOP 25 *
-    FROM [HydrationQueue]
-    WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
-      AND [ModelHash] = @ModelHash
-      AND [TimesLocked] < 25
-      AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])
-    ORDER BY [IsDynamicConsistencyBoundary], [Position] ASC
-    """;
-
   private const int StreamLockLengthSeconds = 42;
   private const int RefreshStreamLockFrequencySeconds = StreamLockLengthSeconds / 3;
 
@@ -236,6 +225,7 @@ public class HydrationDaemonWorker
   private readonly string connectionString;
   private readonly DatabaseHandlerFactory dbFactory;
   private readonly Fetcher fetcher;
+  private readonly string getCandidatesSql;
   private readonly ILogger logger;
   private readonly string modelHash;
 
@@ -258,6 +248,7 @@ public class HydrationDaemonWorker
     IdempotentReadModel[] readModels,
     DatabaseHandlerFactory dbFactory,
     MessageHub messageHub,
+    int swarmSize,
     ILogger logger)
   {
     this.modelHash = modelHash;
@@ -265,6 +256,16 @@ public class HydrationDaemonWorker
     this.fetcher = fetcher;
     this.readModels = readModels;
     this.dbFactory = dbFactory;
+    getCandidatesSql =
+      $"""
+         SELECT TOP {swarmSize * 2} *
+         FROM [HydrationQueue]
+         WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
+           AND [ModelHash] = @ModelHash
+           AND [TimesLocked] < 25
+           AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])
+         ORDER BY [IsDynamicConsistencyBoundary], [Position] ASC
+       """;
     this.logger = logger;
     task = Task.Run(Process);
     messageHub.Subscribe(this);
@@ -406,7 +407,7 @@ public class HydrationDaemonWorker
     await using (var connection = new SqlConnection(connectionString))
     {
       var candidates =
-        await connection.QueryAsync<HydrationQueueEntry>(GetCandidatesSql, new { ModelHash = modelHash });
+        await connection.QueryAsync<HydrationQueueEntry>(getCandidatesSql, new { ModelHash = modelHash });
       candidate = candidates.OrderBy(_ => Guid.NewGuid()).FirstOrDefault();
 
       if (candidate is null)

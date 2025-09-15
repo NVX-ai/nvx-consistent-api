@@ -69,8 +69,8 @@ internal static class InstanceTracking
 
 internal class ConsistencyStateMachine
 {
-  private const int BaseDelayMilliseconds = 500;
-  private const int MaxDelayMilliseconds = 2_500;
+  private const int StepDelayMilliseconds = 500;
+  private const int MaxDelayMilliseconds = 5_000;
   private readonly EventStoreClient eventStoreClient;
   private readonly ILogger logger;
   private readonly string url;
@@ -114,17 +114,16 @@ internal class ConsistencyStateMachine
             .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
             .GetJsonAsync<DaemonsInsights>();
 
-          var isConsistent =
-            status.IsCaughtUp
-            && daemonInsights.LastEventPosition == lastEventPosition
-            && daemonInsights.IsFullyIdle;
+          var isConsistent = status.IsCaughtUp && daemonInsights.IsFullyIdle;
 
           if (isConsistent)
           {
-            lastConsistency = new ApiConsistency(
-              daemonInsights.LastEventPosition,
-              DateTime.UtcNow,
-              daemonInsights.LastEventEmittedAt);
+            lastConsistency = lastConsistency.Position == daemonInsights.LastEventPosition
+              ? lastConsistency
+              : new ApiConsistency(
+                daemonInsights.LastEventPosition,
+                DateTime.UtcNow,
+                daemonInsights.LastEventEmittedAt);
           }
         }
         catch (Exception ex)
@@ -132,49 +131,48 @@ internal class ConsistencyStateMachine
           logger.LogError(ex, "Error refreshing the consistency status in integration tests");
         }
 
-        await Task.Delay(250);
+        await Task.Delay(25);
       }
       // ReSharper disable once FunctionNeverReturns
     });
 
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
-    const int maxSteps = MaxDelayMilliseconds / BaseDelayMilliseconds;
-    var steps = Math.Min(maxSteps, 1 + testsWaiting);
+    var steps = 2 + testsWaiting;
     var increment = Math.Max(1, steps);
     var minimumDelayMs = waitType switch
     {
-      ConsistencyWaitType.Short => BaseDelayMilliseconds,
-      ConsistencyWaitType.Medium => BaseDelayMilliseconds * 2,
-      _ => BaseDelayMilliseconds * 4
+      ConsistencyWaitType.Short => StepDelayMilliseconds,
+      ConsistencyWaitType.Medium => StepDelayMilliseconds * 2,
+      _ => StepDelayMilliseconds * 4
     };
-    var milliseconds = Math.Max(minimumDelayMs, increment * BaseDelayMilliseconds);
-    return TimeSpan.FromMilliseconds(milliseconds);
+    var milliseconds = Math.Max(minimumDelayMs, increment * StepDelayMilliseconds);
+    return TimeSpan.FromMilliseconds(Math.Max(milliseconds, MaxDelayMilliseconds));
   }
 
   public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
   {
-    var startedAt = DateTime.UtcNow;
     Interlocked.Increment(ref testsWaiting);
+    await Task.Delay(GetMinimumDelayForCheck(type));
+    var position = lastEventPosition;
     var timer = Stopwatch.StartNew();
-    while (timer.ElapsedMilliseconds < timeout && !IsConsistent())
+    var isConsistent = false;
+    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = IsConsistent()))
     {
       await Task.Delay(Random.Shared.Next(5, 25));
     }
 
     Interlocked.Decrement(ref testsWaiting);
 
-    // This will let go, but tests are expected to fail if consistency was not reached.
+    if (!isConsistent)
+    {
+      // This will let go, but tests are expected to fail if consistency was not reached.
+      logger.LogCritical("Timed out waiting for consistency in an integration test");
+    }
+
     return;
 
-    bool IsConsistent()
-    {
-      var startedAgo = DateTime.UtcNow - startedAt;
-      var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
-      var lastConsistentAtAgo = DateTime.UtcNow - lastConsistency.LastEventAt;
-      var isLastConsistencyOldEnough = lastConsistentAtAgo > GetMinimumDelayForCheck(type);
-      return startedAt < lastConsistency.HappenedAt && (hasCheckRunLongEnough || isLastConsistencyOldEnough);
-    }
+    bool IsConsistent() => position <= lastConsistency.Position;
   }
 
   private record ApiConsistency(ulong Position, DateTime HappenedAt, DateTime LastEventAt);
@@ -328,6 +326,7 @@ public class TestSetup : IAsyncDisposable
     Dictionary<string, string>? headers = null,
     string? asUser = null)
   {
+    await WaitForConsistency(ConsistencyWaitType.Short);
     var hd = headers ?? new Dictionary<string, string>();
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var req = $"{Url}{tenancySegment}/commands/{Naming.ToSpinalCase<C>()}"

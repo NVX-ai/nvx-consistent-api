@@ -143,7 +143,7 @@ internal static class DaemonsInsight
       new ReadModelsInsights(
         isHydrating ? readModels.Length : 0,
         isHydrating ? readModels.Length - catchingUpReadModels.Length : 0),
-      processor.RunningTodoTasks,
+      await processor.GetRunningTodoTasks(),
       await processor.AboutToRunTasks(),
       projectionDaemon.Insights(lastEventPosition),
       isHydrating ? await readModelDaemon.Insights(lastEventPosition) : null,

@@ -57,6 +57,7 @@ internal class ReadModelHydrationDaemon(
 
   private readonly CentralHydrationStateMachine stateMachine = new(settings, logger);
 
+  // ReSharper disable once UnusedMember.Local
   private readonly HydrationDaemonWorker[] workers = Enumerable
     .Range(1, settings.ParallelHydration)
     .Select(_ => new HydrationDaemonWorker(
@@ -66,13 +67,15 @@ internal class ReadModelHydrationDaemon(
       readModels,
       new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger),
       messageHub,
+      settings.ParallelHydration,
       logger))
     .ToArray();
+
+  private bool hasCaughtUp;
 
   private HydrationCountTracker? hydrationCountTracker;
 
   private bool isInitialized;
-  private bool hasCaughtUp;
   private ulong? lastCheckpoint;
   private Position? lastPosition;
 
@@ -86,14 +89,16 @@ internal class ReadModelHydrationDaemon(
       currentPosition,
       lastCheckpoint ?? 0,
       Math.Min(100m, percentageComplete),
-      await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString));
+      await stateMachine.ProcessingCount()
+      + await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString));
   }
 
   public async Task<bool> IsUpToDate(Position? position)
   {
     if (position is null && hasCaughtUp)
     {
-      return await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString) == 0;
+      return await stateMachine.ProcessingCount() == 0
+             && await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString) == 0;
     }
 
     return hydrationCountTracker is null
