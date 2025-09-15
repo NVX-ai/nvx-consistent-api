@@ -32,25 +32,21 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public ReadModelDefaulter<Shape> Defaulter { get; init; } = (_, _, _) => None;
   private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false, false);
 
-  public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
+  public Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
   {
-    var effectivePosition = lastEventPosition;
-    var prefixFilter = EventTypeFilter.Prefix(StreamPrefixes);
-    await foreach (var msg in eventStoreClient.ReadAllAsync(Direction.Backwards, Position.End, prefixFilter).Take(1))
-    {
-      effectivePosition = msg.Event.Position.CommitPosition;
-    }
-
     var currentPosition = lastProcessedEventPosition ?? currentCheckpointPosition ?? 0UL;
-    var percentageComplete = effectivePosition == 0
+    var percentageComplete = lastEventPosition == 0
       ? 100m
-      : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(effectivePosition);
-    return new SingleReadModelInsights(
-      DatabaseHandler<Shape>.TableName(typeof(Shape)),
-      lastProcessedEventPosition,
-      currentCheckpointPosition,
-      true,
-      Math.Min(100, isCaughtUp && !isProcessing ? 100 : percentageComplete));
+      : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(lastEventPosition);
+    return Task.FromResult(
+      new SingleReadModelInsights(
+        DatabaseHandler<Shape>.TableName(typeof(Shape)),
+        lastProcessedEventPosition,
+        currentCheckpointPosition,
+        true,
+        SyncState.HasReachedEndOnce,
+        SyncState.LastSync,
+        Math.Min(100, isCaughtUp && !isProcessing ? 100 : percentageComplete)));
   }
 
   public async Task ApplyTo(
@@ -286,7 +282,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
             }
             case StreamMessage.CaughtUp:
             {
-              SyncState = SyncState with { HasReachedEndOnce = true };
+              SyncState = SyncState with { HasReachedEndOnce = true, LastSync = DateTime.UtcNow };
               ClearTracker();
               activity?.Dispose();
               isCaughtUp = true;

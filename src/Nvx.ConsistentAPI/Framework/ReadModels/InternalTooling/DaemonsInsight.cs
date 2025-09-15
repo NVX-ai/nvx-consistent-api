@@ -202,6 +202,8 @@ public record SingleReadModelInsights(
   ulong? LastProcessedEventPosition,
   ulong? CheckpointPosition,
   bool IsAggregating,
+  bool IsCaughtUp,
+  DateTime? LastActivityAt,
   decimal PercentageComplete);
 
 public record ProjectorDaemonInsights(

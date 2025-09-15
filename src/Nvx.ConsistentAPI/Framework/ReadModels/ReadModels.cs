@@ -70,6 +70,8 @@ public class ReadModelDefinition<Shape, EntityShape> :
         lastProcessedEventPosition,
         lastCheckpointPosition,
         false,
+        isUpToDate,
+        null,
         Math.Min(100, percentageComplete)));
   }
 
