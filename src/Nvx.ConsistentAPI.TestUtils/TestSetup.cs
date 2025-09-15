@@ -69,7 +69,7 @@ internal static class InstanceTracking
 internal class ConsistencyStateMachine(string url)
 {
   private const int BaseDelayMilliseconds = 100;
-  private const int MaxDelayMilliseconds = 7_500;
+  private const int MaxDelayMilliseconds = 5_000;
   private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
   private DateTime lastConsistentAt = DateTime.MinValue;
 
