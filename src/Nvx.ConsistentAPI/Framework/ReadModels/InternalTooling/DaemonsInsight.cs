@@ -1,6 +1,7 @@
 ﻿using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.Framework.Projections;
@@ -31,7 +32,7 @@ internal static class DaemonsInsight
       return;
     }
 
-    Delegate catchupDelegate = async (HttpContext context) =>
+    Delegate catchupDelegate = async (HttpContext context, [FromQuery] ulong? position) =>
     {
       try
       {
@@ -51,7 +52,8 @@ internal static class DaemonsInsight
               eventStoreClient,
               daemon,
               dcbDaemon,
-              projectionDaemon));
+              projectionDaemon,
+              position));
           return;
         }
 
@@ -69,7 +71,8 @@ internal static class DaemonsInsight
                   eventStoreClient,
                   daemon,
                   dcbDaemon,
-                  projectionDaemon));
+                  projectionDaemon,
+                  position));
             },
             async e => await e.Respond(context));
       }
@@ -99,6 +102,7 @@ internal static class DaemonsInsight
             Schema = new OpenApiSchema { Type = "string" },
             Description = "API key for accessing tooling endpoints, not required for admin users"
           });
+        // TODO: Document position parameter
 
         return o;
       })
@@ -112,18 +116,11 @@ internal static class DaemonsInsight
     EventStoreClient eventStoreClient,
     ReadModelHydrationDaemon readModelDaemon,
     DynamicConsistencyBoundaryDaemon dynamicConsistencyBoundaryDaemon,
-    ProjectionDaemon projectionDaemon)
+    ProjectionDaemon projectionDaemon,
+    ulong? position)
   {
     var isHydrating = settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration);
-    var lastEventPosition = 0UL;
-    var lastEventEmittedAt = DateTime.UnixEpoch;
-    await foreach (var evt in eventStoreClient
-                     .ReadAllAsync(Direction.Backwards, Position.End, EventTypeFilter.ExcludeSystemEvents(), 1)
-                     .Take(1))
-    {
-      lastEventPosition = evt.Event.Position.CommitPosition;
-      lastEventEmittedAt = evt.Event.Created;
-    }
+    var (lastEventPosition, lastEventEmittedAt) = await GetLastEvent();
 
     var catchingUpReadModels = isHydrating
       ? await readModels
@@ -150,6 +147,23 @@ internal static class DaemonsInsight
       dynamicConsistencyBoundaryDaemon.Insights(lastEventPosition),
       lastEventEmittedAt,
       lastEventPosition);
+
+    async Task<(ulong pos, DateTime at)> GetLastEvent()
+    {
+      if (position.HasValue)
+      {
+        return (position.Value, DateTime.UnixEpoch);
+      }
+
+      await foreach (var evt in eventStoreClient
+                       .ReadAllAsync(Direction.Backwards, Position.End, EventTypeFilter.ExcludeSystemEvents(), 1)
+                       .Take(1))
+      {
+        return (pos: evt.Event.Position.CommitPosition, at: evt.Event.Created);
+      }
+
+      return (pos: 0, at: DateTime.UnixEpoch);
+    }
   }
 }
 

@@ -16,7 +16,6 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   private readonly EtagHolder holder = new();
   private ulong? currentCheckpointPosition;
 
-  private bool isCaughtUp;
   private bool isIdle = true;
   private ulong? lastProcessedEventPosition;
   private Func<Task<Unit>> reset = () => unit.ToTask();
@@ -32,14 +31,26 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public ReadModelDefaulter<Shape> Defaulter { get; init; } = (_, _, _) => None;
   private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false, false);
 
-  public Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
+  public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
   {
     var currentPosition = lastProcessedEventPosition ?? currentCheckpointPosition ?? 0UL;
-    var percentageComplete = lastEventPosition == 0
+    var effectivePosition = lastEventPosition;
+    var hadEvents = false;
+    if (currentPosition < effectivePosition)
+    {
+      var prefixFilter = EventTypeFilter.Prefix(StreamPrefixes);
+      await foreach (var msg in eventStoreClient.ReadAllAsync(Direction.Backwards, Position.End, prefixFilter).Take(1))
+      {
+        effectivePosition = msg.Event.Position.CommitPosition;
+        hadEvents = true;
+      }
+    }
+
+    var percentageComplete = effectivePosition == 0 || !hadEvents
       ? 100m
-      : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(lastEventPosition);
-    var clampedPercentage = Math.Min(100, isCaughtUp && !HasProcessedRecently() ? 100 : percentageComplete);
-    return Task.FromResult(
+      : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(effectivePosition);
+    var clampedPercentage = Math.Min(100, percentageComplete);
+    return
       new SingleReadModelInsights(
         DatabaseHandler<Shape>.TableName(typeof(Shape)),
         lastProcessedEventPosition,
@@ -47,7 +58,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
         true,
         SyncState.HasReachedEndOnce,
         SyncState.LastSync,
-        clampedPercentage));
+        clampedPercentage);
   }
 
   public async Task ApplyTo(
@@ -132,8 +143,6 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
   public AuthOptions Auth { get; init; } = new Everyone();
 
-  private bool HasProcessedRecently() => !isIdle || SyncState.LastSync > DateTime.UtcNow.AddMilliseconds(-1_000);
-
   public bool IsUpToDate(Position? position)
   {
     if (SyncState.IsBeingHydratedByAnotherInstance)
@@ -153,6 +162,8 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
     return SyncState.LastSync < DateTime.UtcNow.AddSeconds(5);
   }
+
+  private bool HasProcessedRecently() => !isIdle || SyncState.LastSync > DateTime.UtcNow.AddMilliseconds(-1_000);
 
   private async Task SubscribeToStream(
     EventStoreClient client,
@@ -289,14 +300,12 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
               SyncState = SyncState with { HasReachedEndOnce = true, LastSync = DateTime.UtcNow };
               ClearTracker();
               activity?.Dispose();
-              isCaughtUp = true;
               isIdle = true;
               break;
             }
             case StreamMessage.FellBehind:
             {
               StartTracker();
-              isCaughtUp = false;
               break;
             }
           }

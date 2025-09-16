@@ -472,7 +472,6 @@ internal class ReadModelHydrationDaemon(
 
   private async Task Checkpoint(Position position)
   {
-    var serialized = position.ToString();
     await using var connection = new SqlConnection(connectionString);
     await connection.OpenAsync();
     await using var transaction = await connection.BeginTransactionAsync();
@@ -480,11 +479,11 @@ internal class ReadModelHydrationDaemon(
     {
       await connection.ExecuteAsync(
         "INSERT INTO [CentralDaemonHashedCheckpoints] ([ModelHash], [Checkpoint]) VALUES (@ModelHash, @Checkpoint)",
-        new { ModelHash = modelHash, Checkpoint = serialized },
+        new { ModelHash = modelHash, Checkpoint = Convert.ToDecimal(position.CommitPosition) },
         transaction);
       await connection.ExecuteAsync(
         "DELETE FROM [CentralDaemonHashedCheckpoints] WHERE [ModelHash] = @ModelHash AND [Checkpoint] != @Checkpoint",
-        new { ModelHash = modelHash, Checkpoint = serialized },
+        new { ModelHash = modelHash, Checkpoint = Convert.ToDecimal(position.CommitPosition) },
         transaction);
       await transaction.CommitAsync();
       await UpdateLastPosition(position);

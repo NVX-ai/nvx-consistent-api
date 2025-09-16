@@ -298,20 +298,28 @@ public class HydrationDaemonWorker
       return;
     }
 
-    var idType = id.GetType();
-    await using var connection = new SqlConnection(connectionString);
-    await connection.ExecuteAsync(
-      UpsertSql,
-      new
-      {
-        StreamName = streamName,
-        SerializedId = Serialization.Serialize(id),
-        IdTypeName = idType.Name,
-        IdTypeNamespace = idType.Namespace,
-        ModelHash = modelHash,
-        Position = Convert.ToDecimal(position),
-        IsDynamicConsistencyBoundary = isDynamicConsistencyBoundary
-      });
+    try
+    {
+      var idType = id.GetType();
+      await using var connection = new SqlConnection(connectionString);
+      await connection.ExecuteAsync(
+        UpsertSql,
+        new
+        {
+          StreamName = streamName,
+          SerializedId = Serialization.Serialize(id),
+          IdTypeName = idType.Name,
+          IdTypeNamespace = idType.Namespace,
+          ModelHash = modelHash,
+          Position = Convert.ToDecimal(position),
+          IsDynamicConsistencyBoundary = isDynamicConsistencyBoundary
+        });
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      await Register(modelHash, connectionString, streamName, id, position, isDynamicConsistencyBoundary, readModels);
+    }
   }
 
   public static async Task ResetStream(
@@ -319,56 +327,98 @@ public class HydrationDaemonWorker
     string connectionString,
     string streamPrefix)
   {
-    await using var connection = new SqlConnection(connectionString);
-    await connection.ExecuteAsync(
-      ResetStreamSql,
-      new
-      {
-        StreamPrefix = streamPrefix,
-        ModelHash = modelHash
-      });
+    try
+    {
+      await using var connection = new SqlConnection(connectionString);
+      await connection.ExecuteAsync(
+        ResetStreamSql,
+        new
+        {
+          StreamPrefix = streamPrefix,
+          ModelHash = modelHash
+        });
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      await ResetStream(modelHash, connectionString, streamPrefix);
+    }
   }
 
   public static async Task TryInitialLockReadModel(
     string modelHash,
     string readModelName,
-    SqlConnection connection) =>
-    await connection.ExecuteAsync(
-      SafeInsertModelHashReadModelLockSql,
-      new
-      {
-        ModelHash = modelHash,
-        ReadModelName = readModelName
-      });
+    SqlConnection connection)
+  {
+    try
+    {
+      await connection.ExecuteAsync(
+        SafeInsertModelHashReadModelLockSql,
+        new
+        {
+          ModelHash = modelHash,
+          ReadModelName = readModelName
+        });
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      await TryInitialLockReadModel(modelHash, readModelName, connection);
+    }
+  }
 
   private async Task<bool> TryLockReadModel(string readModelName)
   {
-    await using var connection = new SqlConnection(connectionString);
-    return await connection.ExecuteAsync(
-             TryModelHashReadModelLockSql,
-             new
-             {
-               ModelHash = modelHash,
-               ReadModelName = readModelName
-             })
-           > 0;
+    try
+    {
+      await using var connection = new SqlConnection(connectionString);
+      return await connection.ExecuteAsync(
+               TryModelHashReadModelLockSql,
+               new
+               {
+                 ModelHash = modelHash,
+                 ReadModelName = readModelName
+               })
+             > 0;
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      return await TryLockReadModel(readModelName);
+    }
   }
 
   private async Task<ulong?> GetStreamLastHydratedPositionByHash(string otherHash, string streamName)
   {
-    await using var connection = new SqlConnection(connectionString);
-    var result = await connection.QuerySingleOrDefaultAsync<decimal?>(
-      GetStreamLastHydratedPositionByHashSql,
-      new { StreamName = streamName, ModelHash = otherHash });
-    return result.HasValue ? Convert.ToUInt64(result.Value) : null;
+    try
+    {
+      await using var connection = new SqlConnection(connectionString);
+      var result = await connection.QuerySingleOrDefaultAsync<decimal?>(
+        GetStreamLastHydratedPositionByHashSql,
+        new { StreamName = streamName, ModelHash = otherHash });
+      return result.HasValue ? Convert.ToUInt64(result.Value) : null;
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      return await GetStreamLastHydratedPositionByHash(otherHash, streamName);
+    }
   }
 
   private async Task<ForeignReadModelLock?> TryGetForeignHash(string readModelName)
   {
-    await using var connection = new SqlConnection(connectionString);
-    return await connection.QuerySingleOrDefaultAsync<ForeignReadModelLock>(
-      "SELECT [ModelHash], [ReadModelName] FROM [ModelHashReadModelLocks] WHERE [ReadModelName] = @ReadModelName",
-      new { ReadModelName = readModelName });
+    try
+    {
+      await using var connection = new SqlConnection(connectionString);
+      return await connection.QuerySingleOrDefaultAsync<ForeignReadModelLock>(
+        "SELECT [ModelHash], [ReadModelName] FROM [ModelHashReadModelLocks] WHERE [ReadModelName] = @ReadModelName",
+        new { ReadModelName = readModelName });
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      return await TryGetForeignHash(readModelName);
+    }
   }
 
   public void WakeUp()
@@ -401,40 +451,37 @@ public class HydrationDaemonWorker
     // ReSharper disable once FunctionNeverReturns
   }
 
-  private async Task TryProcess()
+  private async Task<HydrationQueueEntry?> GetCandidate()
   {
-    HydrationQueueEntry? candidate;
-    await using (var connection = new SqlConnection(connectionString))
+    try
     {
+      await using var connection = new SqlConnection(connectionString);
       var candidates =
         await connection.QueryAsync<HydrationQueueEntry>(getCandidatesSql, new { ModelHash = modelHash });
-      candidate = candidates.OrderBy(_ => Guid.NewGuid()).FirstOrDefault();
+      return candidates.OrderBy(_ => Guid.NewGuid()).FirstOrDefault();
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      return await GetCandidate();
+    }
+  }
 
-      if (candidate is null)
-      {
-        await wakeUpSemaphore.WaitAsync();
-        ResumePollingAt = DateTime.UtcNow.AddMilliseconds(waitBackoff * 250 + Random.Shared.Next(1, 250));
-        wakeUpSemaphore.Release();
-        return;
-      }
+  private async Task TryProcess()
+  {
+    var candidate = await GetCandidate();
+    if (candidate is null)
+    {
+      await wakeUpSemaphore.WaitAsync();
+      ResumePollingAt = DateTime.UtcNow.AddMilliseconds(waitBackoff * 250 + Random.Shared.Next(1, 250));
+      wakeUpSemaphore.Release();
+      return;
+    }
 
-      var streamsLocked = await connection.ExecuteAsync(
-        TryLockStreamSql,
-        new
-        {
-          WorkerId = workerId,
-          candidate.StreamName,
-          ModelHash = modelHash,
-          candidate.TimesLocked,
-          ExistingWorkerId = candidate.WorkerId,
-          candidate.Position
-        });
-
-      if (streamsLocked == 0)
-      {
-        await Task.Delay(15);
-        return;
-      }
+    if (!await TryLockStream(candidate))
+    {
+      await Task.Delay(15);
+      return;
     }
 
     var ableReadModels = readModels.Where(rm => rm.CanProject(candidate.StreamName)).ToArray();
@@ -452,11 +499,7 @@ public class HydrationDaemonWorker
     {
       if (nextRefreshAt < DateTime.UtcNow)
       {
-        await using var connection = new SqlConnection(connectionString);
-        var rowsUpdated = await connection.ExecuteAsync(
-          TryRefreshStreamLockSql,
-          new { WorkerId = workerId, candidate.StreamName, ModelHash = modelHash });
-        if (rowsUpdated == 0)
+        if (!await TryRefreshLock(candidate.StreamName))
         {
           await cancellationSource.CancelAsync();
           logger.LogWarning(
@@ -535,22 +578,83 @@ public class HydrationDaemonWorker
 
   private async Task MarkAsHydrated(HydrationQueueEntry entry)
   {
-    await using var connection = new SqlConnection(connectionString);
-    var rowsAffected = await connection.ExecuteAsync(
-      UpdateHydrationState,
-      new { entry.StreamName, ModelHash = modelHash, WorkerId = workerId, entry.Position, entry.LastHydratedPosition });
-    if (rowsAffected == 0)
+    try
     {
-      await connection.ExecuteAsync(
-        ReleaseSql,
-        new { entry.StreamName, ModelHash = modelHash, WorkerId = workerId });
+      await using var connection = new SqlConnection(connectionString);
+      var rowsAffected = await connection.ExecuteAsync(
+        UpdateHydrationState,
+        new
+        {
+          entry.StreamName, ModelHash = modelHash, WorkerId = workerId, entry.Position, entry.LastHydratedPosition
+        });
+      if (rowsAffected == 0)
+      {
+        await connection.ExecuteAsync(
+          ReleaseSql,
+          new { entry.StreamName, ModelHash = modelHash, WorkerId = workerId });
+      }
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      await MarkAsHydrated(entry);
+    }
+  }
+
+  private async Task<bool> TryLockStream(HydrationQueueEntry entry)
+  {
+    try
+    {
+      await using var connection = new SqlConnection(connectionString);
+      var rowsUpdated = await connection.ExecuteAsync(
+        TryLockStreamSql,
+        new
+        {
+          WorkerId = workerId,
+          entry.StreamName,
+          ModelHash = modelHash,
+          entry.TimesLocked,
+          ExistingWorkerId = entry.WorkerId,
+          entry.Position
+        });
+      return rowsUpdated > 0;
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      return await TryLockStream(entry);
+    }
+  }
+
+  private async Task<bool> TryRefreshLock(string streamName)
+  {
+    try
+    {
+      await using var connection = new SqlConnection(connectionString);
+      var rowsUpdated = await connection.ExecuteAsync(
+        TryRefreshStreamLockSql,
+        new { WorkerId = workerId, streamName, ModelHash = modelHash });
+      return rowsUpdated > 0;
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      return await TryRefreshLock(streamName);
     }
   }
 
   public static async Task<int> PendingEventsCount(string modelHash, string connectionString)
   {
-    await using var connection = new SqlConnection(connectionString);
-    return await connection.QuerySingleAsync<int>(PendingEventsCountSql, new { ModelHash = modelHash });
+    try
+    {
+      await using var connection = new SqlConnection(connectionString);
+      return await connection.QuerySingleAsync<int>(PendingEventsCountSql, new { ModelHash = modelHash });
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      return await PendingEventsCount(modelHash, connectionString);
+    }
   }
 
   private record ForeignReadModelLock(string ModelHash, string ReadModelName);

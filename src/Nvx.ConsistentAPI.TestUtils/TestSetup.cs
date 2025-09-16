@@ -21,6 +21,8 @@ using Testcontainers.EventStoreDb;
 using Testcontainers.MsSql;
 using EventTypeFilter = EventStore.Client.EventTypeFilter;
 
+// ReSharper disable MemberCanBePrivate.Global
+
 namespace Nvx.ConsistentAPI.TestUtils;
 
 public delegate string TestUserByName(string name);
@@ -69,12 +71,14 @@ internal static class InstanceTracking
 
 internal class ConsistencyStateMachine
 {
-  private const int StepDelayMilliseconds = 200;
-  private const int MaxDelayMilliseconds = 5_000;
+  private const int StepDelayMilliseconds = 150;
+  private const int MaxDelayMilliseconds = 3_000;
   private readonly EventStoreClient eventStoreClient;
+  private readonly SemaphoreSlim insightsSemaphore = new(1, 1);
   private readonly ILogger logger;
   private readonly string url;
-  private ApiConsistency lastConsistency = new(0, DateTime.MinValue, DateTime.MaxValue);
+  private ApiConsistency lastConsistency = new(0);
+  private DateTime lastEventAt;
   private ulong lastEventPosition;
 
   private int testsWaiting;
@@ -96,6 +100,7 @@ internal class ConsistencyStateMachine
                        filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents())))
       {
         lastEventPosition = evt.Event.Position.CommitPosition;
+        lastEventAt = evt.Event.Created;
       }
     });
 
@@ -120,10 +125,7 @@ internal class ConsistencyStateMachine
           {
             lastConsistency = lastConsistency.Position == daemonInsights.LastEventPosition
               ? lastConsistency
-              : new ApiConsistency(
-                daemonInsights.LastEventPosition,
-                DateTime.UtcNow,
-                daemonInsights.LastEventEmittedAt);
+              : new ApiConsistency(daemonInsights.LastEventPosition);
           }
         }
         catch (Exception ex)
@@ -153,11 +155,15 @@ internal class ConsistencyStateMachine
   public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
   {
     Interlocked.Increment(ref testsWaiting);
-    await Task.Delay(GetMinimumDelayForCheck(type));
+    if (DateTime.UtcNow - lastEventAt < GetMinimumDelayForCheck(type))
+    {
+      await Task.Delay(GetMinimumDelayForCheck(type));
+    }
+
     var position = lastEventPosition;
     var timer = Stopwatch.StartNew();
     var isConsistent = false;
-    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = IsConsistent()))
+    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent()))
     {
       await Task.Delay(Random.Shared.Next(5, 25));
     }
@@ -172,10 +178,40 @@ internal class ConsistencyStateMachine
 
     return;
 
-    bool IsConsistent() => position <= lastConsistency.Position;
+    async Task<bool> IsConsistent()
+    {
+      if (position <= lastConsistency.Position)
+      {
+        return true;
+      }
+
+      try
+      {
+        await insightsSemaphore.WaitAsync();
+        if (position <= lastConsistency.Position)
+        {
+          return true;
+        }
+
+        var daemonInsights = await $"{url}{DaemonsInsight.Route}?position={position}"
+          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
+          .GetJsonAsync<DaemonsInsights>();
+
+        if (daemonInsights.IsFullyIdle && lastConsistency.Position < position)
+        {
+          lastConsistency = new ApiConsistency(position);
+        }
+
+        return daemonInsights.IsFullyIdle;
+      }
+      finally
+      {
+        insightsSemaphore.Release();
+      }
+    }
   }
 
-  private record ApiConsistency(ulong Position, DateTime HappenedAt, DateTime LastEventAt);
+  private record ApiConsistency(ulong Position);
 }
 
 internal record TestSetupHolder(
@@ -326,7 +362,6 @@ public class TestSetup : IAsyncDisposable
     Dictionary<string, string>? headers = null,
     string? asUser = null)
   {
-    await WaitForConsistency(ConsistencyWaitType.Short);
     var hd = headers ?? new Dictionary<string, string>();
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var req = $"{Url}{tenancySegment}/commands/{Naming.ToSpinalCase<C>()}"
