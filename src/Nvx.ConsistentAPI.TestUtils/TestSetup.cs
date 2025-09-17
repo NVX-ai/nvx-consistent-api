@@ -72,9 +72,8 @@ internal static class InstanceTracking
 internal class ConsistencyStateMachine
 {
   private const int StepDelayMilliseconds = 150;
-  private const int MaxDelayMilliseconds = 2_000;
+  private const int MaxDelayMilliseconds = 2_600;
   private readonly EventStoreClient eventStoreClient;
-  private readonly SemaphoreSlim insightsSemaphore = new(1, 1);
   private readonly ILogger logger;
   private readonly string url;
   private ApiConsistency lastConsistency = new(0);
