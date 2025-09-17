@@ -99,12 +99,19 @@ internal class ReadModelHydrationDaemon(
     var percentageComplete = lastEventPosition == 0
       ? 100m
       : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(lastEventPosition);
+
+    var queuingCount = lastPosition.HasValue && lastPosition.Value.CommitPosition >= lastEventPosition
+      ? 0
+      : await stateMachine.ProcessingCount();
+
+    var queuedCount =
+      await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString, lastEventPosition);
+
     return new HydrationDaemonInsights(
       currentPosition,
       lastCheckpoint ?? 0,
       Math.Min(100m, percentageComplete),
-      await stateMachine.ProcessingCount()
-      + await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString));
+      queuingCount + queuedCount);
   }
 
   public async Task<bool> IsUpToDate(Position? position)
@@ -281,6 +288,7 @@ internal class ReadModelHydrationDaemon(
               {
                 break;
               }
+
               await stateMachine.Checkpoint(pos, Checkpoint);
               lastCheckpoint = pos.CommitPosition;
               break;

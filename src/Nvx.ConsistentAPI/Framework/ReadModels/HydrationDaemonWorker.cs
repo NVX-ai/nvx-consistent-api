@@ -130,6 +130,16 @@ public class HydrationDaemonWorker
       AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition]);
     """;
 
+  private const string PendingEventsBeforePositionCountSql =
+    """
+    SELECT COUNT(*)
+    FROM [HydrationQueue]
+    WHERE [ModelHash] = @ModelHash 
+      AND [Position] <= @Position
+      AND [TimesLocked] < 25
+      AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition]);
+    """;
+
   private const string ReleaseSql =
     """
     UPDATE [HydrationQueue]
@@ -145,6 +155,15 @@ public class HydrationDaemonWorker
     DELETE FROM [HydrationQueue]
     WHERE [StreamName] LIKE @StreamPrefix + '%'
       AND [ModelHash] = @ModelHash
+    """;
+
+  private const string GetStreamLastHydratedPositionByHashSql =
+    """
+    SELECT TOP 1 [LastHydratedPosition]
+    FROM [HydrationQueue]
+    WHERE [StreamName] = @StreamName
+      AND [ModelHash] = @ModelHash
+    ORDER BY [LastHydratedPosition] DESC
     """;
 
   private static readonly string SafeInsertModelHashReadModelLockSql =
@@ -181,15 +200,6 @@ public class HydrationDaemonWorker
          OR [LockedUntil] < GETUTCDATE()
          OR [ModelHash] = @ModelHash
      """;
-
-  private const string GetStreamLastHydratedPositionByHashSql =
-    """
-    SELECT TOP 1 [LastHydratedPosition]
-    FROM [HydrationQueue]
-    WHERE [StreamName] = @StreamName
-      AND [ModelHash] = @ModelHash
-    ORDER BY [LastHydratedPosition] DESC
-    """;
 
   private static readonly string TryLockStreamSql =
     $"""
@@ -654,6 +664,22 @@ public class HydrationDaemonWorker
     {
       await Task.Delay(Random.Shared.Next(150));
       return await PendingEventsCount(modelHash, connectionString);
+    }
+  }
+
+  public static async Task<int> PendingEventsCount(string modelHash, string connectionString, ulong position)
+  {
+    try
+    {
+      await using var connection = new SqlConnection(connectionString);
+      return await connection.QuerySingleAsync<int>(
+        PendingEventsBeforePositionCountSql,
+        new { ModelHash = modelHash, Position = Convert.ToDecimal(position) });
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
+    {
+      await Task.Delay(Random.Shared.Next(150));
+      return await PendingEventsCount(modelHash, connectionString, position);
     }
   }
 
