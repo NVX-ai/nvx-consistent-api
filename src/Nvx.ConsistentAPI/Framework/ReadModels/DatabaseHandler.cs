@@ -538,12 +538,22 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     }
   }
 
-  private async Task Delete(StrongId id, SqlConnection connection, CancellationToken cancellationToken) =>
-    await connection.ExecuteAsync(
-      new CommandDefinition(
-        $"DELETE FROM [{tableName}] WHERE [FrameworkRelatedEntityId] = @Id",
-        new { Id = id.StreamId() },
-        cancellationToken: cancellationToken));
+  private async Task Delete(StrongId id, SqlConnection connection, CancellationToken cancellationToken)
+  {
+    try
+    {
+      await connection.ExecuteAsync(
+        new CommandDefinition(
+          $"DELETE FROM [{tableName}] WHERE [FrameworkRelatedEntityId] = @Id",
+          new { Id = id.StreamId() },
+          cancellationToken: cancellationToken));
+    }
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock
+    {
+      await Task.Delay(Random.Shared.Next(150), cancellationToken);
+      await Delete(id, connection, cancellationToken);
+    }
+  }
 
   public async Task<Unit> Update(
     Shape[] rms,

@@ -2,6 +2,7 @@
 using Dapper;
 using EventStore.Client;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Nvx.ConsistentAPI.Framework.DaemonCoordination;
 using Nvx.ConsistentAPI.InternalTooling;
@@ -52,6 +53,18 @@ internal class ReadModelHydrationDaemon(
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
   private readonly string connectionString = settings.ReadModelConnectionString;
 
+  private readonly MemoryCache lastPositionOfStreamCache = new(
+    new MemoryCacheOptions
+    {
+      SizeLimit = 250_000
+    });
+
+  private readonly MemoryCacheEntryOptions lastPositionOfStreamCacheEntryOptions = new()
+  {
+    Size = 1,
+    SlidingExpiration = TimeSpan.FromMinutes(30)
+  };
+
   private readonly SemaphoreSlim lastPositionSemaphore = new(1);
   private readonly SemaphoreSlim semaphore = new(1);
 
@@ -77,6 +90,7 @@ internal class ReadModelHydrationDaemon(
 
   private bool isInitialized;
   private ulong? lastCheckpoint;
+  private DateTime lastCheckpointAt = DateTime.MinValue;
   private Position? lastPosition;
 
   public async Task<HydrationDaemonInsights> Insights(ulong lastEventPosition)
@@ -263,6 +277,10 @@ internal class ReadModelHydrationDaemon(
             }
             case StreamMessage.AllStreamCheckpointReached(var pos):
             {
+              if (lastCheckpointAt > DateTime.UtcNow.AddSeconds(-90))
+              {
+                break;
+              }
               await stateMachine.Checkpoint(pos, Checkpoint);
               lastCheckpoint = pos.CommitPosition;
               break;
@@ -327,6 +345,41 @@ internal class ReadModelHydrationDaemon(
           {
             await UpdateLastPosition(evt.Event.Position);
             return;
+          }
+
+          if (lastPositionOfStreamCache.TryGetValue(evt.Event.EventStreamId, out long cachedLastPosition)
+              && cachedLastPosition > evt.Event.EventNumber.ToInt64())
+          {
+            // It's not the last event of the stream, skip.
+            await UpdateLastPosition(evt.Event.Position);
+            return;
+          }
+
+          if (evt.Event.EventNumber.ToInt64() != 0)
+          {
+            // ReSharper disable once LoopCanBeConvertedToQuery
+            var readStreamResult = client.ReadStreamAsync(
+              Direction.Backwards,
+              evt.Event.EventStreamId,
+              StreamPosition.End,
+              1);
+            if (await readStreamResult.ReadState == ReadState.Ok)
+            {
+              await foreach (var fromStream in readStreamResult)
+              {
+                // ReSharper disable once InvertIf
+                if (fromStream.Event.EventId != evt.Event.EventId)
+                {
+                  lastPositionOfStreamCache.Set(
+                    fromStream.Event.EventStreamId,
+                    fromStream.OriginalEventNumber.ToInt64(),
+                    lastPositionOfStreamCacheEntryOptions);
+                  // It's not the last event of the stream, skip.
+                  await UpdateLastPosition(evt.Event.Position);
+                  return;
+                }
+              }
+            }
           }
 
           if (IsInterestEvent(@event))
@@ -487,6 +540,7 @@ internal class ReadModelHydrationDaemon(
         transaction);
       await transaction.CommitAsync();
       await UpdateLastPosition(position);
+      lastCheckpointAt = DateTime.UtcNow;
     }
     catch
     {

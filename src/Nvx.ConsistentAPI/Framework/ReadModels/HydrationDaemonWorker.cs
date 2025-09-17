@@ -60,7 +60,7 @@ public class HydrationDaemonWorker
     END
     """;
 
-  private const int StreamLockLengthSeconds = 42;
+  private const int StreamLockLengthSeconds = 90;
   private const int RefreshStreamLockFrequencySeconds = StreamLockLengthSeconds / 3;
 
   private const string UpdateHydrationState =
@@ -182,7 +182,7 @@ public class HydrationDaemonWorker
          OR [ModelHash] = @ModelHash
      """;
 
-  private static readonly string GetStreamLastHydratedPositionByHashSql =
+  private const string GetStreamLastHydratedPositionByHashSql =
     """
     SELECT TOP 1 [LastHydratedPosition]
     FROM [HydrationQueue]

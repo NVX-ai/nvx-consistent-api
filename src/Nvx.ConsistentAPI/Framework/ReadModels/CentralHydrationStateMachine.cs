@@ -6,7 +6,7 @@ namespace Nvx.ConsistentAPI;
 internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger logger)
 {
   private readonly SemaphoreSlim clearanceSemaphore = new(1, 1);
-  private readonly SemaphoreSlim hydrationSemaphore = new(settings.ParallelHydration, settings.ParallelHydration);
+  private readonly SemaphoreSlim hydrationSemaphore = new(settings.ParallelHydration * 2, settings.ParallelHydration * 2);
   private readonly List<(string stream, Task task)> hydrationTasks = [];
 
   public async Task<int> ProcessingCount()
