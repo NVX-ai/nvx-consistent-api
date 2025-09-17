@@ -202,7 +202,7 @@ internal class ConsistencyStateMachine
           lastConsistency = new ApiConsistency(position);
         }
 
-        return daemonInsights.IsFullyIdle;
+        return type == ConsistencyWaitType.Long ? daemonInsights.IsFullyIdle : daemonInsights.AreReadModelsUpToDate;
       }
       finally
       {
