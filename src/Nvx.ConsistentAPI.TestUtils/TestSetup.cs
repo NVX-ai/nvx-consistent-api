@@ -75,6 +75,7 @@ internal class ConsistencyStateMachine
   private const int MaxDelayMilliseconds = 2_600;
   private readonly EventStoreClient eventStoreClient;
   private readonly ILogger logger;
+  private readonly SemaphoreSlim updateConsistencySemaphore = new(1);
   private readonly string url;
   private ApiConsistency lastConsistency = new(0);
   private DateTime lastEventAt;
@@ -89,7 +90,10 @@ internal class ConsistencyStateMachine
     this.eventStoreClient = eventStoreClient;
     this.logger = logger;
     Subscribe();
-    RefreshConsistency();
+    RefreshConsistency(true);
+    RefreshConsistency(false);
+    RefreshConsistency(false);
+    RefreshConsistency(false);
   }
 
   private void Subscribe() =>
@@ -104,7 +108,7 @@ internal class ConsistencyStateMachine
       }
     });
 
-  private void RefreshConsistency() =>
+  private void RefreshConsistency(bool isForLatest) =>
     _ = Task.Run(async () =>
     {
       var position = lastEventPosition;
@@ -112,15 +116,16 @@ internal class ConsistencyStateMachine
       {
         try
         {
-          var daemonInsights = await $"{url}{DaemonsInsight.Route}?position={position}"
+          var effectiveUrl = isForLatest
+            ? $"{url}{DaemonsInsight.Route}"
+            : $"{url}{DaemonsInsight.Route}?position={position}";
+          var daemonInsights = await effectiveUrl
             .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
             .GetJsonAsync<DaemonsInsights>();
 
-          var isConsistent = daemonInsights.IsFullyIdle;
-
-          if (isConsistent)
+          await updateConsistencySemaphore.WaitAsync();
+          if (daemonInsights.IsFullyIdle)
           {
-            position = lastEventPosition;
             lastConsistency = lastConsistency.Position == daemonInsights.LastEventPosition
               ? lastConsistency
               : new ApiConsistency(daemonInsights.LastEventPosition);
@@ -128,17 +133,21 @@ internal class ConsistencyStateMachine
 
           if (daemonInsights.AreReadModelsUpToDate)
           {
+            position = lastEventPosition;
             lastReadModelConsistency = lastReadModelConsistency.Position == daemonInsights.LastEventPosition
               ? lastReadModelConsistency
               : new ApiConsistency(daemonInsights.LastEventPosition);
           }
+
+          updateConsistencySemaphore.Release();
         }
         catch (Exception ex)
         {
           logger.LogError(ex, "Error refreshing the consistency status in integration tests");
         }
 
-        await Task.Delay(25);
+        // The random delay will make them go out of phase
+        await Task.Delay(Random.Shared.Next(200));
       }
       // ReSharper disable once FunctionNeverReturns
     });
