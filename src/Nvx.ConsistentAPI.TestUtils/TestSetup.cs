@@ -72,15 +72,15 @@ internal static class InstanceTracking
 internal class ConsistencyStateMachine
 {
   private const int StepDelayMilliseconds = 150;
-  private const int MaxDelayMilliseconds = 3_000;
+  private const int MaxDelayMilliseconds = 2_000;
   private readonly EventStoreClient eventStoreClient;
   private readonly SemaphoreSlim insightsSemaphore = new(1, 1);
   private readonly ILogger logger;
   private readonly string url;
   private ApiConsistency lastConsistency = new(0);
-  private ApiConsistency lastReadModelConsistency = new(0);
   private DateTime lastEventAt;
   private ulong lastEventPosition;
+  private ApiConsistency lastReadModelConsistency = new(0);
 
   private int testsWaiting;
 
@@ -108,22 +108,20 @@ internal class ConsistencyStateMachine
   private void RefreshConsistency() =>
     _ = Task.Run(async () =>
     {
+      var position = lastEventPosition;
       while (true)
       {
         try
         {
-          var status = await $"{url}{CatchUp.Route}"
-            .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-            .GetJsonAsync<HydrationStatus>();
-
-          var daemonInsights = await $"{url}{DaemonsInsight.Route}"
+          var daemonInsights = await $"{url}{DaemonsInsight.Route}?position={position}"
             .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
             .GetJsonAsync<DaemonsInsights>();
 
-          var isConsistent = status.IsCaughtUp && daemonInsights.IsFullyIdle;
+          var isConsistent = daemonInsights.IsFullyIdle;
 
           if (isConsistent)
           {
+            position = lastEventPosition;
             lastConsistency = lastConsistency.Position == daemonInsights.LastEventPosition
               ? lastConsistency
               : new ApiConsistency(daemonInsights.LastEventPosition);
@@ -171,7 +169,7 @@ internal class ConsistencyStateMachine
     var position = lastEventPosition;
     var timer = Stopwatch.StartNew();
     var isConsistent = false;
-    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent()))
+    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = IsConsistent()))
     {
       await Task.Delay(Random.Shared.Next(5, 25));
     }
@@ -186,43 +184,9 @@ internal class ConsistencyStateMachine
 
     return;
 
-    async Task<bool> IsConsistent()
-    {
-      if (position <= lastConsistency.Position
-          || type != ConsistencyWaitType.Long && position <= lastReadModelConsistency.Position)
-      {
-        return true;
-      }
-
-      try
-      {
-        await insightsSemaphore.WaitAsync();
-        if (position <= lastConsistency.Position)
-        {
-          return true;
-        }
-
-        var daemonInsights = await $"{url}{DaemonsInsight.Route}?position={position}"
-          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-          .GetJsonAsync<DaemonsInsights>();
-
-        if (daemonInsights.IsFullyIdle && lastConsistency.Position < position)
-        {
-          lastConsistency = new ApiConsistency(position);
-        }
-
-        if (daemonInsights.AreReadModelsUpToDate && lastReadModelConsistency.Position < position)
-        {
-          lastReadModelConsistency = new ApiConsistency(position);
-        }
-
-        return type == ConsistencyWaitType.Long ? daemonInsights.IsFullyIdle : daemonInsights.AreReadModelsUpToDate;
-      }
-      finally
-      {
-        insightsSemaphore.Release();
-      }
-    }
+    bool IsConsistent() =>
+      position <= lastConsistency.Position
+      || (type != ConsistencyWaitType.Long && position <= lastReadModelConsistency.Position);
   }
 
   private record ApiConsistency(ulong Position);
