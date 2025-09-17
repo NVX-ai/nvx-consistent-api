@@ -78,6 +78,7 @@ internal class ConsistencyStateMachine
   private readonly ILogger logger;
   private readonly string url;
   private ApiConsistency lastConsistency = new(0);
+  private ApiConsistency lastReadModelConsistency = new(0);
   private DateTime lastEventAt;
   private ulong lastEventPosition;
 
@@ -125,6 +126,13 @@ internal class ConsistencyStateMachine
           {
             lastConsistency = lastConsistency.Position == daemonInsights.LastEventPosition
               ? lastConsistency
+              : new ApiConsistency(daemonInsights.LastEventPosition);
+          }
+
+          if (daemonInsights.AreReadModelsUpToDate)
+          {
+            lastReadModelConsistency = lastReadModelConsistency.Position == daemonInsights.LastEventPosition
+              ? lastReadModelConsistency
               : new ApiConsistency(daemonInsights.LastEventPosition);
           }
         }
@@ -180,7 +188,8 @@ internal class ConsistencyStateMachine
 
     async Task<bool> IsConsistent()
     {
-      if (position <= lastConsistency.Position)
+      if (position <= lastConsistency.Position
+          || type != ConsistencyWaitType.Long && position <= lastReadModelConsistency.Position)
       {
         return true;
       }
@@ -200,6 +209,11 @@ internal class ConsistencyStateMachine
         if (daemonInsights.IsFullyIdle && lastConsistency.Position < position)
         {
           lastConsistency = new ApiConsistency(position);
+        }
+
+        if (daemonInsights.AreReadModelsUpToDate && lastReadModelConsistency.Position < position)
+        {
+          lastReadModelConsistency = new ApiConsistency(position);
         }
 
         return type == ConsistencyWaitType.Long ? daemonInsights.IsFullyIdle : daemonInsights.AreReadModelsUpToDate;
