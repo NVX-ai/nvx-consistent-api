@@ -269,7 +269,8 @@ internal class TodoProcessor
 
   internal void Initialize()
   {
-    for (var i = 0; i < 15; i++)
+    // TODO: Make this configurable
+    for (var i = 0; i < 50; i++)
     {
       RunPeriodically(async () => await ProcessAsWorker());
     }
@@ -291,7 +292,7 @@ internal class TodoProcessor
 
       if (matchedTodos.Length == 0)
       {
-        await Task.Delay(250);
+        await Task.Delay(Random.Shared.Next(500));
         return;
       }
 
