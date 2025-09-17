@@ -72,14 +72,17 @@ public class CrossStreamFoldIntegration
     await setup.InsertEvents(new FirstDegreeStartedDependingOnSecondDegree(firstId, secondId));
     await setup.InsertEvents(new InterestedEntityAddedAnInterest(interestedId, firstId));
 
-    var readModel = await setup.ReadModel<EntityThatDependsReadModel>(interestedId.ToString());
+    var readModel = await setup.ReadModel<EntityThatDependsReadModel>(
+      interestedId.ToString(),
+      waitType: ConsistencyWaitType.Long);
 
     Assert.Contains(secondDegreeName, readModel.FarAwayNames);
 
     var newSecondDegreeName = $"New name {secondId}";
     await setup.InsertEvents(new SecondDegreeConcernedEntityNamed(secondId, newSecondDegreeName));
 
-    var readModelWithTwoNames = await setup.ReadModel<EntityThatDependsReadModel>(interestedId.ToString());
+    var readModelWithTwoNames = await setup.ReadModel<EntityThatDependsReadModel>(interestedId.ToString(),
+      waitType: ConsistencyWaitType.Long);
     Assert.Contains(newSecondDegreeName, readModelWithTwoNames.FarAwayNames);
     Assert.Contains(secondDegreeName, readModelWithTwoNames.FarAwayNames);
     Assert.Equal(2, readModelWithTwoNames.FarAwayNames.Length);
