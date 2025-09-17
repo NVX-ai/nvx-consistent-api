@@ -146,8 +146,8 @@ internal class ConsistencyStateMachine
           logger.LogError(ex, "Error refreshing the consistency status in integration tests");
         }
 
-        // The random delay will make them go out of phase
-        await Task.Delay(Random.Shared.Next(200));
+        // The random delay will make them go out of phase, so different positions will be probed.
+        await Task.Delay(isForLatest ? 10 : Random.Shared.Next(2_500));
       }
       // ReSharper disable once FunctionNeverReturns
     });
@@ -192,9 +192,11 @@ internal class ConsistencyStateMachine
 
     return;
 
+    ulong PositionToUse() => type == ConsistencyWaitType.Long ? lastEventPosition : position;
+
     bool IsConsistent() =>
-      position <= lastConsistency.Position
-      || (type != ConsistencyWaitType.Long && position <= lastReadModelConsistency.Position);
+      PositionToUse() <= lastConsistency.Position
+      || (type != ConsistencyWaitType.Long && PositionToUse() <= lastReadModelConsistency.Position);
   }
 
   private record ApiConsistency(ulong Position);
