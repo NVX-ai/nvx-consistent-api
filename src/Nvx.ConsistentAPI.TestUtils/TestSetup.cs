@@ -127,7 +127,6 @@ internal class ConsistencyStateMachine
       await Task.Delay(GetMinimumDelayForCheck(type));
     }
 
-    var position = lastEventPosition;
     var timer = Stopwatch.StartNew();
     var isConsistent = false;
     while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent()))
@@ -145,9 +144,8 @@ internal class ConsistencyStateMachine
 
     return;
 
-    ulong PositionToUse() => type == ConsistencyWaitType.Long ? lastEventPosition : position;
 
-    async Task<bool> IsConsistent() => await consistencyCheck.IsConsistentAt(PositionToUse());
+    async Task<bool> IsConsistent() => await consistencyCheck.IsConsistentAt(lastEventPosition);
   }
 }
 
