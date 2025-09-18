@@ -15,7 +15,15 @@ public class ConsistencyCheck(
       AggregatingConsistentAt(position),
       TodosProcessedAt(position))).All(Id);
 
-  private async Task<bool> CentralDaemonIsConsistentAt(ulong position) => false;
+  private async Task<bool> CentralDaemonIsConsistentAt(ulong position)
+  {
+    if (await HydrationDaemonWorker.PendingEventsCount(modelHash, readModelsConnectionString, position) > 0)
+    {
+      return false;
+    }
+
+    return daemon.LastPosition is { } daemonPosition && daemonPosition.CommitPosition >= position;
+  }
 
   private async Task<bool> AggregatingConsistentAt(ulong position)
   {
