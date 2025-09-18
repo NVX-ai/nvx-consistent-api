@@ -76,28 +76,20 @@ internal class ConsistencyStateMachine
   private readonly ConsistencyCheck consistencyCheck;
   private readonly EventStoreClient eventStoreClient;
   private readonly ILogger logger;
-  private readonly SemaphoreSlim updateConsistencySemaphore = new(1);
-  private readonly string url;
-  private ApiConsistency lastConsistency = new(0);
   private DateTime lastEventAt;
   private ulong lastEventPosition;
-  private ApiConsistency lastFastConsistency = new(0);
 
   private int testsWaiting;
 
   public ConsistencyStateMachine(
-    string url,
     EventStoreClient eventStoreClient,
     ConsistencyCheck consistencyCheck,
     ILogger logger)
   {
-    this.url = url;
     this.eventStoreClient = eventStoreClient;
     this.consistencyCheck = consistencyCheck;
     this.logger = logger;
     Subscribe();
-    RefreshConsistency();
-    RefreshFastConsistency();
   }
 
   private void Subscribe() =>
@@ -112,71 +104,6 @@ internal class ConsistencyStateMachine
       }
     });
 
-  private void RefreshFastConsistency() =>
-    _ = Task.Run(async () =>
-    {
-      var position = lastEventPosition;
-      while (true)
-      {
-        try
-        {
-          if (await consistencyCheck.IsConsistentAt(position))
-          {
-            await updateConsistencySemaphore.WaitAsync();
-            lastFastConsistency = lastFastConsistency.Position == lastEventPosition
-              ? lastFastConsistency
-              : new ApiConsistency(lastEventPosition);
-            updateConsistencySemaphore.Release();
-            position = lastEventPosition;
-          }
-        }
-        catch (Exception ex)
-        {
-          logger.LogError(ex, "Error refreshing the fast consistency status in integration tests");
-        }
-
-        await Task.Delay(10);
-      }
-      // ReSharper disable once FunctionNeverReturns
-    });
-
-  private void RefreshConsistency() =>
-    _ = Task.Run(async () =>
-    {
-      while (true)
-      {
-        try
-        {
-          var daemonInsights = await $"{url}{DaemonsInsight.Route}"
-            .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-            .GetJsonAsync<DaemonsInsights>();
-
-          await updateConsistencySemaphore.WaitAsync();
-          if (daemonInsights.IsFullyIdle)
-          {
-            lastConsistency = lastConsistency.Position == daemonInsights.LastEventPosition
-              ? lastConsistency
-              : new ApiConsistency(daemonInsights.LastEventPosition);
-          }
-
-          if (daemonInsights.AreReadModelsUpToDate)
-          {
-            lastFastConsistency = lastFastConsistency.Position == daemonInsights.LastEventPosition
-              ? lastFastConsistency
-              : new ApiConsistency(daemonInsights.LastEventPosition);
-          }
-
-          updateConsistencySemaphore.Release();
-        }
-        catch (Exception ex)
-        {
-          logger.LogError(ex, "Error refreshing the consistency status in integration tests");
-        }
-
-        await Task.Delay(10);
-      }
-      // ReSharper disable once FunctionNeverReturns
-    });
 
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
@@ -220,32 +147,8 @@ internal class ConsistencyStateMachine
 
     ulong PositionToUse() => type == ConsistencyWaitType.Long ? lastEventPosition : position;
 
-    ulong LastConsistencyToUse() =>
-      type == ConsistencyWaitType.Long ? lastConsistency.Position : lastFastConsistency.Position;
-
-    async Task<bool> IsConsistent()
-    {
-      if (PositionToUse() <= LastConsistencyToUse())
-      {
-        return true;
-      }
-
-      if (type != ConsistencyWaitType.Short || !await consistencyCheck.IsConsistentAt(PositionToUse()))
-      {
-        return false;
-      }
-
-      await updateConsistencySemaphore.WaitAsync();
-      lastFastConsistency =
-        lastFastConsistency.Position < PositionToUse()
-          ? new ApiConsistency(PositionToUse())
-          : lastFastConsistency;
-      updateConsistencySemaphore.Release();
-      return true;
-    }
+    async Task<bool> IsConsistent() => await consistencyCheck.IsConsistentAt(PositionToUse());
   }
-
-  private record ApiConsistency(ulong Position);
 }
 
 internal record TestSetupHolder(
@@ -733,7 +636,7 @@ public class TestSetup : IAsyncDisposable
       model,
       1,
       logger,
-      new ConsistencyStateMachine(baseUrl, eventStoreClient, app.ConsistencyCheck, logger));
+      new ConsistencyStateMachine(eventStoreClient, app.ConsistencyCheck, logger));
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)

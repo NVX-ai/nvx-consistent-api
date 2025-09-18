@@ -55,7 +55,8 @@ public class CrossStreamFoldIntegration
       new FirstDegreeConcernedEntityEventAboutInterestedEntity(concernedEntityId, interestedEntityId));
 
     var readModel = await setup.ReadModel<EntityThatDependsReadModel>(
-      interestedEntityId.ToString());
+      interestedEntityId.ToString(),
+      waitType: ConsistencyWaitType.Long);
     Assert.Empty(readModel.DependedOnTags);
     Assert.Contains(readModel.DependsOnIds, t => t == concernedEntityId);
   }
