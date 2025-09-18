@@ -1,11 +1,13 @@
 ﻿using Microsoft.AspNetCore.Builder;
+using Nvx.ConsistentAPI.InternalTooling;
 
 namespace Nvx.ConsistentAPI;
 
-public sealed class ConsistentApp(WebApplication webApp, Fetcher fetcher) : IAsyncDisposable
+public sealed class ConsistentApp(WebApplication webApp, Fetcher fetcher, ConsistencyCheck consistencyCheck) : IAsyncDisposable
 {
   public WebApplication WebApp { get; } = webApp;
   public Fetcher Fetcher { get; } = fetcher;
+  internal ConsistencyCheck ConsistencyCheck { get; } = consistencyCheck;
 
   public async ValueTask DisposeAsync() => await WebApp.DisposeAsync();
 

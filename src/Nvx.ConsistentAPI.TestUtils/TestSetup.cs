@@ -73,6 +73,7 @@ internal class ConsistencyStateMachine
 {
   private const int StepDelayMilliseconds = 150;
   private const int MaxDelayMilliseconds = 2_600;
+  private readonly ConsistencyCheck consistencyCheck;
   private readonly EventStoreClient eventStoreClient;
   private readonly ILogger logger;
   private readonly SemaphoreSlim updateConsistencySemaphore = new(1);
@@ -80,20 +81,23 @@ internal class ConsistencyStateMachine
   private ApiConsistency lastConsistency = new(0);
   private DateTime lastEventAt;
   private ulong lastEventPosition;
-  private ApiConsistency lastReadModelConsistency = new(0);
+  private ApiConsistency lastFastConsistency = new(0);
 
   private int testsWaiting;
 
-  public ConsistencyStateMachine(string url, EventStoreClient eventStoreClient, ILogger logger)
+  public ConsistencyStateMachine(
+    string url,
+    EventStoreClient eventStoreClient,
+    ConsistencyCheck consistencyCheck,
+    ILogger logger)
   {
     this.url = url;
     this.eventStoreClient = eventStoreClient;
+    this.consistencyCheck = consistencyCheck;
     this.logger = logger;
     Subscribe();
-    RefreshConsistency(true);
-    RefreshConsistency(false);
-    RefreshConsistency(false);
-    RefreshConsistency(false);
+    RefreshConsistency();
+    RefreshFastConsistency();
   }
 
   private void Subscribe() =>
@@ -108,7 +112,7 @@ internal class ConsistencyStateMachine
       }
     });
 
-  private void RefreshConsistency(bool isForLatest) =>
+  private void RefreshFastConsistency() =>
     _ = Task.Run(async () =>
     {
       var position = lastEventPosition;
@@ -116,10 +120,34 @@ internal class ConsistencyStateMachine
       {
         try
         {
-          var effectiveUrl = isForLatest
-            ? $"{url}{DaemonsInsight.Route}"
-            : $"{url}{DaemonsInsight.Route}?position={position}";
-          var daemonInsights = await effectiveUrl
+          if (await consistencyCheck.IsConsistentAt(position))
+          {
+            await updateConsistencySemaphore.WaitAsync();
+            lastFastConsistency = lastFastConsistency.Position == lastEventPosition
+              ? lastFastConsistency
+              : new ApiConsistency(lastEventPosition);
+            updateConsistencySemaphore.Release();
+            position = lastEventPosition;
+          }
+        }
+        catch (Exception ex)
+        {
+          logger.LogError(ex, "Error refreshing the fast consistency status in integration tests");
+        }
+
+        await Task.Delay(10);
+      }
+      // ReSharper disable once FunctionNeverReturns
+    });
+
+  private void RefreshConsistency() =>
+    _ = Task.Run(async () =>
+    {
+      while (true)
+      {
+        try
+        {
+          var daemonInsights = await $"{url}{DaemonsInsight.Route}"
             .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
             .GetJsonAsync<DaemonsInsights>();
 
@@ -133,9 +161,8 @@ internal class ConsistencyStateMachine
 
           if (daemonInsights.AreReadModelsUpToDate)
           {
-            position = lastEventPosition;
-            lastReadModelConsistency = lastReadModelConsistency.Position == daemonInsights.LastEventPosition
-              ? lastReadModelConsistency
+            lastFastConsistency = lastFastConsistency.Position == daemonInsights.LastEventPosition
+              ? lastFastConsistency
               : new ApiConsistency(daemonInsights.LastEventPosition);
           }
 
@@ -146,8 +173,7 @@ internal class ConsistencyStateMachine
           logger.LogError(ex, "Error refreshing the consistency status in integration tests");
         }
 
-        // The random delay will make them go out of phase, so different positions will be probed.
-        await Task.Delay(isForLatest ? 10 : Random.Shared.Next(2_500));
+        await Task.Delay(10);
       }
       // ReSharper disable once FunctionNeverReturns
     });
@@ -177,7 +203,7 @@ internal class ConsistencyStateMachine
     var position = lastEventPosition;
     var timer = Stopwatch.StartNew();
     var isConsistent = false;
-    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = IsConsistent()))
+    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent()))
     {
       await Task.Delay(Random.Shared.Next(5, 25));
     }
@@ -194,9 +220,23 @@ internal class ConsistencyStateMachine
 
     ulong PositionToUse() => type == ConsistencyWaitType.Long ? lastEventPosition : position;
 
-    bool IsConsistent() =>
-      PositionToUse() <= lastConsistency.Position
-      || (type != ConsistencyWaitType.Long && PositionToUse() <= lastReadModelConsistency.Position);
+    ulong LastConsistencyToUse() =>
+      type == ConsistencyWaitType.Long ? lastConsistency.Position : lastFastConsistency.Position;
+
+    async Task<bool> IsConsistent()
+    {
+      if (PositionToUse() <= LastConsistencyToUse())
+      {
+        return true;
+      }
+
+      if (type == ConsistencyWaitType.Short)
+      {
+
+      }
+
+      return type == ConsistencyWaitType.Short && await consistencyCheck.IsConsistentAt(PositionToUse());
+    }
   }
 
   private record ApiConsistency(ulong Position);
@@ -687,7 +727,7 @@ public class TestSetup : IAsyncDisposable
       model,
       1,
       logger,
-      new ConsistencyStateMachine(baseUrl, eventStoreClient, logger));
+      new ConsistencyStateMachine(baseUrl, eventStoreClient, app.ConsistencyCheck, logger));
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)

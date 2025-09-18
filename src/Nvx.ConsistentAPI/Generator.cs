@@ -383,7 +383,7 @@ public static class Generator
 
     var logger = app.Services.GetRequiredService<ILogger<WebApplication>>();
 
-    var fetcher = await merged.ApplyTo(app, settings, logger);
+    var (fetcher, consistencyCheck) = await merged.ApplyTo(app, settings, logger);
 
     settings.AppCustomizations.Iter(c => c(app));
 
@@ -416,7 +416,7 @@ public static class Generator
       });
     });
     app.UseSwaggerUI();
-    return new ConsistentApp(app, fetcher);
+    return new ConsistentApp(app, fetcher, consistencyCheck);
 
     LogEventLevel Map(LogLevel level) => level switch
     {

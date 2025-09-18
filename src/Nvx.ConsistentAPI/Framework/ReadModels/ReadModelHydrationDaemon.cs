@@ -9,7 +9,7 @@ using Nvx.ConsistentAPI.InternalTooling;
 
 namespace Nvx.ConsistentAPI;
 
-internal class ReadModelHydrationDaemon(
+public class ReadModelHydrationDaemon(
   GeneratorSettings settings,
   EventStoreClient client,
   Fetcher fetcher,
@@ -92,6 +92,8 @@ internal class ReadModelHydrationDaemon(
   private ulong? lastCheckpoint;
   private DateTime lastCheckpointAt = DateTime.MinValue;
   private Position? lastPosition;
+
+  public Position? LastPosition => lastPosition;
 
   public async Task<HydrationDaemonInsights> Insights(ulong lastEventPosition)
   {

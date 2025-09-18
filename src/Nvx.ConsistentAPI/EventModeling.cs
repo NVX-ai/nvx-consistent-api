@@ -153,7 +153,10 @@ public class EventModel
       InterestTriggers = InterestTriggers.Concat(other.InterestTriggers).ToArray()
     };
 
-  public async Task<Fetcher> ApplyTo(WebApplication app, GeneratorSettings settings, ILogger logger)
+  public async Task<(Fetcher fetcher, ConsistencyCheck consistencyCheck)> ApplyTo(
+    WebApplication app,
+    GeneratorSettings settings,
+    ILogger logger)
   {
     var esClient = new EventStoreClient(EventStoreClientSettings.Create(settings.EventStoreConnectionString));
     var emitter = new Emitter(esClient, logger);
@@ -256,7 +259,15 @@ public class EventModel
       projectionDaemon,
       logger);
 
-    return fetcher;
+    var fastConsistencyCheck = new ConsistencyCheck(
+      settings.ReadModelConnectionString,
+      modelHash,
+      hydrationDaemon,
+      ReadModels.Where(rm => rm is not IdempotentReadModel).ToArray(),
+      esClient);
+
+
+    return (fetcher, fastConsistencyCheck);
 
     static async Task TryActivateAdmin(Fetcher fetcher, GeneratorSettings settings, Emitter emitter)
     {
