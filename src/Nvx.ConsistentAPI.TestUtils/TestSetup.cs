@@ -71,8 +71,8 @@ internal static class InstanceTracking
 
 internal class ConsistencyStateMachine
 {
-  private const int StepDelayMilliseconds = 250;
-  private const int MaxDelayMilliseconds = 5_000;
+  private const int StepDelayMilliseconds = 100;
+  private const int MaxDelayMilliseconds = 2_500;
   private readonly ConsistencyCheck consistencyCheck;
   private readonly EventStoreClient eventStoreClient;
   private readonly ILogger logger;
@@ -95,12 +95,24 @@ internal class ConsistencyStateMachine
   private void Subscribe() =>
     _ = Task.Run(async () =>
     {
-      await foreach (var evt in eventStoreClient.SubscribeToAll(
-                       FromAll.End,
-                       filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents())))
+      while (true)
       {
-        lastEventPosition = evt.Event.Position.CommitPosition;
-        lastEventAt = evt.Event.Created;
+        try
+        {
+          await foreach (var evt in eventStoreClient.SubscribeToAll(
+                           lastEventPosition == 0
+                             ? FromAll.End
+                             : FromAll.After(new Position(lastEventPosition, lastEventPosition)),
+                           filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents())))
+          {
+            lastEventPosition = evt.Event.Position.CommitPosition;
+            lastEventAt = evt.Event.Created;
+          }
+        }
+        catch
+        {
+          // ignore
+        }
       }
     });
 
@@ -137,10 +149,9 @@ internal class ConsistencyStateMachine
       await Task.Delay(GetMinimumDelayForCheck(type));
     }
 
-    var position = lastEventPosition;
     var timer = Stopwatch.StartNew();
     var isConsistent = false;
-    await WaitForAfterProcessing(PositionToUse());
+    await WaitForAfterProcessing(lastEventPosition);
 
     while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent()))
     {
@@ -157,9 +168,7 @@ internal class ConsistencyStateMachine
 
     return;
 
-    ulong PositionToUse() => type == ConsistencyWaitType.Long ? lastEventPosition : position;
-
-    async Task<bool> IsConsistent() => await consistencyCheck.IsConsistentAt(PositionToUse());
+    async Task<bool> IsConsistent() => await consistencyCheck.IsConsistentAt(lastEventPosition);
   }
 }
 
