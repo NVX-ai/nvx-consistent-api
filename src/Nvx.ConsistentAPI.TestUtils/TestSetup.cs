@@ -230,12 +230,18 @@ internal class ConsistencyStateMachine
         return true;
       }
 
-      if (type == ConsistencyWaitType.Short)
+      if (type != ConsistencyWaitType.Short || !await consistencyCheck.IsConsistentAt(PositionToUse()))
       {
-
+        return false;
       }
 
-      return type == ConsistencyWaitType.Short && await consistencyCheck.IsConsistentAt(PositionToUse());
+      await updateConsistencySemaphore.WaitAsync();
+      lastFastConsistency =
+        lastFastConsistency.Position < PositionToUse()
+          ? new ApiConsistency(PositionToUse())
+          : lastFastConsistency;
+      updateConsistencySemaphore.Release();
+      return true;
     }
   }
 
