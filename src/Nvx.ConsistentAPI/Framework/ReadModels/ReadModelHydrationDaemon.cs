@@ -116,7 +116,7 @@ public class ReadModelHydrationDaemon(
       queuingCount + queuedCount);
   }
 
-  public async Task<bool> IsUpToDate(Position? position)
+  public async Task<bool> IsUpToDate(ulong? position)
   {
     if (position is null && hasCaughtUp)
     {
@@ -125,7 +125,7 @@ public class ReadModelHydrationDaemon(
     }
 
     return hydrationCountTracker is null
-           || (position.HasValue && lastPosition.HasValue && position.Value <= lastPosition.Value);
+           || (position.HasValue && lastPosition.HasValue && position.Value <= lastPosition.Value.CommitPosition);
   }
 
   public bool HasReachedLive() =>

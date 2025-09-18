@@ -16,7 +16,7 @@ public record TodoEventModelReadModel(
   DateTime? LockedUntil,
   [property: MaxLength(StringSizes.Unlimited)]
   string? SerializedRelatedEntityId,
-  Position? EventPosition,
+  ulong? EventPosition,
   int RetryCount,
   bool IsFailed) : EventModelReadModel
 {

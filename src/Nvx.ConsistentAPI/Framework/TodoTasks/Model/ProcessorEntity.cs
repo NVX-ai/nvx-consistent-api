@@ -55,7 +55,7 @@ public partial record ProcessorEntity(
               entity.Type,
               entity.LockedUntil,
               entity.SerializedRelatedEntityId,
-              entity.EventPosition,
+              entity.EventPosition?.CommitPosition,
               entity.AttemptCount,
               entity.AttemptCount >= MaxAttempts
             )

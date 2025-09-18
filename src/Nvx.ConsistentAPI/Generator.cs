@@ -190,10 +190,14 @@ public static class Generator
     ValidateStrongIds();
     SqlMapper.RemoveTypeMap(typeof(DateTime));
     SqlMapper.RemoveTypeMap(typeof(DateTime?));
+    SqlMapper.RemoveTypeMap(typeof(ulong));
+    SqlMapper.RemoveTypeMap(typeof(ulong?));
     SqlMapper.AddTypeHandler(typeof(DateTime), new DateTimeTypeHandler());
     SqlMapper.AddTypeHandler(typeof(DateTime?), new DateTimeTypeHandler());
     SqlMapper.AddTypeHandler(new DateOnlyTypeHandler());
     SqlMapper.AddTypeHandler(new DateOnlyNullableTypeHandler());
+    SqlMapper.AddTypeHandler(new ULongTypeHandler());
+    SqlMapper.AddTypeHandler(new ULongNullableTypeHandler());
 
     Environment.SetEnvironmentVariable("OTEL_SERVICE_NAME", eventModel.ApiName ?? "Nvx.ConsistentAPI");
 

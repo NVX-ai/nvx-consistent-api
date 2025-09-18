@@ -52,7 +52,7 @@ public interface EventModelingReadModelArtifact : Endpoint
     ILogger logger,
     string modelHash);
 
-  bool IsUpToDate(Position? position = null);
+  bool IsUpToDate(ulong? position = null);
 }
 
 public interface IdempotentReadModel

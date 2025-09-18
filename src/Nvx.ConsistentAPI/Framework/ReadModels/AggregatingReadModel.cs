@@ -143,7 +143,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
   public AuthOptions Auth { get; init; } = new Everyone();
 
-  public bool IsUpToDate(Position? position)
+  public bool IsUpToDate(ulong? position)
   {
     if (SyncState.IsBeingHydratedByAnotherInstance)
     {
@@ -155,7 +155,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       return SyncState.HasReachedEndOnce && !HasProcessedRecently();
     }
 
-    if (FromAll.After(position.Value) <= SyncState.LastPosition)
+    if (FromAll.After(new Position(position.Value, position.Value)) <= SyncState.LastPosition)
     {
       return true;
     }

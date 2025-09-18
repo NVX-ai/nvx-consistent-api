@@ -347,6 +347,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       _ when underlyingType == typeof(DateTimeOffset) => "DATETIMEOFFSET",
       _ when underlyingType == typeof(Guid) => "UNIQUEIDENTIFIER",
       _ when underlyingType == typeof(decimal) => "DECIMAL(18, 3)",
+      _ when underlyingType == typeof(ulong) => "NUMERIC(20, 0)",
       _ => "OBJECT"
     };
 
@@ -958,6 +959,36 @@ public class DateOnlyNullableTypeHandler : SqlMapper.TypeHandler<DateOnly?>
     parameter.Value = date?.ToDateTime(new TimeOnly(0, 0));
 
   public override DateOnly? Parse(object? value) => value is null ? null : DateOnly.FromDateTime((DateTime)value);
+}
+
+public class ULongTypeHandler : SqlMapper.TypeHandler<ulong>
+{
+  public override void SetValue(IDbDataParameter parameter, ulong value) =>
+    parameter.Value = (decimal)value;
+
+  public override ulong Parse(object value) => value switch
+  {
+    decimal d => (ulong)d,
+    long l => (ulong)l,
+    int i => (ulong)i,
+    _ => Convert.ToUInt64(value)
+  };
+}
+
+public class ULongNullableTypeHandler : SqlMapper.TypeHandler<ulong?>
+{
+  public override void SetValue(IDbDataParameter parameter, ulong? value) =>
+    parameter.Value = value.HasValue ? (decimal)value.Value : DBNull.Value;
+
+  public override ulong? Parse(object value) => value switch
+  {
+    decimal d => (ulong)d,
+    long l => (ulong)l,
+    int i => (ulong)i,
+    DBNull => null,
+    null => null,
+    _ => Convert.ToUInt64(value)
+  };
 }
 
 public record TraceabilityFields(
