@@ -270,7 +270,7 @@ internal class TodoProcessor
   internal void Initialize()
   {
     // TODO: Make this configurable
-    for (var i = 0; i < 50; i++)
+    for (var i = 0; i < 75; i++)
     {
       RunPeriodically(async () => await ProcessAsWorker());
     }
@@ -616,7 +616,7 @@ internal class TodoProcessor
   {
     try
     {
-      const int batchSize = 50;
+      const int batchSize = 20;
       var now = DateTime.UtcNow;
 
       var query =
