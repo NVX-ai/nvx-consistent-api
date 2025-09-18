@@ -259,15 +259,16 @@ public class EventModel
       projectionDaemon,
       logger);
 
-    var fastConsistencyCheck = new ConsistencyCheck(
+    var consistencyCheck = new ConsistencyCheck(
       settings.ReadModelConnectionString,
       modelHash,
       hydrationDaemon,
       ReadModels.Where(rm => rm is not IdempotentReadModel).ToArray(),
-      esClient);
+      esClient,
+      dcbDaemon,
+      projectionDaemon);
 
-
-    return (fetcher, fastConsistencyCheck);
+    return (fetcher, consistencyCheck);
 
     static async Task TryActivateAdmin(Fetcher fetcher, GeneratorSettings settings, Emitter emitter)
     {

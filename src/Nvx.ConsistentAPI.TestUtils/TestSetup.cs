@@ -71,8 +71,8 @@ internal static class InstanceTracking
 
 internal class ConsistencyStateMachine
 {
-  private const int StepDelayMilliseconds = 150;
-  private const int MaxDelayMilliseconds = 2_600;
+  private const int StepDelayMilliseconds = 250;
+  private const int MaxDelayMilliseconds = 5_000;
   private readonly ConsistencyCheck consistencyCheck;
   private readonly EventStoreClient eventStoreClient;
   private readonly ILogger logger;
@@ -119,16 +119,29 @@ internal class ConsistencyStateMachine
     return TimeSpan.FromMilliseconds(Math.Max(milliseconds, MaxDelayMilliseconds));
   }
 
+  public async Task WaitForAfterProcessing(ulong? position = null)
+  {
+    while (!consistencyCheck.AfterProcessingIsDone(position ?? lastEventPosition))
+    {
+      await Task.Delay(10);
+    }
+  }
+
   public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
   {
+    await WaitForAfterProcessing(lastEventPosition);
+
     Interlocked.Increment(ref testsWaiting);
     if (DateTime.UtcNow - lastEventAt < GetMinimumDelayForCheck(type))
     {
       await Task.Delay(GetMinimumDelayForCheck(type));
     }
 
+    var position = lastEventPosition;
     var timer = Stopwatch.StartNew();
     var isConsistent = false;
+    await WaitForAfterProcessing(PositionToUse());
+
     while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent()))
     {
       await Task.Delay(Random.Shared.Next(5, 25));
@@ -144,8 +157,9 @@ internal class ConsistencyStateMachine
 
     return;
 
+    ulong PositionToUse() => type == ConsistencyWaitType.Long ? lastEventPosition : position;
 
-    async Task<bool> IsConsistent() => await consistencyCheck.IsConsistentAt(lastEventPosition);
+    async Task<bool> IsConsistent() => await consistencyCheck.IsConsistentAt(PositionToUse());
   }
 }
 
@@ -281,7 +295,7 @@ public class TestSetup : IAsyncDisposable
 
   public async Task Ingest<T>(string body, Dictionary<string, string>? headers = null)
   {
-    var req = new FlurlRequest($"{Url}/ingestor/{Naming.ToSpinalCase(typeof(T))}");
+    var req = new FlurlRequest($"{Url}/ingestor/{Naming.ToSpinalCase<T>()}");
     foreach (var header in headers ?? new Dictionary<string, string>())
     {
       req.WithHeader(header.Key, header.Value);
@@ -297,6 +311,7 @@ public class TestSetup : IAsyncDisposable
     Dictionary<string, string>? headers = null,
     string? asUser = null)
   {
+    await consistencyStateMachine.WaitForAfterProcessing();
     var hd = headers ?? new Dictionary<string, string>();
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var req = $"{Url}{tenancySegment}/commands/{Naming.ToSpinalCase<C>()}"

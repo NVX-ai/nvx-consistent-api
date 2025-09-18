@@ -5,7 +5,7 @@ using Nvx.ConsistentAPI.InternalTooling;
 
 namespace Nvx.ConsistentAPI;
 
-internal class DynamicConsistencyBoundaryDaemon(
+public class DynamicConsistencyBoundaryDaemon(
   EventStoreClient client,
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   InterestTrigger[] triggers,
