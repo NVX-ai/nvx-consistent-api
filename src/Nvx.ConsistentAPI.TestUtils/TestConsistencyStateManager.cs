@@ -14,8 +14,6 @@ internal class TestConsistencyStateManager(
   private readonly SemaphoreSlim lastEventSemaphore = new(1, 1);
   private ulong lastEventPosition;
 
-  private int testsWaiting;
-
   private async Task<ulong> GetLastEventPosition()
   {
     try
@@ -67,10 +65,9 @@ internal class TestConsistencyStateManager(
       generation: type switch
       {
         ConsistencyWaitType.Short => 3,
-        ConsistencyWaitType.Medium => 6,
-        _ => 9
+        ConsistencyWaitType.Medium => 5,
+        _ => 7
       });
-    Interlocked.Increment(ref testsWaiting);
     var timer = Stopwatch.StartNew();
     var timesConsistent = 0;
     var consistenciesNeeded = type switch
@@ -87,13 +84,15 @@ internal class TestConsistencyStateManager(
     }
 
     // Verify full consistency
-    while (timer.ElapsedMilliseconds < timeout
-           && (timesConsistent += await IsConsistent(await GetLastEventPosition()) ? 1 : 0) < consistenciesNeeded)
+    while (timer.ElapsedMilliseconds < timeout)
     {
+      timesConsistent = await IsConsistent(await GetLastEventPosition()) ? timesConsistent + 1 : 0;
+      if (timesConsistent >= consistenciesNeeded)
+      {
+        break;
+      }
       await Task.Delay(Random.Shared.Next(5, 25));
     }
-
-    Interlocked.Decrement(ref testsWaiting);
 
     if (timesConsistent < consistenciesNeeded)
     {
