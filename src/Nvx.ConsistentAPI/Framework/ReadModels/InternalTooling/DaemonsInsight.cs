@@ -99,7 +99,6 @@ internal static class DaemonsInsight
             Schema = new OpenApiSchema { Type = "string" },
             Description = "API key for accessing tooling endpoints, not required for admin users"
           });
-        // TODO: Document position parameter
 
         return o;
       })
@@ -169,16 +168,19 @@ public record DaemonsInsights(
   DateTime LastEventEmittedAt,
   ulong LastEventPosition)
 {
+  // ReSharper disable once MemberCanBePrivate.Global
   public bool AreReadModelsUpToDate =>
     CatchingUpReadModels.All(rm => rm.PercentageComplete >= 100)
     && ReadModels.Total == ReadModels.UpToDate
     && (HydrationDaemonInsights is null
         || (HydrationDaemonInsights.PercentageComplete >= 100 && HydrationDaemonInsights.EventsBeingProcessed == 0));
 
+  // ReSharper disable once MemberCanBePrivate.Global
   public bool AreDaemonsIdle =>
     ProjectorDaemon is { PercentageComplete: >= 100, CatchUpPercentageComplete: >= 100, IsProjecting: false }
     && DynamicConsistencyBoundaryDaemonInsights.CurrentPercentageComplete >= 100;
 
+  // ReSharper disable once UnusedMember.Global
   public bool IsFullyIdle =>
     AreDaemonsIdle && AreReadModelsUpToDate && Tasks.Length == 0 && AboutToRunTasks.Length == 0;
 }
