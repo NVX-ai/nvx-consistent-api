@@ -35,14 +35,13 @@ With the introduction of the hydration queue and the workers, the daemon's only 
 Then the workers will compete to pick streams to hydrate, and will run the hydrations without a timeout.
 
 This means that any long running hydration will only lock one worker, and since it won't time out — the worker also refreshes the lock — it will avoid getting stuck in a loop of retrying hydrations, and other workers are free to pick other, faster hydrations.
+#### Daemons
 ```mermaid
 sequenceDiagram
   participant Daemon
   participant Queue Manager
   participant Queue Functions
   participant Hydration Queue
-  participant Worker A
-  participant Worker B
   Daemon->>Queue Manager:Event 1, queueing func
   Queue Manager->>+Queue Functions:Start, parallelized
   Daemon->>Queue Manager:Event 2, queueing func
@@ -51,26 +50,33 @@ sequenceDiagram
   Queue Manager->>+Queue Functions:Start, parallelized
   Daemon->>Queue Manager:Checkpoint received
   Queue Manager->>+Queue Functions:Solve
-  Daemon->>+Daemon:Event 4, waiting
   Queue Functions->>Queue Functions:Wait all queue functions
   Queue Functions->>-Queue Manager:Solved
   Queue Functions->>-Queue Manager:Completed queuing event 1
   Queue Functions->>Hydration Queue:Queued
-  Worker A->>Hydration Queue:Lock
-  Worker A->>+Worker A:Hydrate
   Queue Functions->>-Queue Manager:Completed queuing event 2
   Queue Functions->>Hydration Queue:Queued
-  Worker B->>Hydration Queue:Lock
-  Worker B->>+Worker B:Hydrate
   Queue Functions->>-Queue Manager:Completed queuing event 3
   Queue Functions->>Hydration Queue:Queued
+  Daemon->>+Daemon:Event 4, waiting
+  Queue Manager->>Daemon:Checkpoint completed
+  Daemon->>-Queue Manager:Event 4, queueing func
+  Queue Manager->>+Queue Functions:Start, parallelized
+```
+#### Workers
+```mermaid
+sequenceDiagram
+  participant Hydration Queue
+  participant Worker A
+  participant Worker B
+  Worker A->>Hydration Queue:Lock
+  Worker A->>+Worker A:Hydrate
+  Worker B->>Hydration Queue:Lock
+  Worker B->>+Worker B:Hydrate
   Worker A->>Hydration Queue:Unlock
   deactivate Worker A
   Worker A->>Hydration Queue:Lock
   Worker A->>+Worker A:Hydrate
-  Queue Manager->>Daemon:Checkpoint completed
-  Daemon->>-Queue Manager:Event 4, queueing func
-  Queue Manager->>+Queue Functions:Start, parallelized
   deactivate Worker A
   deactivate Worker B
 ```
@@ -78,11 +84,11 @@ sequenceDiagram
 ### Before
 The todo task workers already had a queue table, the `TodoEventModelReadModel`, but the processing of it was batched, while the risk of timeout, like the hydrations, was not there, the issues was that a single long-running batch would prevent a new batch to come in. Which was happening with the invoices synchronization.
 ### After
-The new approach simply broke down the loop that reads the queue to several parallel loops that pick only one task to run, becoming effectively another worker architecture, as the hydrations. Meaning that a long running task can safely keep being executed while new incoming tasks are run.
+The new approach simply breaks down the loop that reads the queue to several parallel loops that pick only one task to run, becoming effectively another worker architecture, as the hydrations. Meaning that a long running task can safely keep being executed while new incoming tasks are run.
 ## Changes in consistency endpoints
-### Before
-Consistency endpoints
-### After
+Since the workers give granularity in the insights we can get for hydration — given that the hydration queue table has permanent checkpoints, the consistency endpoints now have access to reliable information on hydration state.
 ## Integration tests reliability and speed
 ### Before
+The integration tests relied on the consistency endpoints to verify consistency before returning a read model.
 ### After
+Instead, a programmatic tool, with in-memory cache is exposed as part of the App interface, this way the integration tests can guarantee consistency when waiting for it, meaning that the safety margins can be reduced dramatically, leading to faster, reliable integration tests.
