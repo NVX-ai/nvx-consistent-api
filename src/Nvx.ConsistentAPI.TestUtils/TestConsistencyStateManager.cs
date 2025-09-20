@@ -11,11 +11,9 @@ internal class TestConsistencyStateManager(
   ConsistencyCheck consistencyCheck,
   ILogger logger)
 {
-  private const int StepDelayMilliseconds = 100;
-  private const int MinimumDelayMilliseconds = MaxDelayMilliseconds / 4;
-  private const int MaxDelayMilliseconds = 3_000;
   private readonly SemaphoreSlim lastEventSemaphore = new(1, 1);
   private ulong lastEventPosition;
+  private DateTime lastEventAt = DateTime.MinValue;
 
   private int testsWaiting;
 
@@ -23,7 +21,13 @@ internal class TestConsistencyStateManager(
   {
     try
     {
+      var lastEventAtBeforeSemaphore = lastEventAt;
       await lastEventSemaphore.WaitAsync();
+      if (lastEventAtBeforeSemaphore < lastEventAt)
+      {
+        return lastEventPosition;
+      }
+
       await foreach (var evt in eventStoreClient.ReadAllAsync(
                        Direction.Forwards,
                        lastEventPosition == 0
@@ -32,6 +36,7 @@ internal class TestConsistencyStateManager(
                        EventTypeFilter.ExcludeSystemEvents()))
       {
         lastEventPosition = evt.Event.Position.CommitPosition;
+        lastEventAt = evt.Event.Created;
       }
 
       return lastEventPosition;
@@ -40,20 +45,6 @@ internal class TestConsistencyStateManager(
     {
       lastEventSemaphore.Release();
     }
-  }
-
-  private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
-  {
-    var steps = Math.Min(1, testsWaiting);
-    var typeMultiplier = waitType switch
-    {
-      ConsistencyWaitType.Short => 1,
-      ConsistencyWaitType.Medium => 2,
-      _ => 4
-    };
-    var delay = Math.Max(MinimumDelayMilliseconds, steps * StepDelayMilliseconds) * typeMultiplier;
-    var milliseconds = Math.Min(MaxDelayMilliseconds, delay);
-    return TimeSpan.FromMilliseconds(milliseconds);
   }
 
   private async Task WaitForAfterProcessing(ulong? position = null, int generation = 3)
