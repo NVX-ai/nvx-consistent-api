@@ -66,7 +66,7 @@ internal class TestConsistencyStateManager(
       {
         ConsistencyWaitType.Short => 3,
         ConsistencyWaitType.Medium => 5,
-        _ => 7
+        _ => 9
       });
     var timer = Stopwatch.StartNew();
     var timesConsistent = 0;
