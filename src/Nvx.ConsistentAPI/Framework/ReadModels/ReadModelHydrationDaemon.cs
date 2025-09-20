@@ -52,6 +52,7 @@ public class ReadModelHydrationDaemon(
 
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
   private readonly string connectionString = settings.ReadModelConnectionString;
+  private DateTime lastMessageReceivedAt = DateTime.MaxValue;
 
   private readonly MemoryCache lastPositionOfStreamCache = new(
     new MemoryCacheOptions
@@ -263,6 +264,7 @@ public class ReadModelHydrationDaemon(
           filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()));
         await foreach (var message in subscription.Messages)
         {
+          lastMessageReceivedAt = DateTime.UtcNow;
           switch (message)
           {
             case StreamMessage.Event(var evt):
@@ -298,12 +300,12 @@ public class ReadModelHydrationDaemon(
             case StreamMessage.CaughtUp:
             {
               hasCaughtUp = true;
+              ClearTracker();
               if (lastPosition is { } pos)
               {
                 await queueManager.Checkpoint(pos, Checkpoint);
               }
 
-              ClearTracker();
               break;
             }
             case StreamMessage.FellBehind:
@@ -552,8 +554,9 @@ public class ReadModelHydrationDaemon(
       await UpdateLastPosition(position);
       lastCheckpointAt = DateTime.UtcNow;
     }
-    catch
+    catch (Exception ex)
     {
+      logger.LogError(ex, "Error updating the central daemon checkpoint");
       // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
       if (transaction is not null)
       {

@@ -33,8 +33,10 @@ internal static class PreHydrationCompleted
       if (internalToolingApiKeyHeader == settings.ToolingEndpointsApiKey)
       {
         // This endpoint is meant to be consumed by tooling that relies on status codes.
-        context.Response.StatusCode = IsCaughtUp() ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
-        await context.Response.WriteAsJsonAsync(new PreHydrationStatus(IsCaughtUp(), hydratedAt));
+        var (isCentral, behind) = IsCaughtUp();
+        var isCaughtUp = isCentral && behind.Length == 0;
+        context.Response.StatusCode = isCaughtUp ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
+        await context.Response.WriteAsJsonAsync(new PreHydrationStatus(isCaughtUp, hydratedAt, isCentral, behind));
         return;
       }
 
@@ -43,8 +45,11 @@ internal static class PreHydrationCompleted
         .Iter(
           async _ =>
           {
-            context.Response.StatusCode = IsCaughtUp() ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
-            await context.Response.WriteAsJsonAsync(new PreHydrationStatus(IsCaughtUp(), hydratedAt));
+            var (isCentral, behind) = IsCaughtUp();
+            var isCaughtUp = isCentral && behind.Length == 0;
+            context.Response.StatusCode =
+              isCaughtUp ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsJsonAsync(new PreHydrationStatus(isCaughtUp, hydratedAt, isCentral, behind));
           },
           async e => await e.Respond(context));
     };
@@ -73,22 +78,30 @@ internal static class PreHydrationCompleted
       .ApplyAuth(new PermissionsRequireAll("admin"));
 
     return;
-    bool IsCaughtUp()
+
+    (bool centralUpToDate, string[] behind) IsCaughtUp()
     {
       if (hydratedAt.HasValue)
       {
-        return true;
+        return (true, []);
       }
 
-      var isCaughtUp = readModels.All(rm => rm.IsUpToDate()) && centralDaemon.HasReachedLive();
+      var behind = readModels.Where(rm => !rm.IsUpToDate()).Select(rm => rm.GetType().Name).ToArray();
+      var centralDaemonUpToDate = centralDaemon.HasReachedLive();
+
+      var isCaughtUp = behind.Length == 0 && centralDaemonUpToDate;
       if (isCaughtUp)
       {
         hydratedAt = DateTime.UtcNow;
       }
 
-      return isCaughtUp;
+      return (centralDaemonUpToDate, behind);
     }
   }
 }
 
-public record PreHydrationStatus(bool HasReachedConsistencyOnce, DateTime? ReachedFirstConsistencyAt);
+public record PreHydrationStatus(
+  bool HasReachedConsistencyOnce,
+  DateTime? ReachedFirstConsistencyAt,
+  bool IsCentralDaemonUpToDate,
+  string[] ReadModelsNotUpToDate);
