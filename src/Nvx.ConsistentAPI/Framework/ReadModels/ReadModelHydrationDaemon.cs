@@ -52,7 +52,6 @@ public class ReadModelHydrationDaemon(
 
   private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
   private readonly string connectionString = settings.ReadModelConnectionString;
-  private DateTime lastMessageReceivedAt = DateTime.MaxValue;
 
   private readonly MemoryCache lastPositionOfStreamCache = new(
     new MemoryCacheOptions
@@ -264,7 +263,6 @@ public class ReadModelHydrationDaemon(
           filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()));
         await foreach (var message in subscription.Messages)
         {
-          lastMessageReceivedAt = DateTime.UtcNow;
           switch (message)
           {
             case StreamMessage.Event(var evt):

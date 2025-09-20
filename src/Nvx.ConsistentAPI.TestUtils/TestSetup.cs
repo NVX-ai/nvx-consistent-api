@@ -72,6 +72,7 @@ internal static class InstanceTracking
 internal class ConsistencyStateMachine
 {
   private const int StepDelayMilliseconds = 125;
+  private const int MinimumDelayMilliseconds = 500;
   private const int MaxDelayMilliseconds = 2_500;
   private readonly ConsistencyCheck consistencyCheck;
   private readonly EventStoreClient eventStoreClient;
@@ -119,16 +120,15 @@ internal class ConsistencyStateMachine
 
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
-    var steps = 2 + testsWaiting;
-    var increment = Math.Max(1, steps);
-    var minimumDelayMs = waitType switch
+    var steps = Math.Min(1, testsWaiting);
+    var stepDelay = waitType switch
     {
       ConsistencyWaitType.Short => StepDelayMilliseconds,
       ConsistencyWaitType.Medium => StepDelayMilliseconds * 2,
       _ => StepDelayMilliseconds * 4
     };
-    var milliseconds = Math.Max(minimumDelayMs, increment * StepDelayMilliseconds);
-    return TimeSpan.FromMilliseconds(Math.Max(milliseconds, MaxDelayMilliseconds));
+    var milliseconds = Math.Min(MaxDelayMilliseconds, Math.Max(MinimumDelayMilliseconds, steps * stepDelay));
+    return TimeSpan.FromMilliseconds(milliseconds);
   }
 
   public async Task WaitForAfterProcessing(ulong? position = null)
@@ -142,18 +142,25 @@ internal class ConsistencyStateMachine
   public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
   {
     await WaitForAfterProcessing(lastEventPosition);
-
     Interlocked.Increment(ref testsWaiting);
+    var timer = Stopwatch.StartNew();
+    var isConsistent = false;
+    var lastEventForThisRun = lastEventPosition;
+
+    // Verify consistency for this check
+    while (timer.ElapsedMilliseconds < timeout && !await IsConsistent(lastEventForThisRun))
+    {
+      await Task.Delay(Random.Shared.Next(5, 25));
+    }
+
+    // Wait for the minimum delay
     if (DateTime.UtcNow - lastEventAt < GetMinimumDelayForCheck(type))
     {
       await Task.Delay(GetMinimumDelayForCheck(type));
     }
 
-    var timer = Stopwatch.StartNew();
-    var isConsistent = false;
-    await WaitForAfterProcessing(lastEventPosition);
-
-    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent()))
+    // Verify full consistency
+    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent(lastEventPosition)))
     {
       await Task.Delay(Random.Shared.Next(5, 25));
     }
@@ -168,7 +175,7 @@ internal class ConsistencyStateMachine
 
     return;
 
-    async Task<bool> IsConsistent() => await consistencyCheck.IsConsistentAt(lastEventPosition);
+    async Task<bool> IsConsistent(ulong pos) => await consistencyCheck.IsConsistentAt(pos);
   }
 }
 
