@@ -191,6 +191,7 @@ public class StandardFlowTest
 
     var otherProductId = Guid.Parse(aggregated1.Items.First().Id);
     await setup.Command(new HideAggregatingProduct(otherProductId));
+    await setup.WaitForConsistency(ConsistencyWaitType.Long);
 
     var afterHiding = await setup
       .ReadModels<AggregatingStockReadModel>(
@@ -199,6 +200,7 @@ public class StandardFlowTest
     Assert.Equal(97, afterHiding.Total);
 
     await setup.Command(new ShowAggregatingProduct(otherProductId));
+    await setup.WaitForConsistency(ConsistencyWaitType.Long);
 
     var afterShowingAgain = await setup
       .ReadModels<AggregatingStockReadModel>(
