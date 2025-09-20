@@ -42,6 +42,9 @@ internal static class InstanceTracking
       Holders[hash] = h with { Count = h.Count + 1 };
       Semaphore.Release();
 
+      await h.TestConsistencyStateManager.WaitForConsistency(
+        testSettings.WaitForCatchUpTimeout,
+        ConsistencyWaitType.Long);
       return new TestSetup(
         h.Url,
         h.Auth,
@@ -55,6 +58,9 @@ internal static class InstanceTracking
     holder.Logger.LogInformation("Initialized test setup for {Hash}", hash);
     Holders[hash] = holder;
     Semaphore.Release();
+    await holder.TestConsistencyStateManager.WaitForConsistency(
+      testSettings.WaitForCatchUpTimeout,
+      ConsistencyWaitType.Long);
     return new TestSetup(
       holder.Url,
       holder.Auth,
