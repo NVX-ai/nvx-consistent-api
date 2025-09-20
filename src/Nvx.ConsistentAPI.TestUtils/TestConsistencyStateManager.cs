@@ -56,7 +56,7 @@ internal class TestConsistencyStateManager(
     return TimeSpan.FromMilliseconds(milliseconds);
   }
 
-  public async Task WaitForAfterProcessing(ulong? position = null, int generation = 3)
+  private async Task WaitForAfterProcessing(ulong? position = null, int generation = 3)
   {
     if (generation == 0)
     {
@@ -77,9 +77,9 @@ internal class TestConsistencyStateManager(
     await WaitForAfterProcessing(
       generation: type switch
       {
-        ConsistencyWaitType.Short => 1,
-        ConsistencyWaitType.Medium => 2,
-        _ => 4
+        ConsistencyWaitType.Short => 3,
+        ConsistencyWaitType.Medium => 4,
+        _ => 6
       });
     Interlocked.Increment(ref testsWaiting);
     var timer = Stopwatch.StartNew();
