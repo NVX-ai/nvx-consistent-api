@@ -96,7 +96,6 @@ internal class TestConsistencyStateManager(
       {
         break;
       }
-      await Task.Delay(Random.Shared.Next(5, 25));
     }
 
     if (timesConsistent < consistenciesNeeded)
