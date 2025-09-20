@@ -67,14 +67,19 @@ internal class TestConsistencyStateManager(
       generation: type switch
       {
         ConsistencyWaitType.Short => 3,
-        ConsistencyWaitType.Medium => 4,
-        _ => 6
+        ConsistencyWaitType.Medium => 6,
+        _ => 9
       });
     Interlocked.Increment(ref testsWaiting);
     var timer = Stopwatch.StartNew();
-    var isConsistent = false;
+    var timesConsistent = 0;
+    var consistenciesNeeded = type switch
+    {
+      ConsistencyWaitType.Short => 1,
+      ConsistencyWaitType.Medium => 2,
+      _ => 4
+    };
     var lastEventForThisRun = await GetLastEventPosition();
-
     // Verify consistency for this check
     while (timer.ElapsedMilliseconds < timeout && !await IsConsistent(lastEventForThisRun))
     {
@@ -82,14 +87,15 @@ internal class TestConsistencyStateManager(
     }
 
     // Verify full consistency
-    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent(await GetLastEventPosition())))
+    while (timer.ElapsedMilliseconds < timeout
+           && (timesConsistent += await IsConsistent(await GetLastEventPosition()) ? 1 : 0) < consistenciesNeeded)
     {
       await Task.Delay(Random.Shared.Next(5, 25));
     }
 
     Interlocked.Decrement(ref testsWaiting);
 
-    if (!isConsistent)
+    if (timesConsistent < consistenciesNeeded)
     {
       // This will let go, but tests are expected to fail if consistency was not reached.
       logger.LogCritical("Timed out waiting for consistency in an integration test");
