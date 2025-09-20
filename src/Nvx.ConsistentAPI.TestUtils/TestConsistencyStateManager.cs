@@ -74,7 +74,7 @@ internal class TestConsistencyStateManager(
     {
       ConsistencyWaitType.Short => 1,
       ConsistencyWaitType.Medium => 2,
-      _ => 4.
+      _ => 4
     };
     var lastEventForThisRun = await GetLastEventPosition();
     // Verify consistency for this check
