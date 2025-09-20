@@ -74,7 +74,13 @@ internal class TestConsistencyStateManager(
 
   public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
   {
-    await WaitForAfterProcessing();
+    await WaitForAfterProcessing(
+      generation: type switch
+      {
+        ConsistencyWaitType.Short => 1,
+        ConsistencyWaitType.Medium => 2,
+        _ => 4
+      });
     Interlocked.Increment(ref testsWaiting);
     var timer = Stopwatch.StartNew();
     var isConsistent = false;

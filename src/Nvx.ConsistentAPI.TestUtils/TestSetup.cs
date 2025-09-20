@@ -154,7 +154,7 @@ public class TestSetup : IAsyncDisposable
       evt.GroupBy(e => e.GetStreamName()).Single().Key,
       StreamState.Any,
       Emitter.ToEventData(evt, null));
-    await consistencyStateManager.WaitForAfterProcessing(result.LogPosition.CommitPosition);
+    await consistencyStateManager.WaitForAfterProcessing(result.LogPosition.CommitPosition, generation: 1);
   }
 
   /// <summary>
@@ -224,7 +224,7 @@ public class TestSetup : IAsyncDisposable
     Dictionary<string, string>? headers = null,
     string? asUser = null)
   {
-    await consistencyStateManager.WaitForAfterProcessing();
+    await consistencyStateManager.WaitForAfterProcessing(generation: 1);
     var hd = headers ?? new Dictionary<string, string>();
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var req = $"{Url}{tenancySegment}/commands/{Naming.ToSpinalCase<C>()}"
@@ -237,7 +237,7 @@ public class TestSetup : IAsyncDisposable
     var response = await req
       .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json"));
     var result = await response.GetJsonAsync<CommandAcceptedResult>();
-    await consistencyStateManager.WaitForAfterProcessing();
+    await consistencyStateManager.WaitForAfterProcessing(generation: 1);
     return result;
   }
 
