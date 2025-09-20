@@ -58,13 +58,14 @@ internal class TestConsistencyStateManager
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
     var steps = Math.Min(1, testsWaiting);
-    var stepDelay = waitType switch
+    var typeMultiplier = waitType switch
     {
-      ConsistencyWaitType.Short => StepDelayMilliseconds,
-      ConsistencyWaitType.Medium => StepDelayMilliseconds * 2,
-      _ => StepDelayMilliseconds * 4
+      ConsistencyWaitType.Short => 1,
+      ConsistencyWaitType.Medium => 2,
+      _ => 4
     };
-    var milliseconds = Math.Min(MaxDelayMilliseconds, Math.Max(MinimumDelayMilliseconds, steps * stepDelay));
+    var delay = Math.Max(MinimumDelayMilliseconds, steps * StepDelayMilliseconds) * typeMultiplier;
+    var milliseconds = Math.Min(MaxDelayMilliseconds, delay);
     return TimeSpan.FromMilliseconds(milliseconds);
   }
 
