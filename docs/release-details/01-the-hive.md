@@ -30,7 +30,11 @@ sequenceDiagram
   Queue Manager->>+Hydrations:Start hydration, parallelized
 ```
 ### After
-With the introduction of the hydration queue and the workers, the daemon's only responsibility is to receive events and insert create a function that will insert a record in the hydration queue.
+With the introduction of the hydration queue and the workers, the daemon's only responsibility is to receive events and insert create a function that will insert a record in the hydration queue, which happens at a constant time, removing the risk of timing out from the GRPC connection to the `$all` stream.
+
+Then the workers will compete to pick streams to hydrate, and will run the hydrations without a timeout.
+
+This means that any long running hydration will only lock one worker, and since it won't time out — the worker also refreshes the lock — it will avoid getting stuck in a loop of retrying hydrations, and other workers are free to pick other, faster hydrations.
 ```mermaid
 sequenceDiagram
   participant Daemon
@@ -50,19 +54,19 @@ sequenceDiagram
   Daemon->>+Daemon:Event 4, waiting
   Queue Functions->>Queue Functions:Wait all queue functions
   Queue Functions->>-Queue Manager:Solved
-  Queue Functions->>-Queue Manager:Completed hydration event 1
+  Queue Functions->>-Queue Manager:Completed queuing event 1
   Queue Functions->>Hydration Queue:Queued
-  Worker A->>Hydration Queue:Pick
+  Worker A->>Hydration Queue:Lock
   Worker A->>+Worker A:Hydrate
-  Queue Functions->>-Queue Manager:Completed hydration event 2
+  Queue Functions->>-Queue Manager:Completed queuing event 2
   Queue Functions->>Hydration Queue:Queued
-  Worker B->>Hydration Queue:Pick
+  Worker B->>Hydration Queue:Lock
   Worker B->>+Worker B:Hydrate
-  Queue Functions->>-Queue Manager:Completed hydration event 3
+  Queue Functions->>-Queue Manager:Completed queuing event 3
   Queue Functions->>Hydration Queue:Queued
-  Worker A->>Hydration Queue:Mark as hydrated
+  Worker A->>Hydration Queue:Unlock
   deactivate Worker A
-  Worker A->>Hydration Queue:Pick
+  Worker A->>Hydration Queue:Lock
   Worker A->>+Worker A:Hydrate
   Queue Manager->>Daemon:Checkpoint completed
   Daemon->>-Queue Manager:Event 4, queueing func
