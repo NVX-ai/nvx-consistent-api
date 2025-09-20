@@ -76,9 +76,12 @@ sequenceDiagram
 ```
 ## Todo task workers
 ### Before
+The todo task workers already had a queue table, the `TodoEventModelReadModel`, but the processing of it was batched, while the risk of timeout, like the hydrations, was not there, the issues was that a single long-running batch would prevent a new batch to come in. Which was happening with the invoices synchronization.
 ### After
+The new approach simply broke down the loop that reads the queue to several parallel loops that pick only one task to run, becoming effectively another worker architecture, as the hydrations. Meaning that a long running task can safely keep being executed while new incoming tasks are run.
 ## Changes in consistency endpoints
 ### Before
+Consistency endpoints
 ### After
 ## Integration tests reliability and speed
 ### Before
