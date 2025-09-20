@@ -308,11 +308,6 @@ public class ReadModelHydrationDaemon(
 
               break;
             }
-            case StreamMessage.FellBehind:
-            {
-              StartTracker();
-              break;
-            }
           }
         }
       }
