@@ -6,8 +6,9 @@ Named after the fact that it uses a swarm of workers to handle read model hydrat
 
 ```mermaid
 sequenceDiagram
-  participant Queue@{ "type" : "queue" }
-
+  participant Daemon
+  participant State Machine
+  participant Queue@{ "type" : "collections" }
   Daemon->>State Machine:Event, queue hydration func a
   State Machine->>+Queue:Parallelize
   Daemon->>State Machine:Event, queue hydration func b
@@ -21,10 +22,6 @@ sequenceDiagram
   State Machine->>Daemon:Checkpoint completed
 ```
 ### After
-```mermaid
-sequenceDiagram
-
-```
 ## Todo task workers
 ### Before
 ### After
