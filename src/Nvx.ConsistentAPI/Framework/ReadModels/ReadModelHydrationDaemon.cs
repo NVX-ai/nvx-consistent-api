@@ -68,7 +68,7 @@ public class ReadModelHydrationDaemon(
   private readonly SemaphoreSlim lastPositionSemaphore = new(1);
   private readonly SemaphoreSlim semaphore = new(1);
 
-  private readonly CentralHydrationStateMachine stateMachine = new(settings, logger);
+  private readonly CentralHydrationQueueManager queueManager = new(settings, logger);
 
   // ReSharper disable once UnusedMember.Local
   private readonly HydrationDaemonWorker[] workers = Enumerable
@@ -104,7 +104,7 @@ public class ReadModelHydrationDaemon(
 
     var queuingCount = lastPosition.HasValue && lastPosition.Value.CommitPosition >= lastEventPosition
       ? 0
-      : await stateMachine.ProcessingCount();
+      : await queueManager.ProcessingCount();
 
     var queuedCount =
       await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString, lastEventPosition);
@@ -120,7 +120,7 @@ public class ReadModelHydrationDaemon(
   {
     if (position is null && hasCaughtUp)
     {
-      return await stateMachine.ProcessingCount() == 0
+      return await queueManager.ProcessingCount() == 0
              && await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString) == 0;
     }
 
@@ -269,7 +269,7 @@ public class ReadModelHydrationDaemon(
             {
               try
               {
-                await stateMachine.Queue(evt, TryProcess);
+                await queueManager.Queue(evt, TryProcess);
               }
               catch (Exception ex)
               {
@@ -291,7 +291,7 @@ public class ReadModelHydrationDaemon(
                 break;
               }
 
-              await stateMachine.Checkpoint(pos, Checkpoint);
+              await queueManager.Checkpoint(pos, Checkpoint);
               lastCheckpoint = pos.CommitPosition;
               break;
             }
@@ -300,7 +300,7 @@ public class ReadModelHydrationDaemon(
               hasCaughtUp = true;
               if (lastPosition is { } pos)
               {
-                await stateMachine.Checkpoint(pos, Checkpoint);
+                await queueManager.Checkpoint(pos, Checkpoint);
               }
 
               ClearTracker();

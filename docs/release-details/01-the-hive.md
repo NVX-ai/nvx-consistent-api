@@ -3,23 +3,23 @@ Named after the fact that it uses a swarm of workers to handle read model hydrat
 
 ## Hydration workers
 ### Before
-
+Before the hive release, the hydration operated in a purely reactive per-event hydration, with a queue manager, previously named "state machine"
 ```mermaid
 sequenceDiagram
   participant Daemon
-  participant State Machine
-  participant Queue@{ "type" : "collections" }
-  Daemon->>State Machine:Event, queue hydration func a
-  State Machine->>+Queue:Parallelize
-  Daemon->>State Machine:Event, queue hydration func b
-  State Machine->>+Queue:Parallelize
-  Daemon->>State Machine:Checkpoint received
-  State Machine->>+Queue:Solve
+  participant Queue Manager
+  participant Queue
+  Daemon->>Queue Manager:Event, queue hydration func a
+  Queue Manager->>+Queue:Parallelize
+  Daemon->>Queue Manager:Event, queue hydration func b
+  Queue Manager->>+Queue:Parallelize
+  Daemon->>Queue Manager:Checkpoint received
+  Queue Manager->>+Queue:Solve
   Queue->>Queue:Wait all queued solvers
-  Queue->>-State Machine:Solved
-  Queue->>-State Machine:Completed hydration func a
-  Queue->>-State Machine:Completed hydration func b
-  State Machine->>Daemon:Checkpoint completed
+  Queue->>-Queue Manager:Solved
+  Queue->>-Queue Manager:Completed hydration func a
+  Queue->>-Queue Manager:Completed hydration func b
+  Queue Manager->>Daemon:Checkpoint completed
 ```
 ### After
 ## Todo task workers

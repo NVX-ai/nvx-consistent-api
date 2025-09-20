@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Nvx.ConsistentAPI;
 
-internal class CentralHydrationStateMachine(GeneratorSettings settings, ILogger logger)
+internal class CentralHydrationQueueManager(GeneratorSettings settings, ILogger logger)
 {
   private readonly SemaphoreSlim clearanceSemaphore = new(1, 1);
   private readonly SemaphoreSlim hydrationSemaphore = new(settings.ParallelHydration * 2, settings.ParallelHydration * 2);
