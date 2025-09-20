@@ -6,54 +6,41 @@ using EventTypeFilter = EventStore.Client.EventTypeFilter;
 
 namespace Nvx.ConsistentAPI.TestUtils;
 
-internal class TestConsistencyStateManager
+internal class TestConsistencyStateManager(
+  EventStoreClient eventStoreClient,
+  ConsistencyCheck consistencyCheck,
+  ILogger logger)
 {
   private const int StepDelayMilliseconds = 100;
   private const int MinimumDelayMilliseconds = MaxDelayMilliseconds / 4;
   private const int MaxDelayMilliseconds = 3_000;
-  private readonly ConsistencyCheck consistencyCheck;
-  private readonly EventStoreClient eventStoreClient;
-  private readonly ILogger logger;
-  private DateTime lastEventAt;
+  private readonly SemaphoreSlim lastEventSemaphore = new(1, 1);
   private ulong lastEventPosition;
 
   private int testsWaiting;
 
-  public TestConsistencyStateManager(
-    EventStoreClient eventStoreClient,
-    ConsistencyCheck consistencyCheck,
-    ILogger logger)
+  private async Task<ulong> GetLastEventPosition()
   {
-    this.eventStoreClient = eventStoreClient;
-    this.consistencyCheck = consistencyCheck;
-    this.logger = logger;
-    Subscribe();
-  }
-
-  private void Subscribe() =>
-    _ = Task.Run(async () =>
+    try
     {
-      while (true)
+      await lastEventSemaphore.WaitAsync();
+      await foreach (var evt in eventStoreClient.ReadAllAsync(
+                       Direction.Forwards,
+                       lastEventPosition == 0
+                         ? Position.Start
+                         : new Position(lastEventPosition, lastEventPosition),
+                       EventTypeFilter.ExcludeSystemEvents()))
       {
-        try
-        {
-          await foreach (var evt in eventStoreClient.SubscribeToAll(
-                           lastEventPosition == 0
-                             ? FromAll.End
-                             : FromAll.After(new Position(lastEventPosition, lastEventPosition)),
-                           filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents())))
-          {
-            lastEventPosition = evt.Event.Position.CommitPosition;
-            lastEventAt = evt.Event.Created;
-          }
-        }
-        catch
-        {
-          // ignore
-        }
+        lastEventPosition = evt.Event.Position.CommitPosition;
       }
-    });
 
+      return lastEventPosition;
+    }
+    finally
+    {
+      lastEventSemaphore.Release();
+    }
+  }
 
   private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
   {
@@ -69,21 +56,29 @@ internal class TestConsistencyStateManager
     return TimeSpan.FromMilliseconds(milliseconds);
   }
 
-  public async Task WaitForAfterProcessing(ulong? position = null)
+  public async Task WaitForAfterProcessing(ulong? position = null, int generation = 3)
   {
-    while (!consistencyCheck.AfterProcessingIsDone(position ?? lastEventPosition))
+    if (generation == 0)
+    {
+      return;
+    }
+
+    while (!consistencyCheck.AfterProcessingIsDone(position ?? await GetLastEventPosition()))
     {
       await Task.Delay(10);
     }
+
+    // ReSharper disable once TailRecursiveCall
+    await WaitForAfterProcessing(await GetLastEventPosition(), generation - 1);
   }
 
   public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
   {
-    await WaitForAfterProcessing(lastEventPosition);
+    await WaitForAfterProcessing();
     Interlocked.Increment(ref testsWaiting);
     var timer = Stopwatch.StartNew();
     var isConsistent = false;
-    var lastEventForThisRun = lastEventPosition;
+    var lastEventForThisRun = await GetLastEventPosition();
 
     // Verify consistency for this check
     while (timer.ElapsedMilliseconds < timeout && !await IsConsistent(lastEventForThisRun))
@@ -91,14 +86,8 @@ internal class TestConsistencyStateManager
       await Task.Delay(Random.Shared.Next(5, 25));
     }
 
-    // Wait for the minimum delay
-    if (DateTime.UtcNow - lastEventAt < GetMinimumDelayForCheck(type))
-    {
-      await Task.Delay(GetMinimumDelayForCheck(type));
-    }
-
     // Verify full consistency
-    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent(lastEventPosition)))
+    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent(await GetLastEventPosition())))
     {
       await Task.Delay(Random.Shared.Next(5, 25));
     }
