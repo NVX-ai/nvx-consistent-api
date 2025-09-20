@@ -30,7 +30,7 @@ sequenceDiagram
   Queue Manager->>+Hydrations:Start hydration, parallelized
 ```
 ### After
-With the introduction of the hydration queue and the workers, the daemon's only responsibility is to receive events and insert create a function that will insert a record in the hydration queue, which happens at a constant time, removing the risk of timing out from the GRPC connection to the `$all` stream.
+With the introduction of the hydration queue and the workers, the daemon's only responsibility is to receive events and create a function that will insert a record in the hydration queue, which happens at a constant time, removing the risk of timing out from the GRPC connection to the `$all` stream.
 
 Then the workers will compete to pick streams to hydrate, and will run the hydrations without a timeout.
 
