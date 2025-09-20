@@ -15,11 +15,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Nvx.ConsistentAPI.Framework;
-using Nvx.ConsistentAPI.InternalTooling;
 using Testcontainers.Azurite;
 using Testcontainers.EventStoreDb;
 using Testcontainers.MsSql;
-using EventTypeFilter = EventStore.Client.EventTypeFilter;
 
 // ReSharper disable MemberCanBePrivate.Global
 
@@ -50,7 +48,7 @@ internal static class InstanceTracking
         h.EventStoreClient,
         h.Model,
         testSettings.WaitForCatchUpTimeout,
-        h.ConsistencyStateMachine);
+        h.TestConsistencyStateManager);
     }
 
     var holder = await TestSetup.InitializeInternal(model, testSettings);
@@ -63,120 +61,10 @@ internal static class InstanceTracking
       holder.EventStoreClient,
       holder.Model,
       testSettings.WaitForCatchUpTimeout,
-      holder.ConsistencyStateMachine);
+      holder.TestConsistencyStateManager);
   }
 
   internal static Task Dispose(int _) => Task.CompletedTask;
-}
-
-internal class ConsistencyStateMachine
-{
-  private const int StepDelayMilliseconds = 125;
-  private const int MinimumDelayMilliseconds = 500;
-  private const int MaxDelayMilliseconds = 2_500;
-  private readonly ConsistencyCheck consistencyCheck;
-  private readonly EventStoreClient eventStoreClient;
-  private readonly ILogger logger;
-  private DateTime lastEventAt;
-  private ulong lastEventPosition;
-
-  private int testsWaiting;
-
-  public ConsistencyStateMachine(
-    EventStoreClient eventStoreClient,
-    ConsistencyCheck consistencyCheck,
-    ILogger logger)
-  {
-    this.eventStoreClient = eventStoreClient;
-    this.consistencyCheck = consistencyCheck;
-    this.logger = logger;
-    Subscribe();
-  }
-
-  private void Subscribe() =>
-    _ = Task.Run(async () =>
-    {
-      while (true)
-      {
-        try
-        {
-          await foreach (var evt in eventStoreClient.SubscribeToAll(
-                           lastEventPosition == 0
-                             ? FromAll.End
-                             : FromAll.After(new Position(lastEventPosition, lastEventPosition)),
-                           filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents())))
-          {
-            lastEventPosition = evt.Event.Position.CommitPosition;
-            lastEventAt = evt.Event.Created;
-          }
-        }
-        catch
-        {
-          // ignore
-        }
-      }
-    });
-
-
-  private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
-  {
-    var steps = Math.Min(1, testsWaiting);
-    var stepDelay = waitType switch
-    {
-      ConsistencyWaitType.Short => StepDelayMilliseconds,
-      ConsistencyWaitType.Medium => StepDelayMilliseconds * 2,
-      _ => StepDelayMilliseconds * 4
-    };
-    var milliseconds = Math.Min(MaxDelayMilliseconds, Math.Max(MinimumDelayMilliseconds, steps * stepDelay));
-    return TimeSpan.FromMilliseconds(milliseconds);
-  }
-
-  public async Task WaitForAfterProcessing(ulong? position = null)
-  {
-    while (!consistencyCheck.AfterProcessingIsDone(position ?? lastEventPosition))
-    {
-      await Task.Delay(10);
-    }
-  }
-
-  public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
-  {
-    await WaitForAfterProcessing(lastEventPosition);
-    Interlocked.Increment(ref testsWaiting);
-    var timer = Stopwatch.StartNew();
-    var isConsistent = false;
-    var lastEventForThisRun = lastEventPosition;
-
-    // Verify consistency for this check
-    while (timer.ElapsedMilliseconds < timeout && !await IsConsistent(lastEventForThisRun))
-    {
-      await Task.Delay(Random.Shared.Next(5, 25));
-    }
-
-    // Wait for the minimum delay
-    if (DateTime.UtcNow - lastEventAt < GetMinimumDelayForCheck(type))
-    {
-      await Task.Delay(GetMinimumDelayForCheck(type));
-    }
-
-    // Verify full consistency
-    while (timer.ElapsedMilliseconds < timeout && !(isConsistent = await IsConsistent(lastEventPosition)))
-    {
-      await Task.Delay(Random.Shared.Next(5, 25));
-    }
-
-    Interlocked.Decrement(ref testsWaiting);
-
-    if (!isConsistent)
-    {
-      // This will let go, but tests are expected to fail if consistency was not reached.
-      logger.LogCritical("Timed out waiting for consistency in an integration test");
-    }
-
-    return;
-
-    async Task<bool> IsConsistent(ulong pos) => await consistencyCheck.IsConsistentAt(pos);
-  }
 }
 
 internal record TestSetupHolder(
@@ -186,7 +74,7 @@ internal record TestSetupHolder(
   EventModel Model,
   int Count,
   ILogger Logger,
-  ConsistencyStateMachine ConsistencyStateMachine);
+  TestConsistencyStateManager TestConsistencyStateManager);
 
 internal record TestUser(string Sub, Claim[] Claims);
 
@@ -209,7 +97,7 @@ public class TestSetup : IAsyncDisposable
   private static readonly JwtSecurityTokenHandler TokenHandler = new();
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
-  private readonly ConsistencyStateMachine consistencyStateMachine;
+  private readonly TestConsistencyStateManager consistencyStateManager;
   private readonly int waitForCatchUpTimeout;
 
   internal TestSetup(
@@ -218,14 +106,14 @@ public class TestSetup : IAsyncDisposable
     EventStoreClient eventStoreClient,
     EventModel model,
     int waitForCatchUpTimeout,
-    ConsistencyStateMachine consistencyStateMachine)
+    TestConsistencyStateManager consistencyStateManager)
   {
     Url = url;
     this.waitForCatchUpTimeout = waitForCatchUpTimeout;
     Auth = auth;
     EventStoreClient = eventStoreClient;
     Model = model;
-    this.consistencyStateMachine = consistencyStateMachine;
+    this.consistencyStateManager = consistencyStateManager;
   }
 
   public string Url { get; }
@@ -271,7 +159,7 @@ public class TestSetup : IAsyncDisposable
   public async Task WaitForConsistency(
     ConsistencyWaitType waitType = ConsistencyWaitType.Medium,
     int? timeoutMs = null) =>
-    await consistencyStateMachine.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, waitType);
+    await consistencyStateManager.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, waitType);
 
   public async Task<CommandAcceptedResult> Upload()
   {
@@ -327,7 +215,7 @@ public class TestSetup : IAsyncDisposable
     Dictionary<string, string>? headers = null,
     string? asUser = null)
   {
-    await consistencyStateMachine.WaitForAfterProcessing();
+    await consistencyStateManager.WaitForAfterProcessing();
     var hd = headers ?? new Dictionary<string, string>();
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var req = $"{Url}{tenancySegment}/commands/{Naming.ToSpinalCase<C>()}"
@@ -665,7 +553,7 @@ public class TestSetup : IAsyncDisposable
       model,
       1,
       logger,
-      new ConsistencyStateMachine(eventStoreClient, app.ConsistencyCheck, logger));
+      new TestConsistencyStateManager(eventStoreClient, app.ConsistencyCheck, logger));
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)
