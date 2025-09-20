@@ -536,7 +536,8 @@ public class TestSetup : IAsyncDisposable
         },
         "TestApiToolingApiKey",
         FrameworkFeatures.All,
-        settings.HydrationParallelism),
+        settings.HydrationParallelism,
+        settings.TodoWorkers),
       model,
       [baseUrl]);
     try
@@ -605,6 +606,7 @@ public class TestSettings
   public bool UsePersistentTestContainers { get; init; }
   public int WaitForCatchUpTimeout { get; init; } = 150_000;
   public int HydrationParallelism { get; init; } = 5;
+  public int TodoWorkers { get; init; } = 50;
 
   public string EsDbImage
   {
