@@ -13,7 +13,6 @@ internal class TestConsistencyStateManager(
 {
   private readonly SemaphoreSlim lastEventSemaphore = new(1, 1);
   private ulong lastEventPosition;
-  private DateTime lastEventAt = DateTime.MinValue;
 
   private int testsWaiting;
 
@@ -21,9 +20,9 @@ internal class TestConsistencyStateManager(
   {
     try
     {
-      var lastEventAtBeforeSemaphore = lastEventAt;
+      var lastEventPositionBeforeSemaphore = lastEventPosition;
       await lastEventSemaphore.WaitAsync();
-      if (lastEventAtBeforeSemaphore < lastEventAt)
+      if (lastEventPositionBeforeSemaphore < lastEventPosition)
       {
         return lastEventPosition;
       }
@@ -36,7 +35,6 @@ internal class TestConsistencyStateManager(
                        EventTypeFilter.ExcludeSystemEvents()))
       {
         lastEventPosition = evt.Event.Position.CommitPosition;
-        lastEventAt = evt.Event.Created;
       }
 
       return lastEventPosition;
