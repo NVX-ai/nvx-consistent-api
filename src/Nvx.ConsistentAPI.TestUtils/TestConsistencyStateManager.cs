@@ -9,7 +9,7 @@ namespace Nvx.ConsistentAPI.TestUtils;
 internal class TestConsistencyStateManager
 {
   private const int StepDelayMilliseconds = 100;
-  private const int MinimumDelayMilliseconds = 1_000;
+  private const int MinimumDelayMilliseconds = MaxDelayMilliseconds / 4;
   private const int MaxDelayMilliseconds = 3_000;
   private readonly ConsistencyCheck consistencyCheck;
   private readonly EventStoreClient eventStoreClient;
