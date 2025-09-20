@@ -64,9 +64,9 @@ internal class TestConsistencyStateManager(
     await WaitForAfterProcessing(
       generation: type switch
       {
-        ConsistencyWaitType.Short => 3,
-        ConsistencyWaitType.Medium => 5,
-        _ => 9
+        ConsistencyWaitType.Short => 4,
+        ConsistencyWaitType.Medium => 8,
+        _ => 16
       });
     var timer = Stopwatch.StartNew();
     var timesConsistent = 0;
@@ -74,7 +74,7 @@ internal class TestConsistencyStateManager(
     {
       ConsistencyWaitType.Short => 1,
       ConsistencyWaitType.Medium => 2,
-      _ => 3
+      _ => 4
     };
     var lastEventForThisRun = await GetLastEventPosition();
     // Verify consistency for this check
@@ -87,6 +87,11 @@ internal class TestConsistencyStateManager(
     while (timer.ElapsedMilliseconds < timeout)
     {
       timesConsistent = await IsConsistent(await GetLastEventPosition()) ? timesConsistent + 1 : 0;
+      if (timesConsistent == 0)
+      {
+        await WaitForAfterProcessing();
+      }
+
       if (timesConsistent >= consistenciesNeeded)
       {
         break;
