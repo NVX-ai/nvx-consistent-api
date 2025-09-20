@@ -1,7 +1,6 @@
 ﻿using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.Framework.Projections;
@@ -12,7 +11,7 @@ namespace Nvx.ConsistentAPI.InternalTooling;
 
 internal static class DaemonsInsight
 {
-  internal const string Route = "/daemons-insight";
+  private const string Route = "/daemons-insight";
 
   internal static void Endpoint(
     EventModelingReadModelArtifact[] readModels,
@@ -32,7 +31,7 @@ internal static class DaemonsInsight
       return;
     }
 
-    Delegate catchupDelegate = async (HttpContext context, [FromQuery] ulong? position) =>
+    Delegate catchupDelegate = async (HttpContext context) =>
     {
       try
       {
@@ -52,8 +51,7 @@ internal static class DaemonsInsight
               eventStoreClient,
               daemon,
               dcbDaemon,
-              projectionDaemon,
-              position));
+              projectionDaemon));
           return;
         }
 
@@ -71,8 +69,7 @@ internal static class DaemonsInsight
                   eventStoreClient,
                   daemon,
                   dcbDaemon,
-                  projectionDaemon,
-                  position));
+                  projectionDaemon));
             },
             async e => await e.Respond(context));
       }
@@ -116,8 +113,7 @@ internal static class DaemonsInsight
     EventStoreClient eventStoreClient,
     ReadModelHydrationDaemon readModelDaemon,
     DynamicConsistencyBoundaryDaemon dynamicConsistencyBoundaryDaemon,
-    ProjectionDaemon projectionDaemon,
-    ulong? position)
+    ProjectionDaemon projectionDaemon)
   {
     var isHydrating = settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration);
     var (lastEventPosition, lastEventEmittedAt) = await GetLastEvent();
@@ -150,11 +146,6 @@ internal static class DaemonsInsight
 
     async Task<(ulong pos, DateTime at)> GetLastEvent()
     {
-      if (position.HasValue)
-      {
-        return (position.Value, DateTime.UnixEpoch);
-      }
-
       await foreach (var evt in eventStoreClient
                        .ReadAllAsync(Direction.Backwards, Position.End, EventTypeFilter.ExcludeSystemEvents(), 1)
                        .Take(1))
