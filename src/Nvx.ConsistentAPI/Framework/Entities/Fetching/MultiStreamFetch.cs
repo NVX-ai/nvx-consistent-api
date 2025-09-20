@@ -80,6 +80,22 @@ internal static class MultiStreamFetch
           firstUserSubFound,
           lastUserSubFound
         );
+
+        if (upToRevision is null)
+        {
+          cache.Set(
+            seed.e.GetStreamName(),
+            new MultipleStreamCacheResult<Entity>(
+              seed.e,
+              seed.gp,
+              seed.r,
+              revisions,
+              seed.fe ?? DateTime.UtcNow,
+              seed.le ?? DateTime.UtcNow,
+              seed.fu,
+              seed.lu),
+            entryOptions);
+        }
       }
     }
 
