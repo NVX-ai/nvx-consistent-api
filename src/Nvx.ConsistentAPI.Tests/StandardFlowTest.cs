@@ -182,7 +182,8 @@ public class StandardFlowTest
 
     var aggregated1 = await setup
       .ReadModels<AggregatingStockReadModel>(
-        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString().ToLower()] } });
+        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString().ToLower()] } },
+        waitType: ConsistencyWaitType.Long);
     Assert.Equal(50, aggregated1.Items.Count());
     Assert.Equal(99, aggregated1.Total);
 

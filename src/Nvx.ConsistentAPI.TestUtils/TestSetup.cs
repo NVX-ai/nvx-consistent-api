@@ -148,14 +148,11 @@ public class TestSetup : IAsyncDisposable
             new Claim(Random.Next() % 2 == 0 ? "emails" : JwtRegisteredClaimNames.Email, $"{n}@testdomain.com")
           ])));
 
-  public async Task InsertEvents(params EventModelEvent[] evt)
-  {
-    var result = await EventStoreClient.AppendToStreamAsync(
+  public async Task InsertEvents(params EventModelEvent[] evt) =>
+    await EventStoreClient.AppendToStreamAsync(
       evt.GroupBy(e => e.GetStreamName()).Single().Key,
       StreamState.Any,
       Emitter.ToEventData(evt, null));
-    await consistencyStateManager.WaitForAfterProcessing(result.LogPosition.CommitPosition, generation: 1);
-  }
 
   /// <summary>
   ///   Waits for the system to be in a consistent state.
@@ -224,7 +221,6 @@ public class TestSetup : IAsyncDisposable
     Dictionary<string, string>? headers = null,
     string? asUser = null)
   {
-    await consistencyStateManager.WaitForAfterProcessing(generation: 1);
     var hd = headers ?? new Dictionary<string, string>();
     var tenancySegment = tenantId.HasValue ? $"/tenant/{tenantId.Value}" : string.Empty;
     var req = $"{Url}{tenancySegment}/commands/{Naming.ToSpinalCase<C>()}"
@@ -237,7 +233,6 @@ public class TestSetup : IAsyncDisposable
     var response = await req
       .PostAsync(new StringContent(Serialization.Serialize(command), Encoding.UTF8, "application/json"));
     var result = await response.GetJsonAsync<CommandAcceptedResult>();
-    await consistencyStateManager.WaitForAfterProcessing(generation: 1);
     return result;
   }
 
