@@ -11,13 +11,16 @@ public class CrossStreamFoldIntegration
     var tag = Guid.NewGuid().ToString();
     await setup.InsertEvents(new InterestedEntityAddedAnInterest(interestedEntityId, concernedEntityId));
 
-    var beforeTags = await setup.ReadModel<EntityThatDependsReadModel>(interestedEntityId.ToString());
+    var beforeTags = await setup.ReadModel<EntityThatDependsReadModel>(
+      interestedEntityId.ToString(),
+      waitType: ConsistencyWaitType.Long);
     Assert.Empty(beforeTags.DependedOnTags);
 
     await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, tag));
 
     var withTags = await setup.ReadModel<EntityThatDependsReadModel>(
-      interestedEntityId.ToString());
+      interestedEntityId.ToString(),
+      waitType: ConsistencyWaitType.Long);
     Assert.Single(withTags.DependedOnTags);
     Assert.Contains(withTags.DependedOnTags, t => t == tag);
 
@@ -26,13 +29,15 @@ public class CrossStreamFoldIntegration
     await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, Guid.NewGuid().ToString()));
 
     var moreTags = await setup.ReadModel<EntityThatDependsReadModel>(
-      interestedEntityId.ToString());
+      interestedEntityId.ToString(),
+      waitType: ConsistencyWaitType.Long);
     Assert.Equal(4, moreTags.DependedOnTags.Length);
     Assert.Contains(moreTags.DependedOnTags, t => t == tag);
 
     await setup.InsertEvents(new InterestedEntityRemovedInterest(interestedEntityId, concernedEntityId));
     var afterDependencyRemoved = await setup.ReadModel<EntityThatDependsReadModel>(
-      interestedEntityId.ToString());
+      interestedEntityId.ToString(),
+      waitType: ConsistencyWaitType.Long);
     Assert.Empty(afterDependencyRemoved.DependsOnIds);
     Assert.Empty(afterDependencyRemoved.DependedOnTags);
 
@@ -40,7 +45,8 @@ public class CrossStreamFoldIntegration
 
     var updatedTagsAfterDependencyRemoved =
       await setup.ReadModel<EntityThatDependsReadModel>(
-        interestedEntityId.ToString());
+        interestedEntityId.ToString(),
+        waitType: ConsistencyWaitType.Long);
     Assert.Empty(updatedTagsAfterDependencyRemoved.DependsOnIds);
     Assert.Empty(updatedTagsAfterDependencyRemoved.DependedOnTags);
   }
@@ -82,7 +88,8 @@ public class CrossStreamFoldIntegration
     var newSecondDegreeName = $"New name {secondId}";
     await setup.InsertEvents(new SecondDegreeConcernedEntityNamed(secondId, newSecondDegreeName));
 
-    var readModelWithTwoNames = await setup.ReadModel<EntityThatDependsReadModel>(interestedId.ToString(),
+    var readModelWithTwoNames = await setup.ReadModel<EntityThatDependsReadModel>(
+      interestedId.ToString(),
       waitType: ConsistencyWaitType.Long);
     Assert.Contains(newSecondDegreeName, readModelWithTwoNames.FarAwayNames);
     Assert.Contains(secondDegreeName, readModelWithTwoNames.FarAwayNames);
