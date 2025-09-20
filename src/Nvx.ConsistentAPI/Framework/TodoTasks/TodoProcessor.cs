@@ -269,8 +269,7 @@ internal class TodoProcessor
 
   internal void Initialize()
   {
-    // TODO: Make this configurable
-    for (var i = 0; i < 75; i++)
+    for (var i = 0; i < Settings.TodoProcessorWorkerCount; i++)
     {
       RunPeriodically(async () => await ProcessAsWorker());
     }

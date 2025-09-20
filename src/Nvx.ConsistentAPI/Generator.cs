@@ -31,7 +31,8 @@ public record GeneratorSettings(
   LoggingSettings LoggingSettings,
   string ToolingEndpointsApiKey,
   FrameworkFeatures EnabledFeatures = FrameworkFeatures.All,
-  int ParallelHydration = 25);
+  int ParallelHydration = 25,
+  int TodoProcessorWorkerCount = 25);
 
 // ReSharper disable once ClassNeverInstantiated.Global
 internal class AllOperationsFilter(EventModel model) : IOperationFilter
