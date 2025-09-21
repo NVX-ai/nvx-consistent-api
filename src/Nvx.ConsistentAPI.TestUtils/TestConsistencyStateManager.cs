@@ -86,10 +86,6 @@ internal class TestConsistencyStateManager(
     while (timer.ElapsedMilliseconds < timeout)
     {
       timesConsistent = await IsConsistent(await GetLastEventPosition()) ? timesConsistent + 1 : 0;
-      if (timesConsistent == 0)
-      {
-        await WaitForAfterProcessing();
-      }
 
       if (timesConsistent >= consistenciesNeeded)
       {
