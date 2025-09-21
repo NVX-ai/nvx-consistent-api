@@ -272,11 +272,12 @@ internal class TodoProcessor
   {
     for (var i = 0; i < Settings.TodoProcessorWorkerCount; i++)
     {
-      RunPeriodically(async () => await ProcessAsWorker());
+      var index = i;
+      RunPeriodically(async () => { await ProcessAsWorker(index); });
     }
   }
 
-  private async Task ProcessAsWorker()
+  private async Task ProcessAsWorker(int index)
   {
     RunningTodoTaskInsight? insight = null;
     try
@@ -302,7 +303,7 @@ internal class TodoProcessor
             runningTodosSemaphore.Release();
             await ProcessOne(selectedTodo)();
           },
-          async () => { await Task.Delay(Random.Shared.Next(500)); });
+          async () => { await Task.Delay(Random.Shared.Next((index + 1) * 500)); });
     }
     catch (Exception ex)
     {
