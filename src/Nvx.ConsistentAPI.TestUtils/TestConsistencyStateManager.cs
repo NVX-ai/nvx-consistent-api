@@ -61,20 +61,19 @@ internal class TestConsistencyStateManager(
 
   public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
   {
-    await WaitForAfterProcessing(
-      generation: type switch
-      {
-        ConsistencyWaitType.Short => 4,
-        ConsistencyWaitType.Medium => 8,
-        _ => 16
-      });
+    await WaitForAfterProcessing(generation: type switch
+    {
+      ConsistencyWaitType.Short => 3,
+      ConsistencyWaitType.Medium => 6,
+      _ => 9
+    });
     var timer = Stopwatch.StartNew();
     var timesConsistent = 0;
     var consistenciesNeeded = type switch
     {
       ConsistencyWaitType.Short => 1,
       ConsistencyWaitType.Medium => 2,
-      _ => 4
+      _ => 3
     };
     var lastEventForThisRun = await GetLastEventPosition();
     // Verify consistency for this check

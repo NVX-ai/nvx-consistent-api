@@ -584,7 +584,7 @@ public class TestSetup : IAsyncDisposable
     return azuriteContainer.GetConnectionString();
   }
 
-  private string CreateTestJwt(string name) =>
+  private static string CreateTestJwt(string name) =>
     Tokens.GetOrAdd(
       name,
       n => TokenHandler.WriteToken(
@@ -606,7 +606,7 @@ public class TestSettings
   public bool UsePersistentTestContainers { get; init; }
   public int WaitForCatchUpTimeout { get; init; } = 150_000;
   public int HydrationParallelism { get; init; } = 5;
-  public int TodoWorkers { get; init; } = 50;
+  public int TodoWorkers { get; init; } = 5;
 
   public string EsDbImage
   {

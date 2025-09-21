@@ -240,7 +240,8 @@ internal class TodoProcessor
   internal async Task<RunningTodoTaskInsight[]> GetRunningTodoTasks()
   {
     await runningTodosSemaphore.WaitAsync();
-    var currentlyRunning = runningTodoTasks.GroupBy(rtt => rtt.TaskType)
+    var currentlyRunning = runningTodoTasks
+      .GroupBy(rtt => rtt.TaskType)
       .Select(g => new RunningTodoTaskInsight(g.Key, g.SelectMany(rtt => rtt.RelatedEntityIds).ToArray()))
       .ToArray();
     runningTodosSemaphore.Release();
@@ -280,32 +281,28 @@ internal class TodoProcessor
     RunningTodoTaskInsight? insight = null;
     try
     {
-      var todos = await GetAvailableTodos();
-      var matchedTodos = todos
-        .Choose(todoReadModel =>
+      var todo = await GetNextAvailableTodo()
+        .Async()
+        .Bind(todoReadModel =>
           Tasks
             .FirstOrNone(t => t.Type == todoReadModel.Name)
-            .Map(todoTaskDefinition => (todoTaskDefinition, todoReadModel))
-        )
-        .ToArray();
+            .Map(todoTaskDefinition => (todoTaskDefinition, todoReadModel)));
 
-      if (matchedTodos.Length == 0)
-      {
-        await Task.Delay(Random.Shared.Next(500));
-        return;
-      }
-
-      var randomIndex = Random.Shared.Next(matchedTodos.Length);
-      var selectedTodo = matchedTodos[randomIndex];
-      using var _ = new BatchTodoCountTracker(1);
-      await runningTodosSemaphore.WaitAsync();
-      runningTodoTasks.Add(
-        insight =
-          new RunningTodoTaskInsight(
-            selectedTodo.todoTaskDefinition.Type,
-            [selectedTodo.todoReadModel.RelatedEntityId]));
-      runningTodosSemaphore.Release();
-      await ProcessOne(selectedTodo)();
+      await todo
+        .Match(
+          async selectedTodo =>
+          {
+            using var _ = new BatchTodoCountTracker(1);
+            await runningTodosSemaphore.WaitAsync();
+            runningTodoTasks.Add(
+              insight =
+                new RunningTodoTaskInsight(
+                  selectedTodo.todoTaskDefinition.Type,
+                  [selectedTodo.todoReadModel.RelatedEntityId]));
+            runningTodosSemaphore.Release();
+            await ProcessOne(selectedTodo)();
+          },
+          async () => { await Task.Delay(Random.Shared.Next(500)); });
     }
     catch (Exception ex)
     {
@@ -611,11 +608,11 @@ internal class TodoProcessor
     }
   }
 
-  private async Task<IEnumerable<TodoEventModelReadModel>> GetAvailableTodos()
+  private async Task<Option<TodoEventModelReadModel>> GetNextAvailableTodo()
   {
     try
     {
-      const int batchSize = 20;
+      const int batchSize = 1;
       var now = DateTime.UtcNow;
 
       var query =
@@ -644,9 +641,9 @@ internal class TodoProcessor
          """;
 
       await using var connection = new SqlConnection(Settings.ReadModelConnectionString);
-      return await connection.QueryAsync<TodoEventModelReadModel>(
+      return (await connection.QueryAsync<TodoEventModelReadModel>(
         query,
-        new { BatchSize = batchSize, now });
+        new { BatchSize = batchSize, now })).SingleOrNone();
     }
     catch (Exception ex)
     {
