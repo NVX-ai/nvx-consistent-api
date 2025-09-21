@@ -71,9 +71,9 @@ internal class TestConsistencyStateManager(
     var timesConsistent = 0;
     var consistenciesNeeded = type switch
     {
-      ConsistencyWaitType.Short => 2,
+      ConsistencyWaitType.Short => 1,
       ConsistencyWaitType.Medium => 3,
-      _ => 4
+      _ => 5
     };
 
     // Verify full consistency
