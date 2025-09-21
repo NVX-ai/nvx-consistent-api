@@ -71,16 +71,10 @@ internal class TestConsistencyStateManager(
     var timesConsistent = 0;
     var consistenciesNeeded = type switch
     {
-      ConsistencyWaitType.Short => 1,
-      ConsistencyWaitType.Medium => 2,
-      _ => 3
+      ConsistencyWaitType.Short => 2,
+      ConsistencyWaitType.Medium => 3,
+      _ => 4
     };
-    var lastEventForThisRun = await GetLastEventPosition();
-    // Verify consistency for this check
-    while (timer.ElapsedMilliseconds < timeout && !await IsConsistent(lastEventForThisRun))
-    {
-      await Task.Delay(Random.Shared.Next(5, 25));
-    }
 
     // Verify full consistency
     while (timer.ElapsedMilliseconds < timeout)
