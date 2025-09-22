@@ -15,10 +15,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Nvx.ConsistentAPI.Framework;
-using Nvx.ConsistentAPI.InternalTooling;
 using Testcontainers.Azurite;
 using Testcontainers.EventStoreDb;
 using Testcontainers.MsSql;
+
+// ReSharper disable MemberCanBePrivate.Global
 
 namespace Nvx.ConsistentAPI.TestUtils;
 
@@ -41,126 +42,35 @@ internal static class InstanceTracking
       Holders[hash] = h with { Count = h.Count + 1 };
       Semaphore.Release();
 
+      await h.TestConsistencyStateManager.WaitForConsistency(
+        testSettings.WaitForCatchUpTimeout,
+        ConsistencyWaitType.Long);
       return new TestSetup(
         h.Url,
         h.Auth,
         h.EventStoreClient,
         h.Model,
         testSettings.WaitForCatchUpTimeout,
-        h.ConsistencyStateMachine);
+        h.TestConsistencyStateManager);
     }
 
     var holder = await TestSetup.InitializeInternal(model, testSettings);
     holder.Logger.LogInformation("Initialized test setup for {Hash}", hash);
     Holders[hash] = holder;
     Semaphore.Release();
+    await holder.TestConsistencyStateManager.WaitForConsistency(
+      testSettings.WaitForCatchUpTimeout,
+      ConsistencyWaitType.Long);
     return new TestSetup(
       holder.Url,
       holder.Auth,
       holder.EventStoreClient,
       holder.Model,
       testSettings.WaitForCatchUpTimeout,
-      holder.ConsistencyStateMachine);
+      holder.TestConsistencyStateManager);
   }
 
   internal static Task Dispose(int _) => Task.CompletedTask;
-}
-
-internal class ConsistencyStateMachine(string url)
-{
-  private const int BaseDelayMilliseconds = 250;
-  private const int MaxDelayMilliseconds = 15_000;
-  private readonly SemaphoreSlim waitForConsistencySemaphore = new(1);
-  private DateTime lastConsistentAt = DateTime.MinValue;
-
-  private int testsWaiting;
-
-  private TimeSpan GetMinimumDelayForCheck(ConsistencyWaitType waitType)
-  {
-    const int maxSteps = MaxDelayMilliseconds / BaseDelayMilliseconds;
-    var steps = Math.Min(maxSteps, 1 + testsWaiting);
-    var increment = Math.Max(1, steps);
-    var minimumDelayMs = waitType switch
-    {
-      ConsistencyWaitType.Short => BaseDelayMilliseconds,
-      ConsistencyWaitType.Medium => MaxDelayMilliseconds / 2,
-      _ => MaxDelayMilliseconds
-    };
-    var milliseconds = Math.Max(minimumDelayMs, increment * BaseDelayMilliseconds);
-    return TimeSpan.FromMilliseconds(milliseconds);
-  }
-
-  public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
-  {
-    var startedAt = DateTime.UtcNow;
-    Interlocked.Increment(ref testsWaiting);
-    var timer = Stopwatch.StartNew();
-    while (timer.ElapsedMilliseconds < timeout && !await IsConsistent())
-    {
-      await Task.Delay(Random.Shared.Next(100, 500));
-    }
-
-    Interlocked.Decrement(ref testsWaiting);
-
-    // This will let go, but tests are expected to fail if consistency was not reached.
-    return;
-
-    bool IsAlreadyConsistent()
-    {
-      var startedAgo = DateTime.UtcNow - startedAt;
-      var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
-      var lastConsistentAtAgo = DateTime.UtcNow - lastConsistentAt;
-      var isLastConsistencyOldEnough = lastConsistentAtAgo > GetMinimumDelayForCheck(type);
-      return startedAt < lastConsistentAt
-             && (hasCheckRunLongEnough || isLastConsistencyOldEnough);
-    }
-
-    async Task<bool> IsConsistent()
-    {
-      try
-      {
-        await waitForConsistencySemaphore.WaitAsync();
-
-        if (IsAlreadyConsistent())
-        {
-          return true;
-        }
-
-        var status = await $"{url}{CatchUp.Route}"
-          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-          .GetJsonAsync<HydrationStatus>();
-
-        var daemonInsights = await $"{url}{DaemonsInsight.Route}"
-          .WithHeader("Internal-Tooling-Api-Key", "TestApiToolingApiKey")
-          .GetJsonAsync<DaemonsInsights>();
-        var startedAgo = DateTime.UtcNow - startedAt;
-        var hasCheckRunLongEnough = startedAgo > GetMinimumDelayForCheck(type);
-        var lastEventEmittedAgo = DateTime.UtcNow - daemonInsights.LastEventEmittedAt;
-        var isLastEventOldEnough = lastEventEmittedAgo > GetMinimumDelayForCheck(type);
-
-        var isConsistent =
-          status.IsCaughtUp
-          && daemonInsights.IsFullyIdle
-          && (hasCheckRunLongEnough || isLastEventOldEnough);
-
-        if (isConsistent)
-        {
-          lastConsistentAt = daemonInsights.LastEventEmittedAt;
-        }
-
-        return isConsistent;
-      }
-      catch
-      {
-        await Task.Delay(5_000);
-        return false;
-      }
-      finally
-      {
-        waitForConsistencySemaphore.Release();
-      }
-    }
-  }
 }
 
 internal record TestSetupHolder(
@@ -170,7 +80,7 @@ internal record TestSetupHolder(
   EventModel Model,
   int Count,
   ILogger Logger,
-  ConsistencyStateMachine ConsistencyStateMachine);
+  TestConsistencyStateManager TestConsistencyStateManager);
 
 internal record TestUser(string Sub, Claim[] Claims);
 
@@ -193,7 +103,7 @@ public class TestSetup : IAsyncDisposable
   private static readonly JwtSecurityTokenHandler TokenHandler = new();
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
-  private readonly ConsistencyStateMachine consistencyStateMachine;
+  private readonly TestConsistencyStateManager consistencyStateManager;
   private readonly int waitForCatchUpTimeout;
 
   internal TestSetup(
@@ -202,14 +112,14 @@ public class TestSetup : IAsyncDisposable
     EventStoreClient eventStoreClient,
     EventModel model,
     int waitForCatchUpTimeout,
-    ConsistencyStateMachine consistencyStateMachine)
+    TestConsistencyStateManager consistencyStateManager)
   {
     Url = url;
     this.waitForCatchUpTimeout = waitForCatchUpTimeout;
     Auth = auth;
     EventStoreClient = eventStoreClient;
     Model = model;
-    this.consistencyStateMachine = consistencyStateMachine;
+    this.consistencyStateManager = consistencyStateManager;
   }
 
   public string Url { get; }
@@ -255,7 +165,7 @@ public class TestSetup : IAsyncDisposable
   public async Task WaitForConsistency(
     ConsistencyWaitType waitType = ConsistencyWaitType.Medium,
     int? timeoutMs = null) =>
-    await consistencyStateMachine.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, waitType);
+    await consistencyStateManager.WaitForConsistency(timeoutMs ?? waitForCatchUpTimeout, waitType);
 
   public async Task<CommandAcceptedResult> Upload()
   {
@@ -295,7 +205,7 @@ public class TestSetup : IAsyncDisposable
 
   public async Task Ingest<T>(string body, Dictionary<string, string>? headers = null)
   {
-    var req = new FlurlRequest($"{Url}/ingestor/{Naming.ToSpinalCase(typeof(T))}");
+    var req = new FlurlRequest($"{Url}/ingestor/{Naming.ToSpinalCase<T>()}");
     foreach (var header in headers ?? new Dictionary<string, string>())
     {
       req.WithHeader(header.Key, header.Value);
@@ -626,7 +536,8 @@ public class TestSetup : IAsyncDisposable
         },
         "TestApiToolingApiKey",
         FrameworkFeatures.All,
-        settings.HydrationParallelism),
+        settings.HydrationParallelism,
+        settings.TodoWorkers),
       model,
       [baseUrl]);
     try
@@ -640,14 +551,15 @@ public class TestSetup : IAsyncDisposable
 
     await app.StartAsync();
 
+    var logger = app.WebApp.Services.GetRequiredService<ILogger<TestSetup>>();
     return new TestSetupHolder(
       baseUrl,
       new TestAuth(GetTestUser("admin").Sub, GetTestUser("cando").Sub, n => GetTestUser(n).Sub),
       eventStoreClient,
       model,
       1,
-      app.WebApp.Services.GetRequiredService<ILogger<TestSetup>>(),
-      new ConsistencyStateMachine(baseUrl));
+      logger,
+      new TestConsistencyStateManager(eventStoreClient, app.ConsistencyCheck, logger));
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)
@@ -672,7 +584,7 @@ public class TestSetup : IAsyncDisposable
     return azuriteContainer.GetConnectionString();
   }
 
-  private string CreateTestJwt(string name) =>
+  private static string CreateTestJwt(string name) =>
     Tokens.GetOrAdd(
       name,
       n => TokenHandler.WriteToken(
@@ -694,6 +606,7 @@ public class TestSettings
   public bool UsePersistentTestContainers { get; init; }
   public int WaitForCatchUpTimeout { get; init; } = 150_000;
   public int HydrationParallelism { get; init; } = 5;
+  public int TodoWorkers { get; init; } = 5;
 
   public string EsDbImage
   {

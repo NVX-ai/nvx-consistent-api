@@ -1,7 +1,10 @@
+using System.Security.Cryptography;
+using System.Text;
 using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Nvx.ConsistentAPI.Framework.DaemonCoordination;
 using Nvx.ConsistentAPI.Framework.Projections;
 using Nvx.ConsistentAPI.Framework.StaticEndpoints;
 using Nvx.ConsistentAPI.InternalTooling;
@@ -46,19 +49,23 @@ public interface EventModelingReadModelArtifact : Endpoint
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
     GeneratorSettings settings,
-    ILogger logger);
+    ILogger logger,
+    string modelHash);
 
-  bool IsUpToDate(Position? position = null);
+  bool IsUpToDate(ulong? position = null);
 }
 
 public interface IdempotentReadModel
 {
+  string TableName { get; }
+
   Task TryProcess(
     FoundEntity foundEntity,
     DatabaseHandlerFactory dbFactory,
     StrongId entityId,
     string? checkpoint,
-    ILogger logger);
+    ILogger logger,
+    CancellationToken cancellationToken);
 
   bool CanProject(EventModelEvent e);
   bool CanProject(string streamName);
@@ -146,12 +153,16 @@ public class EventModel
       InterestTriggers = InterestTriggers.Concat(other.InterestTriggers).ToArray()
     };
 
-  public async Task<Fetcher> ApplyTo(WebApplication app, GeneratorSettings settings, ILogger logger)
+  public async Task<(Fetcher fetcher, ConsistencyCheck consistencyCheck)> ApplyTo(
+    WebApplication app,
+    GeneratorSettings settings,
+    ILogger logger)
   {
     var esClient = new EventStoreClient(EventStoreClientSettings.Create(settings.EventStoreConnectionString));
     var emitter = new Emitter(esClient, logger);
     var parser = Parser();
     var interestFetcher = new InterestFetcher(esClient, parser);
+    var messageHub = new MessageHub();
 
     var fetcher = new Fetcher(Entities.Select(e => e.GetFetcher(esClient, parser, interestFetcher)));
 
@@ -178,9 +189,15 @@ public class EventModel
       logger);
     await projectionDaemon.Initialize();
 
+    var modelHash = Convert.ToBase64String(
+      SHA256.HashData(
+        Encoding.UTF8.GetBytes(
+          string.Join(string.Empty, ReadModels.OfType<IdempotentReadModel>().Select(rm => rm.TableName))))
+    );
+
     foreach (var readModel in ReadModels)
     {
-      await readModel.ApplyTo(app, esClient, fetcher, parser, emitter, settings, logger);
+      await readModel.ApplyTo(app, esClient, fetcher, parser, emitter, settings, logger, modelHash);
     }
 
     runner.Initialize(RecurringTasks, fetcher, emitter, settings, logger);
@@ -205,7 +222,9 @@ public class EventModel
       parser,
       ReadModels.Where(rm => rm is IdempotentReadModel).Cast<IdempotentReadModel>().ToArray(),
       logger,
-      interestFetcher);
+      interestFetcher,
+      messageHub,
+      modelHash);
 
     await hydrationDaemon.Initialize();
 
@@ -240,7 +259,16 @@ public class EventModel
       projectionDaemon,
       logger);
 
-    return fetcher;
+    var consistencyCheck = new ConsistencyCheck(
+      settings.ReadModelConnectionString,
+      modelHash,
+      hydrationDaemon,
+      ReadModels.Where(rm => rm is not IdempotentReadModel).ToArray(),
+      esClient,
+      dcbDaemon,
+      projectionDaemon);
+
+    return (fetcher, consistencyCheck);
 
     static async Task TryActivateAdmin(Fetcher fetcher, GeneratorSettings settings, Emitter emitter)
     {

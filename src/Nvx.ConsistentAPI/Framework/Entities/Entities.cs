@@ -49,7 +49,7 @@ public class EntityDefinition<EntityShape, EntityId> :
   where EntityId : StrongId
 {
   public required Func<EntityId, EntityShape> Defaulter { private get; init; }
-  public int CacheSize { get; init; } = 1024;
+  public int CacheSize { get; init; } = 4096;
   public TimeSpan CacheExpiration { get; init; } = TimeSpan.FromMinutes(30);
   public bool IsSlidingCache { get; init; } = true;
   public required string StreamPrefix { get; init; }

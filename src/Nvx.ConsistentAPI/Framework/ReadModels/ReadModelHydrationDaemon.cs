@@ -2,40 +2,98 @@
 using Dapper;
 using EventStore.Client;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using Nvx.ConsistentAPI.Framework.DaemonCoordination;
 using Nvx.ConsistentAPI.InternalTooling;
 
 namespace Nvx.ConsistentAPI;
 
-internal class ReadModelHydrationDaemon(
+public class ReadModelHydrationDaemon(
   GeneratorSettings settings,
   EventStoreClient client,
   Fetcher fetcher,
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   IdempotentReadModel[] readModels,
   ILogger logger,
-  InterestFetcher interestFetcher)
+  InterestFetcher interestFetcher,
+  MessageHub messageHub,
+  string modelHash)
 {
-  private const int HydrationRetryLimit = 100;
   private const int InterestParallelism = 6;
-  private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
-  private static readonly TimeSpan HydrationRetryDelay = TimeSpan.FromSeconds(10);
-  private readonly string connectionString = settings.ReadModelConnectionString;
-  private DateTime lastMessageReceivedAt = DateTime.MaxValue;
 
-  private readonly DatabaseHandlerFactory databaseHandlerFactory =
-    new(settings.ReadModelConnectionString, logger);
+  // To be deprecated once the swarm model is 100% active.
+  private const string CreateCheckpointTableSql =
+    """
+    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CentralDaemonCheckpoint')
+      BEGIN
+        CREATE TABLE [CentralDaemonCheckpoint]
+        (
+         [Checkpoint] NVARCHAR(255) NOT NULL
+        )
+      END 
+    """;
+
+  private const string CreateHashedCheckpointTableSql =
+    """
+    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CentralDaemonHashedCheckpoints')
+      BEGIN
+        CREATE TABLE [CentralDaemonHashedCheckpoints]
+        (
+         [ModelHash] NVARCHAR(255) NOT NULL,
+         [Checkpoint] NUMERIC(20,0) NOT NULL,
+         [LastUpdatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        )
+      END 
+    """;
+
+  private const string GetLegacyCheckpointSql =
+    "SELECT [Checkpoint] FROM [CentralDaemonCheckpoint] ORDER BY [Checkpoint] DESC";
+
+  private static readonly ConcurrentDictionary<string, IdempotentReadModel[]> ModelsForEvent = new();
+  private readonly string connectionString = settings.ReadModelConnectionString;
+
+  private readonly MemoryCache lastPositionOfStreamCache = new(
+    new MemoryCacheOptions
+    {
+      SizeLimit = 250_000
+    });
+
+  private readonly MemoryCacheEntryOptions lastPositionOfStreamCacheEntryOptions = new()
+  {
+    Size = 1,
+    SlidingExpiration = TimeSpan.FromMinutes(30)
+  };
 
   private readonly SemaphoreSlim lastPositionSemaphore = new(1);
   private readonly SemaphoreSlim semaphore = new(1);
 
-  private readonly CentralHydrationStateMachine stateMachine = new(settings, logger);
+  private readonly CentralHydrationQueueManager queueManager = new(settings, logger);
+
+  // ReSharper disable once UnusedMember.Local
+  private readonly HydrationDaemonWorker[] workers = Enumerable
+    .Range(1, settings.ParallelHydration)
+    .Select(_ => new HydrationDaemonWorker(
+      modelHash,
+      settings.ReadModelConnectionString,
+      fetcher,
+      readModels,
+      new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger),
+      messageHub,
+      settings.ParallelHydration,
+      logger))
+    .ToArray();
+
+  private bool hasCaughtUp;
+
   private HydrationCountTracker? hydrationCountTracker;
 
   private bool isInitialized;
   private ulong? lastCheckpoint;
+  private DateTime lastCheckpointAt = DateTime.MinValue;
   private Position? lastPosition;
-  internal FailedHydration[] FailedHydrations { get; private set; } = [];
+
+  public Position? LastPosition => lastPosition;
 
   public async Task<HydrationDaemonInsights> Insights(ulong lastEventPosition)
   {
@@ -43,17 +101,35 @@ internal class ReadModelHydrationDaemon(
     var percentageComplete = lastEventPosition == 0
       ? 100m
       : Convert.ToDecimal(currentPosition) * 100m / Convert.ToDecimal(lastEventPosition);
+
+    var queuingCount = lastPosition.HasValue && lastPosition.Value.CommitPosition >= lastEventPosition
+      ? 0
+      : await queueManager.ProcessingCount();
+
+    var queuedCount =
+      await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString, lastEventPosition);
+
     return new HydrationDaemonInsights(
       currentPosition,
       lastCheckpoint ?? 0,
       Math.Min(100m, percentageComplete),
-      await stateMachine.EventsBeingProcessedCount());
+      queuingCount + queuedCount);
   }
 
-  public bool IsUpToDate(Position? position) =>
-    hydrationCountTracker is null
-    || lastMessageReceivedAt < DateTime.UtcNow.AddMinutes(-5)
-    || (position.HasValue && lastPosition.HasValue && position.Value <= lastPosition.Value);
+  public async Task<bool> IsUpToDate(ulong? position)
+  {
+    if (position is null && hasCaughtUp)
+    {
+      return await queueManager.ProcessingCount() == 0
+             && await HydrationDaemonWorker.PendingEventsCount(modelHash, connectionString) == 0;
+    }
+
+    return hydrationCountTracker is null
+           || (position.HasValue && lastPosition.HasValue && position.Value <= lastPosition.Value.CommitPosition);
+  }
+
+  public bool HasReachedLive() =>
+    hasCaughtUp;
 
   public async Task Initialize()
   {
@@ -77,7 +153,7 @@ internal class ReadModelHydrationDaemon(
 
       await DoInitialize();
       _ = Task.Run(Hydrate);
-      _ = Task.Run(RetryFailedHydrations);
+      TriggerWorkers();
 
       isInitialized = true;
     }
@@ -87,7 +163,20 @@ internal class ReadModelHydrationDaemon(
     }
   }
 
-  private async Task DoInitialize() => await CreateTable();
+  private async Task DoInitialize()
+  {
+    await CreateTable();
+    await using var connection = new SqlConnection(connectionString);
+    foreach (var sql in HydrationDaemonWorker.TableCreationScripts)
+    {
+      await connection.ExecuteAsync(sql);
+    }
+
+    foreach (var readModel in readModels)
+    {
+      await HydrationDaemonWorker.TryInitialLockReadModel(modelHash, readModel.TableName, connection);
+    }
+  }
 
   private async Task CreateTable()
   {
@@ -97,52 +186,54 @@ internal class ReadModelHydrationDaemon(
     }
 
     await using var connection = new SqlConnection(connectionString);
-    const string sql =
-      """
-      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CentralDaemonCheckpoint')
-        BEGIN
-          CREATE TABLE [CentralDaemonCheckpoint]
-          (
-           [Checkpoint] NVARCHAR(255) NOT NULL
-          )
-        END 
-      """;
-    await connection.ExecuteAsync(sql);
-
-    const string failedHydrationSql =
-      """
-      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'FailedReadModelHydration')
-        BEGIN
-          CREATE TABLE [FailedReadModelHydration]
-          (
-            [StreamName] NVARCHAR(255) NOT NULL,
-            [EventId] NVARCHAR(255) NOT NULL,
-            [EventType] NVARCHAR(255) NOT NULL,
-            [HappenedAt] DATETIME2 NOT NULL,
-            [RetryCount] INT NOT NULL DEFAULT 0,
-            [ErrorMessage] NVARCHAR(MAX) NOT NULL,
-            [NextRetryFrom] DATETIME2 NOT NULL,
-          )
-        END
-      """;
-
-    await connection.ExecuteAsync(failedHydrationSql);
+    await connection.ExecuteAsync(CreateCheckpointTableSql);
+    await connection.ExecuteAsync(CreateHashedCheckpointTableSql);
   }
 
   private async Task<FromAll> GetCheckpoint()
   {
     await using var connection = new SqlConnection(connectionString);
-    const string sql = "SELECT [Checkpoint] FROM [CentralDaemonCheckpoint] ORDER BY [Checkpoint] DESC";
-    var value = await connection.QueryFirstOrDefaultAsync<string?>(sql);
+    var forThisHash = await ForThisHash(connection);
 
-    if (value is null)
+    if (forThisHash is { } forThis)
     {
-      return FromAll.Start;
+      return FromAll.After(new Position(forThis, forThis));
     }
 
-    return Position.TryParse(value, out var position) && position != null
-      ? FromAll.After(position.Value)
-      : FromAll.Start;
+    var forAnyHash = await ForAnyHash(connection);
+
+    if (forAnyHash is { } forAny)
+    {
+      return FromAll.After(new Position(forAny, forAny));
+    }
+
+    return await FromLegacy(connection) is { } legacy ? FromAll.After(legacy) : FromAll.Start;
+
+    async Task<Position?> FromLegacy(SqlConnection conn)
+    {
+      var value = await conn.QueryFirstOrDefaultAsync<string?>(GetLegacyCheckpointSql);
+      return value is not null && Position.TryParse(value, out var position) && position != null ? position : null;
+    }
+
+    async Task<ulong?> ForThisHash(SqlConnection conn)
+    {
+      var value = await conn.QueryFirstOrDefaultAsync<decimal?>(
+        """
+        SELECT TOP 1 [Checkpoint]
+        FROM [CentralDaemonHashedCheckpoints]
+        WHERE [ModelHash] = @ModelHash
+        ORDER BY [LastUpdatedAt] DESC
+        """,
+        new { ModelHash = modelHash });
+      return value is { } val ? Convert.ToUInt64(val) : null;
+    }
+
+    async Task<ulong?> ForAnyHash(SqlConnection conn)
+    {
+      var value = await conn.QueryFirstOrDefaultAsync<decimal?>(
+        "SELECT TOP 1 [Checkpoint] FROM [CentralDaemonHashedCheckpoints] ORDER BY [LastUpdatedAt] DESC");
+      return value is { } val ? Convert.ToUInt64(val) : null;
+    }
   }
 
   private async Task UpdateLastPosition(Position? pos)
@@ -172,14 +263,13 @@ internal class ReadModelHydrationDaemon(
           filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()));
         await foreach (var message in subscription.Messages)
         {
-          lastMessageReceivedAt = DateTime.UtcNow;
           switch (message)
           {
             case StreamMessage.Event(var evt):
             {
               try
               {
-                await stateMachine.Queue(evt, TryProcess);
+                await queueManager.Queue(evt, TryProcess);
               }
               catch (Exception ex)
               {
@@ -196,23 +286,24 @@ internal class ReadModelHydrationDaemon(
             }
             case StreamMessage.AllStreamCheckpointReached(var pos):
             {
-              await stateMachine.Checkpoint(pos, Checkpoint);
+              if (lastCheckpointAt > DateTime.UtcNow.AddSeconds(-90))
+              {
+                break;
+              }
+
+              await queueManager.Checkpoint(pos, Checkpoint);
               lastCheckpoint = pos.CommitPosition;
               break;
             }
             case StreamMessage.CaughtUp:
             {
+              hasCaughtUp = true;
               ClearTracker();
               if (lastPosition is { } pos)
               {
-                await stateMachine.Checkpoint(pos, Checkpoint);
+                await queueManager.Checkpoint(pos, Checkpoint);
               }
 
-              break;
-            }
-            case StreamMessage.FellBehind:
-            {
-              StartTracker();
               break;
             }
           }
@@ -220,7 +311,7 @@ internal class ReadModelHydrationDaemon(
       }
       catch (Exception ex)
       {
-        logger.LogError(ex, "Error hydrating read models");
+        logger.LogError(ex, "Error queuing read models hydration");
       }
     }
 
@@ -261,14 +352,51 @@ internal class ReadModelHydrationDaemon(
             return;
           }
 
-          if (IsInterestEvent(@event))
+          if (lastPositionOfStreamCache.TryGetValue(evt.Event.EventStreamId, out long cachedLastPosition)
+              && cachedLastPosition > evt.Event.EventNumber.ToInt64())
           {
-            await TryProcessInterestedEvent(@event);
+            // It's not the last event of the stream, skip.
             await UpdateLastPosition(evt.Event.Position);
             return;
           }
 
-          var concernedTask = TryProcessConcernedStreams(@event.GetStreamName());
+          if (evt.Event.EventNumber.ToInt64() != 0)
+          {
+            // ReSharper disable once LoopCanBeConvertedToQuery
+            var readStreamResult = client.ReadStreamAsync(
+              Direction.Backwards,
+              evt.Event.EventStreamId,
+              StreamPosition.End,
+              1);
+            if (await readStreamResult.ReadState == ReadState.Ok)
+            {
+              await foreach (var fromStream in readStreamResult)
+              {
+                // ReSharper disable once InvertIf
+                if (fromStream.Event.EventId != evt.Event.EventId)
+                {
+                  lastPositionOfStreamCache.Set(
+                    fromStream.Event.EventStreamId,
+                    fromStream.OriginalEventNumber.ToInt64(),
+                    lastPositionOfStreamCacheEntryOptions);
+                  // It's not the last event of the stream, skip.
+                  await UpdateLastPosition(evt.Event.Position);
+                  return;
+                }
+              }
+            }
+          }
+
+          if (IsInterestEvent(@event))
+          {
+            await TryProcessInterestedEvent(@event, evt.Event.Position.CommitPosition);
+            await UpdateLastPosition(evt.Event.Position);
+            return;
+          }
+
+          var concernedTask = TryProcessConcernedStreams(
+            @event.GetStreamName(),
+            evt.Event.Position.CommitPosition);
 
           var ableReadModels =
             ModelsForEvent.GetOrAdd(
@@ -282,67 +410,28 @@ internal class ReadModelHydrationDaemon(
             return;
           }
 
-          await fetcher
-            .DaemonFetch(@event.GetEntityId(), @event.GetStreamName())
-            .Iter(async entity =>
-            {
-              await ableReadModels
-                .Select<IdempotentReadModel, Func<Task<Unit>>>(rm =>
-                  async () =>
-                  {
-                    await rm.TryProcess(
-                      entity,
-                      databaseHandlerFactory,
-                      @event.GetEntityId(),
-                      null,
-                      logger);
-                    await UpdateLastPosition(evt.Event.Position);
-                    return unit;
-                  })
-                .Parallel(InterestParallelism);
-            });
+          await HydrationDaemonWorker.Register(
+            modelHash,
+            settings.ReadModelConnectionString,
+            evt.OriginalStreamId,
+            @event.GetEntityId(),
+            evt.Event.Position.CommitPosition,
+            false,
+            readModels);
+          TriggerWorkers();
+
           await concernedTask;
           await UpdateLastPosition(evt.Event.Position);
         });
     }
     catch (Exception ex)
     {
-      try
-      {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.ExecuteAsync(
-          """
-          IF NOT EXISTS (
-            SELECT 1 FROM [FailedReadModelHydration]
-            WHERE [StreamName] = @StreamName AND [EventId] = @EventId
-          )
-          INSERT INTO [FailedReadModelHydration] (
-            [StreamName], [EventId], [EventType], [HappenedAt], [ErrorMessage], [NextRetryFrom]
-          ) VALUES (
-            @StreamName, @EventId, @EventType, @HappenedAt, @ErrorMessage, @NextRetryFrom
-          )
-          """,
-          new
-          {
-            StreamName = evt.Event.EventStreamId,
-            EventId = evt.Event.EventId.ToString(),
-            evt.Event.EventType,
-            HappenedAt = DateTime.UtcNow,
-            ErrorMessage = ex.Message,
-            NextRetryFrom = DateTime.UtcNow
-          });
-      }
-      catch (Exception dbEx)
-      {
-        logger.LogError(
-          dbEx,
-          "Error logging failed read model hydration for event {EventId} on stream {StreamName}",
-          evt.Event.EventId,
-          evt.Event.EventStreamId);
-        throw;
-      }
+      logger.LogError(ex, "Failed to queue hydrations");
+      await Task.Delay(250);
     }
   }
+
+  private void TriggerWorkers() => messageHub.WakeUpHydrationWorkers();
 
   internal static bool IsInterestEvent(EventModelEvent @event) =>
     @event
@@ -351,78 +440,112 @@ internal class ReadModelHydrationDaemon(
       or ConcernedEntityReceivedInterest
       or ConcernedEntityHadInterestRemoved;
 
-  private async Task TryProcessInterestedEvent(EventModelEvent @event)
+  private async Task TryProcessInterestedEvent(EventModelEvent @event, ulong globalPosition)
   {
-    foreach (var tuple in @event switch
-             {
-               InterestedEntityRegisteredInterest ie => ie
-                 .InterestedEntityId.GetStrongId()
-                 .Map(id1 => (id: id1, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
-               InterestedEntityHadInterestRemoved ie => ie
-                 .InterestedEntityId.GetStrongId()
-                 .Map(id2 => (id: id2, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
-               _ => None
-             })
+    var interested = @event switch
     {
-      await TryProcessInterestedStream(tuple.InterestedEntityStreamName, tuple.id);
+      InterestedEntityRegisteredInterest ie => ie
+        .InterestedEntityId.GetStrongId()
+        .Map(id => (id, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
+      InterestedEntityHadInterestRemoved ie => ie
+        .InterestedEntityId.GetStrongId()
+        .Map(id => (id, ie.InterestedEntityStreamName, ie.ConcernedEntityStreamName)),
+      _ => None
+    };
+
+    foreach (var tuple in interested)
+    {
+      // Skip processing if the event is known to not be the last of the joint stream.
+      if (fetcher
+          .GetCachedLastPosition(tuple.InterestedEntityStreamName, tuple.id)
+          .Match(cachedRevision => cachedRevision > globalPosition, () => false))
+      {
+        continue;
+      }
+
+      await HydrationDaemonWorker.Register(
+        modelHash,
+        connectionString,
+        tuple.InterestedEntityStreamName,
+        tuple.id,
+        globalPosition,
+        true,
+        readModels);
+      TriggerWorkers();
+    }
+
+    var concerned = @event switch
+    {
+      ConcernedEntityReceivedInterest ce => ce
+        .ConcernedEntityId.GetStrongId()
+        .Map(_ => ce.ConcernedEntityStreamName),
+      ConcernedEntityHadInterestRemoved ce => ce
+        .ConcernedEntityId.GetStrongId()
+        .Map(_ => ce.ConcernedEntityStreamName),
+      _ => None
+    };
+
+    foreach (var concernedEntityStreamName in concerned)
+    {
+      await TryProcessConcernedStreams(concernedEntityStreamName, globalPosition);
     }
   }
 
-  private async Task TryProcessConcernedStreams(string streamName) =>
+  private async Task TryProcessConcernedStreams(string streamName, ulong globalPosition) =>
     await interestFetcher
       .Concerns(streamName)
       .Map(ies =>
         ies
           .Select<Concern, Func<Task<Unit>>>(interestedStream => async () =>
-            await TryProcessInterestedStream(interestedStream.StreamName, interestedStream.Id))
+            await TryProcessInterestedStream(
+              interestedStream.StreamName,
+              interestedStream.Id,
+              globalPosition))
           .Parallel(InterestParallelism));
 
-  private async Task<Unit> TryProcessInterestedStream(string streamName, StrongId entityId)
+  private async Task<Unit> TryProcessInterestedStream(
+    string streamName,
+    StrongId entityId,
+    ulong globalPosition)
   {
-    var ableReadModels = readModels.Where(rm => rm.CanProject(streamName)).ToArray();
-    if (ableReadModels.Length == 0)
+    // Skip processing if the event is known to not be the last of the joint stream.
+    if (fetcher
+        .GetCachedLastPosition(streamName, entityId)
+        .Match(cachedRevision => cachedRevision > globalPosition, () => false))
     {
       return unit;
     }
 
-    return await fetcher
-      .DaemonFetch(entityId, streamName, true)
-      .Iter(async entity =>
-      {
-        await ableReadModels
-          .Select<IdempotentReadModel, Func<Task<Unit>>>(rm =>
-            async () =>
-            {
-              await rm.TryProcess(
-                entity,
-                databaseHandlerFactory,
-                entityId,
-                null,
-                logger);
-              return unit;
-            })
-          .Parallel(InterestParallelism);
-      });
+    await HydrationDaemonWorker.Register(
+      modelHash,
+      connectionString,
+      streamName,
+      entityId,
+      globalPosition,
+      true,
+      readModels);
+    TriggerWorkers();
+    return unit;
   }
 
   private async Task Checkpoint(Position position)
   {
-    var serialized = position.ToString();
     await using var connection = new SqlConnection(connectionString);
     await connection.OpenAsync();
     await using var transaction = await connection.BeginTransactionAsync();
     try
     {
       await connection.ExecuteAsync(
-        "INSERT INTO [CentralDaemonCheckpoint] ([Checkpoint]) VALUES (@Checkpoint)",
-        new { Checkpoint = serialized },
+        "INSERT INTO [CentralDaemonHashedCheckpoints] ([ModelHash], [Checkpoint]) VALUES (@ModelHash, @Checkpoint)",
+        new { ModelHash = modelHash, Checkpoint = Convert.ToDecimal(position.CommitPosition) },
         transaction);
       await connection.ExecuteAsync(
-        "DELETE FROM [CentralDaemonCheckpoint] WHERE [Checkpoint] != @Checkpoint",
-        new { Checkpoint = serialized },
+        "DELETE FROM [CentralDaemonHashedCheckpoints] WHERE [ModelHash] = @ModelHash AND [Checkpoint] != @Checkpoint",
+        new { ModelHash = modelHash, Checkpoint = Convert.ToDecimal(position.CommitPosition) },
         transaction);
       await transaction.CommitAsync();
       await UpdateLastPosition(position);
+      lastCheckpointAt = DateTime.UtcNow;
     }
     catch (Exception ex)
     {
@@ -434,128 +557,4 @@ internal class ReadModelHydrationDaemon(
       }
     }
   }
-
-  private async Task RetryFailedHydrations()
-  {
-    while (settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration))
-    {
-      try
-      {
-        await using var connection = new SqlConnection(connectionString);
-        var failedHydrations = await connection
-          .QueryAsync<FailedHydration>(
-            """
-            SELECT TOP 500
-              [StreamName],
-              [EventId],
-              [EventType],
-              [HappenedAt],
-              [RetryCount],
-              [ErrorMessage],
-              [NextRetryFrom]
-            FROM [FailedReadModelHydration]
-            WHERE [RetryCount] < @RetryLimit
-            AND [NextRetryFrom] < GETUTCDATE()
-            ORDER BY [RetryCount] ASC
-            """,
-            new
-            {
-              RetryLimit = HydrationRetryLimit
-            })
-          .Map(Enumerable.ToArray);
-
-        FailedHydrations = failedHydrations;
-
-        if (failedHydrations.Length == 0)
-        {
-          await Task.Delay(2_500);
-          continue;
-        }
-
-        foreach (var fh in failedHydrations)
-        {
-          const string increaseRetrySql =
-            """
-            UPDATE [FailedReadModelHydration]
-            SET [RetryCount] = [RetryCount] + 1, [NextRetryFrom] = @NextRetryFrom
-            WHERE [EventId] = @EventId AND [StreamName] = @StreamName
-            """;
-
-          await connection.ExecuteAsync(
-            increaseRetrySql,
-            new
-            {
-              fh.EventId,
-              fh.StreamName,
-              NextRetryFrom = DateTime.UtcNow + HydrationRetryDelay * fh.RetryCount
-            });
-
-          // Starts on 0, retry up to HydrationRetryLimit - 1 times.
-          if (fh.RetryCount >= HydrationRetryLimit - 1)
-          {
-            logger.LogCritical(
-              "Event {EventId} on stream {StreamName} has failed to hydrate {RetryCount} times, giving up",
-              fh.EventId,
-              fh.StreamName,
-              fh.RetryCount);
-            continue;
-          }
-
-          var streamRead = client.ReadStreamAsync(Direction.Backwards, fh.StreamName, StreamPosition.End, 1);
-          if (await streamRead.ReadState == ReadState.StreamNotFound)
-          {
-            continue;
-          }
-
-          await foreach (var resolvedEvent in streamRead.Take(1))
-          {
-            await TryProcess(resolvedEvent);
-            await connection.ExecuteAsync(
-              "DELETE FROM [FailedReadModelHydration] WHERE [EventId] = @EventId AND [StreamName] = @StreamName",
-              new { fh.EventId, fh.StreamName });
-          }
-        }
-      }
-      catch (Exception ex)
-      {
-        logger.LogError(ex, "Error retrying failed read model hydrations");
-        await Task.Delay(500);
-      }
-    }
-  }
-
-  internal async Task<FailedHydration[]> GetLingeringFailedHydrations()
-  {
-    if (!settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration))
-    {
-      return [];
-    }
-
-    await using var connection = new SqlConnection(connectionString);
-    return await connection
-      .QueryAsync<FailedHydration>(
-        """
-        SELECT
-          [StreamName],
-          [EventId],
-          [EventType],
-          [HappenedAt],
-          [RetryCount],
-          [ErrorMessage],
-          [NextRetryFrom]
-        FROM [FailedReadModelHydration]
-        WHERE [RetryCount] > 10
-        ORDER BY [RetryCount] ASC
-        """)
-      .Map(Enumerable.ToArray);
-  }
 }
-
-public record FailedHydration(
-  string StreamName,
-  string EventId,
-  string EventType,
-  DateTime HappenedAt,
-  int RetryCount,
-  string? ErrorMessage,
-  DateTime NextRetryFrom);

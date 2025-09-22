@@ -13,7 +13,7 @@ public class StandardFlowTest
     await using var setup = await Initializer.Do();
 
     var productId = Guid.NewGuid();
-    var productName = $"{productId} product";
+    var productName = $"{productId.ToString().ToLowerInvariant()} product";
 
     var uploadResult = await setup.Upload();
     await setup.DownloadAndCompare(uploadResult.EntityId.Apply(Guid.Parse), "banana");
@@ -50,7 +50,7 @@ public class StandardFlowTest
     await setup.Command(new CreateProduct(Guid.NewGuid(), "banana", null));
 
     // Basic command handling and entity projection.
-    await setup.ReadModelNotFound<ProductStock>(productId.ToString());  
+    await setup.ReadModelNotFound<ProductStock>(productId.ToString());
     await Enumerable
       .Range(0, 20)
       .Select<int, Func<Task<Unit>>>(_ => async () =>
@@ -64,24 +64,26 @@ public class StandardFlowTest
     const string validTag2 = "Food";
     await setup.Command(new AddStockTags(productId, [validTag1, validTag2, null]));
     var unknownProductStock = await setup.ReadModel<ProductStock>(productId.ToString());
-    
+
     Assert.Equal(productId.ToString(), unknownProductStock.Id);
     Assert.Equal(100, unknownProductStock.Amount);
     Assert.Equal("Unknown product", unknownProductStock.Name);
-    
+
     // Validate the null tag is ignored - Read Model is clean. 
     Assert.Equal(2, unknownProductStock.Tags.Length);
     Assert.Contains(unknownProductStock.Tags, tag => tag.Equals(validTag1));
     Assert.Contains(unknownProductStock.Tags, tag => tag.Equals(validTag2));
-    
+
     // This creates a lot of products, so the processors can start working and be checked at the end. The processor
     // fails occasionally, and it takes at least 25 seconds to recover, so this starts now and is verified at the end.
     // The test is technically flaky, but the chances of failure are abyssal.
+    var wordInTheProductName = Guid.NewGuid().ToString().ToLowerInvariant();
     await Enumerable
       .Range(0, 98)
       .Select<int, Func<Task<Unit>>>(_ => async () =>
       {
-        await setup.Command(new CreateProduct(Guid.NewGuid(), $"{productId} {Guid.NewGuid()}", null));
+        await setup.Command(
+          new CreateProduct(Guid.NewGuid(), $"{wordInTheProductName} {productId} {Guid.NewGuid()}", null));
         return unit;
       })
       .Parallel(25);
@@ -182,26 +184,29 @@ public class StandardFlowTest
 
     var aggregated1 = await setup
       .ReadModels<AggregatingStockReadModel>(
-        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString().ToLower()] } });
+        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [wordInTheProductName] } },
+        waitType: ConsistencyWaitType.Long);
     Assert.Equal(50, aggregated1.Items.Count());
-    Assert.Equal(99, aggregated1.Total);
+    Assert.Equal(98, aggregated1.Total);
 
     var otherProductId = Guid.Parse(aggregated1.Items.First().Id);
     await setup.Command(new HideAggregatingProduct(otherProductId));
+    await setup.WaitForConsistency(ConsistencyWaitType.Long);
 
     var afterHiding = await setup
       .ReadModels<AggregatingStockReadModel>(
-        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString().ToLower()] } });
+        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [wordInTheProductName] } });
     Assert.Equal(50, afterHiding.Items.Count());
-    Assert.Equal(98, afterHiding.Total);
+    Assert.Equal(97, afterHiding.Total);
 
     await setup.Command(new ShowAggregatingProduct(otherProductId));
+    await setup.WaitForConsistency(ConsistencyWaitType.Long);
 
     var afterShowingAgain = await setup
       .ReadModels<AggregatingStockReadModel>(
-        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [productId.ToString()] } });
+        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [wordInTheProductName] } });
     Assert.Equal(50, afterShowingAgain.Items.Count());
-    Assert.Equal(99, afterShowingAgain.Total);
+    Assert.Equal(98, afterShowingAgain.Total);
 
     // Ingestor
     var ingestedProductId = Guid.NewGuid();

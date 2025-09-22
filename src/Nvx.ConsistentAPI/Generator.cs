@@ -31,7 +31,8 @@ public record GeneratorSettings(
   LoggingSettings LoggingSettings,
   string ToolingEndpointsApiKey,
   FrameworkFeatures EnabledFeatures = FrameworkFeatures.All,
-  int ParallelHydration = 25);
+  int ParallelHydration = 25,
+  int TodoProcessorWorkerCount = 25);
 
 // ReSharper disable once ClassNeverInstantiated.Global
 internal class AllOperationsFilter(EventModel model) : IOperationFilter
@@ -190,10 +191,14 @@ public static class Generator
     ValidateStrongIds();
     SqlMapper.RemoveTypeMap(typeof(DateTime));
     SqlMapper.RemoveTypeMap(typeof(DateTime?));
+    SqlMapper.RemoveTypeMap(typeof(ulong));
+    SqlMapper.RemoveTypeMap(typeof(ulong?));
     SqlMapper.AddTypeHandler(typeof(DateTime), new DateTimeTypeHandler());
     SqlMapper.AddTypeHandler(typeof(DateTime?), new DateTimeTypeHandler());
     SqlMapper.AddTypeHandler(new DateOnlyTypeHandler());
     SqlMapper.AddTypeHandler(new DateOnlyNullableTypeHandler());
+    SqlMapper.AddTypeHandler(new ULongTypeHandler());
+    SqlMapper.AddTypeHandler(new ULongNullableTypeHandler());
 
     Environment.SetEnvironmentVariable("OTEL_SERVICE_NAME", eventModel.ApiName ?? "Nvx.ConsistentAPI");
 
@@ -383,7 +388,7 @@ public static class Generator
 
     var logger = app.Services.GetRequiredService<ILogger<WebApplication>>();
 
-    var fetcher = await merged.ApplyTo(app, settings, logger);
+    var (fetcher, consistencyCheck) = await merged.ApplyTo(app, settings, logger);
 
     settings.AppCustomizations.Iter(c => c(app));
 
@@ -416,7 +421,7 @@ public static class Generator
       });
     });
     app.UseSwaggerUI();
-    return new ConsistentApp(app, fetcher);
+    return new ConsistentApp(app, fetcher, consistencyCheck);
 
     LogEventLevel Map(LogLevel level) => level switch
     {

@@ -11,7 +11,7 @@ namespace Nvx.ConsistentAPI.InternalTooling;
 
 internal static class DaemonsInsight
 {
-  internal const string Route = "/daemons-insight";
+  private const string Route = "/daemons-insight";
 
   internal static void Endpoint(
     EventModelingReadModelArtifact[] readModels,
@@ -115,15 +115,7 @@ internal static class DaemonsInsight
     ProjectionDaemon projectionDaemon)
   {
     var isHydrating = settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration);
-    var lastEventPosition = 0UL;
-    var lastEventEmittedAt = DateTime.UnixEpoch;
-    await foreach (var evt in eventStoreClient
-                     .ReadAllAsync(Direction.Backwards, Position.End, EventTypeFilter.ExcludeSystemEvents(), 1)
-                     .Take(1))
-    {
-      lastEventPosition = evt.Event.Position.CommitPosition;
-      lastEventEmittedAt = evt.Event.Created;
-    }
+    var (lastEventPosition, lastEventEmittedAt) = await GetLastEvent();
 
     var catchingUpReadModels = isHydrating
       ? await readModels
@@ -143,21 +135,31 @@ internal static class DaemonsInsight
       new ReadModelsInsights(
         isHydrating ? readModels.Length : 0,
         isHydrating ? readModels.Length - catchingUpReadModels.Length : 0),
-      await readModelDaemon.GetLingeringFailedHydrations(),
-      processor.RunningTodoTasks,
+      await processor.GetRunningTodoTasks(),
       await processor.AboutToRunTasks(),
       projectionDaemon.Insights(lastEventPosition),
       isHydrating ? await readModelDaemon.Insights(lastEventPosition) : null,
       dynamicConsistencyBoundaryDaemon.Insights(lastEventPosition),
       lastEventEmittedAt,
       lastEventPosition);
+
+    async Task<(ulong pos, DateTime at)> GetLastEvent()
+    {
+      await foreach (var evt in eventStoreClient
+                       .ReadAllAsync(Direction.Backwards, Position.End, EventTypeFilter.ExcludeSystemEvents(), 1)
+                       .Take(1))
+      {
+        return (pos: evt.Event.Position.CommitPosition, at: evt.Event.Created);
+      }
+
+      return (pos: 0, at: DateTime.UnixEpoch);
+    }
   }
 }
 
 public record DaemonsInsights(
   SingleReadModelInsights[] CatchingUpReadModels,
   ReadModelsInsights ReadModels,
-  FailedHydration[] FailedHydrations,
   RunningTodoTaskInsight[] Tasks,
   RunningTodoTaskInsight[] AboutToRunTasks,
   ProjectorDaemonInsights ProjectorDaemon,
@@ -166,17 +168,19 @@ public record DaemonsInsights(
   DateTime LastEventEmittedAt,
   ulong LastEventPosition)
 {
+  // ReSharper disable once MemberCanBePrivate.Global
   public bool AreReadModelsUpToDate =>
     CatchingUpReadModels.All(rm => rm.PercentageComplete >= 100)
     && ReadModels.Total == ReadModels.UpToDate
-    && FailedHydrations.Length == 0
     && (HydrationDaemonInsights is null
         || (HydrationDaemonInsights.PercentageComplete >= 100 && HydrationDaemonInsights.EventsBeingProcessed == 0));
 
+  // ReSharper disable once MemberCanBePrivate.Global
   public bool AreDaemonsIdle =>
     ProjectorDaemon is { PercentageComplete: >= 100, CatchUpPercentageComplete: >= 100, IsProjecting: false }
     && DynamicConsistencyBoundaryDaemonInsights.CurrentPercentageComplete >= 100;
 
+  // ReSharper disable once UnusedMember.Global
   public bool IsFullyIdle =>
     AreDaemonsIdle && AreReadModelsUpToDate && Tasks.Length == 0 && AboutToRunTasks.Length == 0;
 }
@@ -205,6 +209,8 @@ public record SingleReadModelInsights(
   ulong? LastProcessedEventPosition,
   ulong? CheckpointPosition,
   bool IsAggregating,
+  bool IsCaughtUp,
+  DateTime? LastActivityAt,
   decimal PercentageComplete);
 
 public record ProjectorDaemonInsights(

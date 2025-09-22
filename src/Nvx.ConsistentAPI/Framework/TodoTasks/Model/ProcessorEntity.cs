@@ -44,23 +44,22 @@ public partial record ProcessorEntity(
         {
           StreamPrefix = StreamPrefix,
           Projector = entity =>
-            entity.CompletedAt is null && entity.AttemptCount < MaxAttempts
-              ?
-              [
-                new TodoEventModelReadModel(
-                  entity.Id.ToString(),
-                  entity.RelatedEntityId,
-                  entity.StartsAt,
-                  entity.ExpiresAt,
-                  entity.JsonData,
-                  entity.Type,
-                  entity.LockedUntil,
-                  entity.SerializedRelatedEntityId,
-                  entity.EventPosition,
-                  entity.AttemptCount
-                )
-              ]
-              : [],
+          [
+            new TodoEventModelReadModel(
+              entity.Id.ToString(),
+              entity.RelatedEntityId,
+              entity.StartsAt,
+              entity.ExpiresAt,
+              entity.CompletedAt,
+              entity.JsonData,
+              entity.Type,
+              entity.LockedUntil,
+              entity.SerializedRelatedEntityId,
+              entity.EventPosition?.CommitPosition,
+              entity.AttemptCount,
+              entity.AttemptCount >= MaxAttempts
+            )
+          ],
           ShouldHydrate = (entity, isBackwards) =>
             DateTime.UtcNow < entity.ExpiresAt || (isBackwards && entity.CompletedAt.HasValue),
           IsExposed = false,

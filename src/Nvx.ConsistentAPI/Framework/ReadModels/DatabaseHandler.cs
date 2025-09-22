@@ -220,18 +220,26 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       await connection.ExecuteAsync(listSql);
     }
 
-    const string daemonCheckpointTableExistsSql =
-      "SELECT Count(*) FROM sys.tables WHERE name = 'CentralDaemonCheckpoint'";
-    var daemonCheckpointTableCount = await connection.QueryFirstOrDefaultAsync<int>(daemonCheckpointTableExistsSql);
-    if (daemonCheckpointTableCount == 0)
+    var daemonCheckpointTableCount = await connection.QueryFirstOrDefaultAsync<int>(
+      "SELECT Count(*) FROM sys.tables WHERE name = 'CentralDaemonCheckpoint'");
+    var daemonCheckpointHashedTableCount =
+      await connection.QueryFirstOrDefaultAsync<int>(
+        "SELECT Count(*) FROM sys.tables WHERE name = 'CentralDaemonHashedCheckpoints'");
+    if (daemonCheckpointTableCount == 0 && daemonCheckpointHashedTableCount == 0)
     {
       await MarkAsUpToDate();
       return;
     }
 
-    const string daemonCheckpointCountSql = "SELECT Count(*) FROM [CentralDaemonCheckpoint]";
-    var checkpointCount = await connection.QueryFirstOrDefaultAsync<int>(daemonCheckpointCountSql);
-    if (checkpointCount == 0)
+    var checkpointCount = daemonCheckpointHashedTableCount == 0
+      ? 0
+      : await connection.QueryFirstOrDefaultAsync<int>("SELECT Count(*) FROM [CentralDaemonCheckpoint]");
+
+    var hashedCheckpointCount = daemonCheckpointHashedTableCount == 0
+      ? 0
+      : await connection.QueryFirstOrDefaultAsync<int>("SELECT Count(*) FROM [CentralDaemonHashedCheckpoints]");
+
+    if (checkpointCount == 0 && hashedCheckpointCount == 0)
     {
       await MarkAsUpToDate();
     }
@@ -339,6 +347,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       _ when underlyingType == typeof(DateTimeOffset) => "DATETIMEOFFSET",
       _ when underlyingType == typeof(Guid) => "UNIQUEIDENTIFIER",
       _ when underlyingType == typeof(decimal) => "DECIMAL(18, 3)",
+      _ when underlyingType == typeof(ulong) => "NUMERIC(20, 0)",
       _ => "OBJECT"
     };
 
@@ -530,52 +539,43 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     }
   }
 
-  private async Task Delete(Shape[] rms, StrongId id, SqlConnection connection)
+  private async Task Delete(StrongId id, SqlConnection connection, CancellationToken cancellationToken)
   {
-    var ids = rms.Select((r, idx) => (r.Id, idx)).Distinct().ToArray();
-    if (ids.Length == 0)
+    try
     {
       await connection.ExecuteAsync(
-        $"DELETE FROM [{tableName}] WHERE [FrameworkRelatedEntityId] = @Id",
-        new { Id = id.StreamId() });
-      return;
+        new CommandDefinition(
+          $"DELETE FROM [{tableName}] WHERE [FrameworkRelatedEntityId] = @Id",
+          new { Id = id.StreamId() },
+          cancellationToken: cancellationToken));
     }
-
-    var idParams = new DynamicParameters();
-    foreach (var idTuple in ids)
+    catch (SqlException ex) when (ex.Number == 1205) // Deadlock
     {
-      idParams.Add($"id{idTuple.idx}", idTuple.Id);
+      await Task.Delay(Random.Shared.Next(150), cancellationToken);
+      await Delete(id, connection, cancellationToken);
     }
-
-    idParams.Add("Id", id.StreamId());
-
-    var selectiveDeleteSql =
-      $"""
-       DELETE FROM [{tableName}]
-       WHERE [Id] NOT IN ({string.Join(", ", ids.Select(idTuple => $"@id{idTuple.idx}"))})
-       AND   [FrameworkRelatedEntityId] = @Id
-       """;
-
-    await connection.ExecuteAsync(
-      selectiveDeleteSql,
-      idParams);
   }
 
-  public async Task<Unit> Update(Shape[] rms, string? checkpoint, TraceabilityFields traceabilityFields, StrongId id)
+  public async Task<Unit> Update(
+    Shape[] rms,
+    string? checkpoint,
+    TraceabilityFields traceabilityFields,
+    StrongId id,
+    CancellationToken cancellationToken)
   {
     await using var connection = new SqlConnection(connectionString);
 
-    await Delete(rms, id, connection);
+    await Delete(id, connection, cancellationToken);
     try
     {
       foreach (var rm in rms.DistinctBy(r => r.Id))
       {
-        await Upsert(rm, traceabilityFields, connection);
+        await Upsert(rm, traceabilityFields, connection, cancellationToken);
       }
 
       if (checkpoint is not null)
       {
-        await UpdateCheckpoint(connection, checkpoint, null);
+        await UpdateCheckpoint(connection, checkpoint, null, cancellationToken);
       }
     }
     catch (Exception ex) when (!ex.Message.Contains("Cannot insert duplicate key in object"))
@@ -590,19 +590,23 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
   private async Task Upsert(
     Shape rm,
     TraceabilityFields traceabilityFields,
-    SqlConnection connection)
+    SqlConnection connection,
+    CancellationToken cancellationToken)
   {
     try
     {
       var parameters = new DynamicParameters(rm);
-      
-      var traceabilityFieldsTruncated = traceabilityFields with { FrameworkRelatedEntityId = traceabilityFields.FrameworkRelatedEntityId.Length > StringSizes.InlinedId
-        ? new StringInfo(traceabilityFields.FrameworkRelatedEntityId).SubstringByTextElements(
-          0,
-          StringSizes.InlinedId)
-        : traceabilityFields.FrameworkRelatedEntityId };
+
+      var traceabilityFieldsTruncated = traceabilityFields with
+      {
+        FrameworkRelatedEntityId = traceabilityFields.FrameworkRelatedEntityId.Length > StringSizes.InlinedId
+          ? new StringInfo(traceabilityFields.FrameworkRelatedEntityId).SubstringByTextElements(
+            0,
+            StringSizes.InlinedId)
+          : traceabilityFields.FrameworkRelatedEntityId
+      };
       parameters.AddDynamicParams(traceabilityFieldsTruncated);
-      
+
       foreach (var prop in stringProperties)
       {
         var strValue = prop.pi.GetValue(rm) as string;
@@ -622,7 +626,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
         foreach (var batch in BatchedArrayValues(prop, rm))
         {
           var values = batch
-            .Select(x => x)
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
             .Where(y => y != null)
             .ToArray();
 
@@ -630,26 +634,41 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
           {
             continue;
           }
-          
+
           parameters.Add(prop.Name, JsonConvert.SerializeObject(values));
         }
       }
-      
-      await connection.ExecuteAsync(TraceableUpsertSql, parameters);
+
+      await connection.ExecuteAsync(
+        new CommandDefinition(TraceableUpsertSql, parameters, cancellationToken: cancellationToken));
       foreach (var prop in arrayProperties)
       {
         var propTableName = DatabaseHandler.GetArrayPropTableName(prop.Name, tableName);
-        await connection.ExecuteAsync(
-          $"DELETE FROM [{propTableName}] WHERE [Id] = @Id",
-          new { rm.Id });
 
         foreach (var batch in BatchedArrayValues(prop, rm))
         {
-          var values = batch
-            .Select(x => new { rm.Id, Value = x })
-            .Where(y => y.Value != null);
-            
-          await connection.ExecuteAsync($"INSERT INTO [{propTableName}] VALUES (@Id, @Value)", values);
+          // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+          var values = batch.Where(y => y != null).ToArray();
+
+          if (values.Length == 0)
+          {
+            continue;
+          }
+
+          var arrayParamNames = string.Join(", ", values.Select((_, i) => $"(@Id, @Value{i})"));
+
+          var arrayParams = new DynamicParameters();
+          arrayParams.Add("Id", rm.Id);
+          foreach (var tuple in values.Select((v, i) => (v, i)))
+          {
+            arrayParams.Add($"Value{tuple.i}", tuple.v);
+          }
+
+          await connection.ExecuteAsync(
+            new CommandDefinition(
+              $"INSERT INTO [{propTableName}] ([Id], [Value]) VALUES {arrayParamNames}",
+              arrayParams,
+              cancellationToken: cancellationToken));
         }
       }
     }
@@ -840,7 +859,11 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     );
   }
 
-  internal async Task UpdateCheckpoint(IDbConnection connection, string checkpoint, IDbTransaction? transaction)
+  internal async Task UpdateCheckpoint(
+    IDbConnection connection,
+    string checkpoint,
+    IDbTransaction? transaction,
+    CancellationToken cancellationToken = default)
   {
     const string sqlCheckpoint =
       """
@@ -850,7 +873,12 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
         INSERT INTO [ReadModelCheckpoints] ([ModelName], [Checkpoint]) VALUES (@ModelName, @Checkpoint)
       """;
 
-    await connection.ExecuteAsync(sqlCheckpoint, new { ModelName = tableName, Checkpoint = checkpoint }, transaction);
+    await connection.ExecuteAsync(
+      new CommandDefinition(
+        sqlCheckpoint,
+        new { ModelName = tableName, Checkpoint = checkpoint },
+        transaction,
+        cancellationToken: cancellationToken));
   }
 
   private static string SortColumn(Type type, SortBy? sortBy)
@@ -931,6 +959,36 @@ public class DateOnlyNullableTypeHandler : SqlMapper.TypeHandler<DateOnly?>
     parameter.Value = date?.ToDateTime(new TimeOnly(0, 0));
 
   public override DateOnly? Parse(object? value) => value is null ? null : DateOnly.FromDateTime((DateTime)value);
+}
+
+public class ULongTypeHandler : SqlMapper.TypeHandler<ulong>
+{
+  public override void SetValue(IDbDataParameter parameter, ulong value) =>
+    parameter.Value = (decimal)value;
+
+  public override ulong Parse(object value) => value switch
+  {
+    decimal d => (ulong)d,
+    long l => (ulong)l,
+    int i => (ulong)i,
+    _ => Convert.ToUInt64(value)
+  };
+}
+
+public class ULongNullableTypeHandler : SqlMapper.TypeHandler<ulong?>
+{
+  public override void SetValue(IDbDataParameter parameter, ulong? value) =>
+    parameter.Value = value.HasValue ? (decimal)value.Value : DBNull.Value;
+
+  public override ulong? Parse(object value) => value switch
+  {
+    decimal d => (ulong)d,
+    long l => (ulong)l,
+    int i => (ulong)i,
+    DBNull => null,
+    null => null,
+    _ => Convert.ToUInt64(value)
+  };
 }
 
 public record TraceabilityFields(

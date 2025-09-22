@@ -87,7 +87,7 @@ internal static class PreHydrationCompleted
       }
 
       var behind = readModels.Where(rm => !rm.IsUpToDate()).Select(rm => rm.GetType().Name).ToArray();
-      var centralDaemonUpToDate = centralDaemon.IsUpToDate(null);
+      var centralDaemonUpToDate = centralDaemon.HasReachedLive();
 
       var isCaughtUp = behind.Length == 0 && centralDaemonUpToDate;
       if (isCaughtUp)

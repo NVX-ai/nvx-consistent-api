@@ -5,7 +5,7 @@ using Nvx.ConsistentAPI.InternalTooling;
 
 namespace Nvx.ConsistentAPI;
 
-internal class DynamicConsistencyBoundaryDaemon(
+public class DynamicConsistencyBoundaryDaemon(
   EventStoreClient client,
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   InterestTrigger[] triggers,
@@ -113,7 +113,7 @@ internal class DynamicConsistencyBoundaryDaemon(
                   }
                 })));
 
-            if (tasks.Count > 250)
+            if (tasks.Count > 10)
             {
               await Task.WhenAll(tasks);
               tasks.Clear();

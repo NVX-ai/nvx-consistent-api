@@ -63,6 +63,22 @@ internal static class EntityIdExtensions
 {
   private static readonly ConcurrentDictionary<string, Type> TypeCache = new();
 
+  public static Option<StrongId> GetStrongId(this HydrationQueueEntry self)
+  {
+    var dictionary = new Dictionary<string, string>
+    {
+      { "StrongIdTypeName", self.IdTypeName },
+      { "SerializedId", self.SerializedId }
+    };
+
+    if (!string.IsNullOrEmpty(self.IdTypeNamespace))
+    {
+      dictionary["StrongIdTypeNamespace"] = self.IdTypeNamespace;
+    }
+
+    return dictionary.GetStrongId();
+  }
+
   public static Option<StrongId> GetStrongId(this Dictionary<string, string> self)
   {
     try

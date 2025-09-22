@@ -17,3 +17,6 @@ Event Modelling Framework, built and maintained by NVX.ai.
 
 # Documentation
 [Head here to access the documentation](./docs/README.md).
+
+# Releases
+See a [summary of major releases here](./docs/release-details/releases.md).

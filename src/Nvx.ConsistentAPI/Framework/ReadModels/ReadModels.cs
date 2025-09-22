@@ -54,7 +54,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
   public ShouldHydrate<EntityShape> ShouldHydrate { get; init; } = (_, _) => true;
   public AuthOptions Auth { get; init; } = new Everyone();
 
-  public bool IsUpToDate(Position? position) => isUpToDate;
+  public bool IsUpToDate(ulong? position) => isUpToDate;
 
   public Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClien)
   {
@@ -70,6 +70,8 @@ public class ReadModelDefinition<Shape, EntityShape> :
         lastProcessedEventPosition,
         lastCheckpointPosition,
         false,
+        isUpToDate,
+        null,
         Math.Min(100, percentageComplete)));
   }
 
@@ -80,7 +82,8 @@ public class ReadModelDefinition<Shape, EntityShape> :
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
     GeneratorSettings settings,
-    ILogger logger)
+    ILogger logger,
+    string modelHash)
   {
     var factory = new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger);
     var databaseHandler = factory.Get<Shape>();
@@ -101,7 +104,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
         Defaulter,
         logger);
 
-    await Initialize(esClient, fetcher, parser, databaseHandler, settings, logger);
+    await Initialize(esClient, fetcher, parser, databaseHandler, settings, modelHash, logger);
   }
 
   public Type ShapeType { get; } = typeof(Shape);
@@ -111,7 +114,8 @@ public class ReadModelDefinition<Shape, EntityShape> :
     DatabaseHandlerFactory dbFactory,
     StrongId entityId,
     string? checkpoint,
-    ILogger logger)
+    ILogger logger,
+    CancellationToken cancellationToken)
   {
     if (foundEntity is FoundEntity<EntityShape> thisEntity)
     {
@@ -121,25 +125,35 @@ public class ReadModelDefinition<Shape, EntityShape> :
         false,
         thisEntity,
         dbFactory.Get<Shape>(),
-        logger);
+        logger,
+        cancellationToken);
     }
   }
 
   public bool CanProject(EventModelEvent e) => e.GetStreamName().StartsWith(StreamPrefix);
   public bool CanProject(string streamName) => streamName.StartsWith(StreamPrefix);
+  public string TableName => DatabaseHandler<Shape>.TableName(typeof(Shape));
 
   private async Task Subscribe(
     EventStoreClient client,
-    Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     DatabaseHandler<Shape> databaseHandler,
-    ILogger logger)
+    ILogger logger,
+    string modelHash,
+    string readModelConnectionString)
   {
     reset = async () =>
     {
       await databaseHandler.Reset(false);
+      await HydrationDaemonWorker.ResetStream(modelHash, readModelConnectionString, StreamPrefix);
       isUpToDate = false;
-      _ = Task.Run(() => Subscribe(client, fetcher, parser, databaseHandler, logger));
+      _ = Task.Run(() => Subscribe(
+        client,
+        parser,
+        databaseHandler,
+        logger,
+        modelHash,
+        readModelConnectionString));
       return unit;
     };
 
@@ -251,41 +265,27 @@ public class ReadModelDefinition<Shape, EntityShape> :
                        _ => None
                      })
             {
-              await fetcher
-                .DaemonFetch(t.id, t.InterestedEntityStreamName)
-                .Iter(async entity =>
-                {
-                  if (entity is FoundEntity<EntityShape> foundEntity)
-                  {
-                    await UpdateReadModel(
-                      t.id,
-                      position.ToString(),
-                      false,
-                      foundEntity,
-                      databaseHandler,
-                      logger);
-                  }
-                });
+              await HydrationDaemonWorker.Register(
+                modelHash,
+                readModelConnectionString,
+                t.InterestedEntityStreamName,
+                t.id,
+                position.CommitPosition,
+                false,
+                [this]);
             }
 
             return;
           }
 
-          if (fetcher
-              .GetCachedStreamRevision(me.GetStreamName(), me.GetEntityId())
-              .Match(r => r >= eventNumber, () => false))
-          {
-            return;
-          }
-
-          await UpdateReadModel(
+          await HydrationDaemonWorker.Register(
+            modelHash,
+            readModelConnectionString,
+            me.GetStreamName(),
             me.GetEntityId(),
-            position.ToString(),
-            true,
-            fetcher,
-            databaseHandler,
-            logger);
-
+            position.CommitPosition,
+            false,
+            [this]);
           break;
         }
         catch (Exception ex)
@@ -310,6 +310,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     DatabaseHandler<Shape> databaseHandler,
     GeneratorSettings settings,
+    string modelHash,
     ILogger logger)
   {
     if (!settings.EnabledFeatures.HasFlag(FrameworkFeatures.ReadModelHydration))
@@ -318,7 +319,13 @@ public class ReadModelDefinition<Shape, EntityShape> :
     }
 
     await databaseHandler.Initialize();
-    _ = Task.Run(() => Subscribe(client, fetcher, parser, databaseHandler, logger));
+    _ = Task.Run(() => Subscribe(
+      client,
+      parser,
+      databaseHandler,
+      logger,
+      modelHash,
+      settings.ReadModelConnectionString));
   }
 
   private async Task UpdateReadModel(
@@ -327,14 +334,18 @@ public class ReadModelDefinition<Shape, EntityShape> :
     bool isBackwards,
     Du<Fetcher, FoundEntity<EntityShape>> toProject,
     DatabaseHandler<Shape> databaseHandler,
-    ILogger logger)
+    ILogger logger,
+    CancellationToken cancellationToken = default)
   {
     try
     {
       await
         toProject
           .Match<AsyncOption<FoundEntity<EntityShape>>>(
-            fetcher => fetcher.Fetch<EntityShape>(Some(id)).Map(FoundEntity<EntityShape>.From).Async(),
+            fetcher => fetcher
+              .Fetch<EntityShape>(Some(id), cancellationToken: cancellationToken)
+              .Map(FoundEntity<EntityShape>.From)
+              .Async(),
             fe => fe)
           .Match(
             e => ShouldHydrate(e.Entity, isBackwards)
@@ -347,7 +358,8 @@ public class ReadModelDefinition<Shape, EntityShape> :
                   e.FirstUserSubFound,
                   e.LastUserSubFound,
                   id.StreamId()),
-                id)
+                id,
+                cancellationToken)
               : unit.ToTask(),
             () => unit.ToTask());
       holder.Etag = IdempotentUuid.Generate(checkpoint ?? Guid.NewGuid().ToString()).ToString();
@@ -362,7 +374,10 @@ public class ReadModelDefinition<Shape, EntityShape> :
   public override int GetHashCode() => Naming.ToSpinalCase<Shape>().GetHashCode();
 }
 
-public interface FoundEntity;
+public interface FoundEntity
+{
+  ulong? Position { get; }
+}
 
 public record FoundEntity<T>(
   T Entity,
@@ -375,6 +390,8 @@ public record FoundEntity<T>(
   : FoundEntity
   where T : EventModelEntity<T>
 {
+  public ulong? Position => GlobalPosition.Match(ulong? (p) => p.CommitPosition, () => null);
+
   public static Option<FoundEntity<T>> From(FetchResult<T> fr) => fr
     .Ent.Bind(e => fr.GlobalPosition.Map(gp => (e, gp)))
     .Map(tuple => new FoundEntity<T>(
