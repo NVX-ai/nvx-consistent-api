@@ -339,25 +339,65 @@ public class TestSetup : IAsyncDisposable
     return Serialization.Deserialize<PageResult<Rm>>(result)!;
   }
 
+  /// <summary>
+  ///   Reads a single read model of type Rm for entity type Ett with the given id.
+  ///   Does not use the read model persistence, instead, fetches the entity and projects in memory.
+  /// </summary>
+  /// <param name="id">The entity id</param>
+  /// <typeparam name="Ett">The entity type</typeparam>
+  /// <typeparam name="Rm">The read model type</typeparam>
+  /// <returns>The read model for the entity</returns>
+  /// <exception cref="FailException">
+  ///   Thrown if the entity is not found or if more than one read model is projected
+  /// </exception>
   public async Task<Rm> ReadModel<Ett, Rm>(StrongId id)
     where Ett : EventModelEntity<Ett> where Rm : EventModelReadModel =>
     (await ReadModels<Ett, Rm>(id)).Single();
 
+  /// <summary>
+  ///   Reads all read models of type Rm for entity type Ett with the given id.
+  ///   Does not use the read model persistence, instead, fetches the entity and projects in memory.
+  /// </summary>
+  /// <param name="id">The entity id</param>
+  /// <typeparam name="Ett">The entity type</typeparam>
+  /// <typeparam name="Rm">The read model type</typeparam>
+  /// <returns>All read models for the entity</returns>
+  /// <exception cref="FailException">Thrown if the entity is not found</exception>
   public async Task<Rm[]> ReadModels<Ett, Rm>(StrongId id)
     where Ett : EventModelEntity<Ett> where Rm : EventModelReadModel =>
     Model.ReadModels.OfType<ReadModelDefinition<Rm, Ett>>().Single().Projector(await Fetch<Ett>(id)).ToArray();
 
+  /// <summary>
+  ///   Reads a read model of type Rm for entity type Ett with the given id, waiting until a read model matching the
+  ///   given predicate is found, or the timeout is reached.
+  ///   Does not use the read model persistence, instead, fetches the entity and projects in memory.
+  /// </summary>
+  /// <param name="id">The entity id</param>
+  /// <param name="predicate">Predicate to match the read model</param>
+  /// <typeparam name="Ett">The entity type</typeparam>
+  /// <typeparam name="Rm">The read model type</typeparam>
+  /// <returns>The read model matching the predicate</returns>
+  /// <exception cref="FailException">
+  ///   Thrown if the timeout is reached without finding a matching read model
+  /// </exception>
   public async Task<Rm> ReadModelWhen<Ett, Rm>(StrongId id, Func<Rm, bool> predicate)
     where Ett : EventModelEntity<Ett> where Rm : EventModelReadModel
   {
     var timer = Stopwatch.StartNew();
     while (true)
     {
-      var rms = await ReadModels<Ett, Rm>(id);
-      var match = rms.FirstOrDefault(predicate);
-      if (match != null)
+      try
       {
-        return match;
+        var rms = await ReadModels<Ett, Rm>(id);
+        var match = rms.FirstOrDefault(predicate);
+        if (match != null)
+        {
+          return match;
+        }
+      }
+      catch
+      {
+        // ignore
       }
 
       if (timer.ElapsedMilliseconds > waitForCatchUpTimeout)
