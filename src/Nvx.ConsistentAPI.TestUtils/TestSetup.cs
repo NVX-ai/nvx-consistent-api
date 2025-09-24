@@ -36,7 +36,8 @@ internal record TestSetupHolder(
   int Count,
   ILogger Logger,
   TestConsistencyStateManager TestConsistencyStateManager,
-  Fetcher Fetcher);
+  Fetcher Fetcher,
+  EventModel.EventParser Parser);
 
 internal record TestUser(string Sub, Claim[] Claims);
 
@@ -582,7 +583,8 @@ public class TestSetup : IAsyncDisposable
       1,
       logger,
       new TestConsistencyStateManager(eventStoreClient, app.ConsistencyCheck, logger),
-      app.Fetcher);
+      app.Fetcher,
+      app.Parser);
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)
