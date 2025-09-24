@@ -140,6 +140,13 @@ public class TestSetup : IAsyncDisposable
     return result;
   }
 
+  /// <summary>
+  ///   Fetches an entity of type T with the given id, or throws if not found.
+  /// </summary>
+  /// <param name="id">Entity id</param>
+  /// <typeparam name="T">Entity type</typeparam>
+  /// <returns>The entity</returns>
+  /// <exception cref="FailException">Thrown if the entity is not found</exception>
   public async Task<T> Fetch<T>(StrongId id) where T : EventModelEntity<T> =>
     await fetcher
       .Fetch<T>(id)
@@ -149,21 +156,60 @@ public class TestSetup : IAsyncDisposable
         e => e,
         () => throw FailException.ForFailure($"Could not find entity with id {id} of type {typeof(T).Name}"));
 
-  public async Task WaitFor<T>(T evt) where T : EventModelEvent =>
-    await WaitFor<T>(evt.GetStreamName(), e => e.Equals(evt));
+  /// <summary>
+  ///   Waits for a [times] amount of events that evaluate equal to the given event to appear in the event store.
+  /// </summary>
+  /// <param name="evt">The event to wait for</param>
+  /// <param name="times">How many times the event should appear</param>
+  /// <param name="timeout">How long to wait before giving up</param>
+  /// <typeparam name="T">The event type</typeparam>
+  /// <returns>A task that completes when the event(s) are seen, or fails if the timeout is reached</returns>
+  /// <exception cref="FailException">Thrown if the event is not seen in time</exception>
+  public async Task WaitFor<T>(T evt, int times = 1, TimeSpan? timeout = null) where T : EventModelEvent =>
+    await WaitFor<T>(e => e.Equals(evt), evt.GetStreamName(), times, timeout);
 
-  public async Task WaitFor<T>(string streamName, Func<T, bool> predicate, int? timeout = null)
+  /// <summary>
+  ///   Waits for a [times] amount of events that match the given predicate to appear in the event store.
+  /// </summary>
+  /// <param name="predicate">Predicate to match events</param>
+  /// <param name="streamName">Optional stream name to filter on</param>
+  /// <param name="times">How many times the event should appear</param>
+  /// <param name="timeout">How long to wait before giving up</param>
+  /// <typeparam name="T">The event type</typeparam>
+  /// <returns>A task that completes when the event(s) are seen, or fails if the timeout is reached</returns>
+  /// <exception cref="FailException">Thrown if the event is not seen in time</exception>
+  public async Task WaitFor<T>(
+    Func<T, bool> predicate,
+    string? streamName = null,
+    int times = 1,
+    TimeSpan? timeout = null)
     where T : EventModelEvent
   {
     var cancellationSource = new CancellationTokenSource();
-    cancellationSource.CancelAfter(timeout ?? waitForCatchUpTimeout);
-    await foreach (var evt in EventStoreClient
-                     .SubscribeToStream(streamName, FromStream.Start)
-                     .WithCancellation(cancellationSource.Token))
+    cancellationSource.CancelAfter(timeout ?? TimeSpan.FromMilliseconds(waitForCatchUpTimeout));
+    var count = 0;
+    if (streamName is not null)
     {
-      if (parser(evt).Match(e => e is T t && predicate(t), () => false))
+      await foreach (var evt in EventStoreClient
+                       .SubscribeToStream(streamName, FromStream.Start)
+                       .WithCancellation(cancellationSource.Token))
       {
-        return;
+        if (parser(evt).Match(e => e is T t && predicate(t), () => false) && ++count == times)
+        {
+          return;
+        }
+      }
+    }
+    else
+    {
+      await foreach (var evt in EventStoreClient
+                       .SubscribeToAll(FromAll.Start)
+                       .WithCancellation(cancellationSource.Token))
+      {
+        if (parser(evt).Match(e => e is T t && predicate(t), () => false) && ++count == times)
+        {
+          return;
+        }
       }
     }
 

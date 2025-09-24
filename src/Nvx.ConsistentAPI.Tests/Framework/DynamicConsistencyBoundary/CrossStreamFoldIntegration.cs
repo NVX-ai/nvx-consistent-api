@@ -29,7 +29,8 @@ public class CrossStreamFoldIntegration
     await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, Guid.NewGuid().ToString()));
 
     var moreTags = await setup.ReadModel<EntityThatDependsReadModel>(
-      interestedEntityId.ToString());
+      interestedEntityId.ToString(),
+      waitType: ConsistencyWaitType.Long);
     Assert.Equal(4, moreTags.DependedOnTags.Length);
     Assert.Contains(moreTags.DependedOnTags, t => t == tag);
 
@@ -58,6 +59,10 @@ public class CrossStreamFoldIntegration
     var concernedEntityId = Guid.NewGuid();
     await setup.InsertEvents(
       new FirstDegreeConcernedEntityEventAboutInterestedEntity(concernedEntityId, interestedEntityId));
+    await setup.WaitFor<InterestedEntityRegisteredInterest>(
+      e => e.InterestedEntityStreamName == EntityThatIsInterested.GetStreamName(interestedEntityId),
+      InterestedEntityEntity.GetStreamName(
+        new InterestedEntityId(EntityThatIsInterested.GetStreamName(interestedEntityId))));
 
     var readModel = await setup.ReadModelWhen<EntityThatIsInterested, EntityThatDependsReadModel>(
       new StrongGuid(interestedEntityId),
@@ -78,14 +83,13 @@ public class CrossStreamFoldIntegration
     await setup.InsertEvents(new SecondDegreeConcernedEntityNamed(secondId, secondDegreeName));
 
     await setup.InsertEvents(new FirstDegreeStartedDependingOnSecondDegree(firstId, secondId));
-    await setup.WaitFor<InterestedEntityRegisteredInterest>(
-      InterestedEntityEntity.GetStreamName(new InterestedEntityId(FirstDegreeConcernedEntity.GetStreamName(firstId))),
-      e => e.InterestedEntityStreamName == FirstDegreeConcernedEntity.GetStreamName(firstId));
+    await setup.WaitFor<InterestedEntityRegisteredInterest>(e =>
+      e.InterestedEntityStreamName == FirstDegreeConcernedEntity.GetStreamName(firstId));
 
     await setup.InsertEvents(new InterestedEntityAddedAnInterest(interestedId, firstId));
     await setup.WaitFor<InterestedEntityRegisteredInterest>(
-      InterestedEntityEntity.GetStreamName(new InterestedEntityId(EntityThatIsInterested.GetStreamName(interestedId))),
-      e => e.InterestedEntityStreamName == EntityThatIsInterested.GetStreamName(interestedId));
+      e => e.InterestedEntityStreamName == EntityThatIsInterested.GetStreamName(interestedId),
+      InterestedEntityEntity.GetStreamName(new InterestedEntityId(EntityThatIsInterested.GetStreamName(interestedId))));
 
     var readModel = await setup.ReadModel<EntityThatDependsReadModel>(
       interestedId.ToString());
