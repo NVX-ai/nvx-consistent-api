@@ -29,8 +29,7 @@ public class CrossStreamFoldIntegration
     await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, Guid.NewGuid().ToString()));
 
     var moreTags = await setup.ReadModel<EntityThatDependsReadModel>(
-      interestedEntityId.ToString(),
-      waitType: ConsistencyWaitType.Long);
+      interestedEntityId.ToString());
     Assert.Equal(4, moreTags.DependedOnTags.Length);
     Assert.Contains(moreTags.DependedOnTags, t => t == tag);
 
@@ -60,9 +59,9 @@ public class CrossStreamFoldIntegration
     await setup.InsertEvents(
       new FirstDegreeConcernedEntityEventAboutInterestedEntity(concernedEntityId, interestedEntityId));
 
-    var readModel = await setup.ReadModel<EntityThatDependsReadModel>(
-      interestedEntityId.ToString(),
-      waitType: ConsistencyWaitType.Long);
+    var readModel = await setup.ReadModelWhen<EntityThatIsInterested, EntityThatDependsReadModel>(
+      new StrongGuid(interestedEntityId),
+      rm => rm.DependsOnIds.Contains(concernedEntityId));
     Assert.Empty(readModel.DependedOnTags);
     Assert.Contains(readModel.DependsOnIds, t => t == concernedEntityId);
   }
