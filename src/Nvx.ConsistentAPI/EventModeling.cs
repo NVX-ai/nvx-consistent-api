@@ -115,7 +115,7 @@ public class EventModel
 
   private TodoProcessor? processor;
   public EventModelingCommandArtifact[] Commands { private get; init; } = [];
-  public EventModelingReadModelArtifact[] ReadModels { private get; init; } = [];
+  public EventModelingReadModelArtifact[] ReadModels { internal get; init; } = [];
   public EventModelingProjectionArtifact[] Projections { private get; init; } = [];
   public TodoTaskDefinition[] Tasks { private get; init; } = [];
   public EntityDefinition[] Entities { private get; init; } = [];

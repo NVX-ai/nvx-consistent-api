@@ -151,7 +151,8 @@ public class TestSetup : IAsyncDisposable
   public async Task WaitFor<T>(T evt) where T : EventModelEvent =>
     await WaitFor<T>(evt.GetStreamName(), e => e.Equals(evt));
 
-  public async Task WaitFor<T>(string streamName, Func<T, bool> predicate, int? timeout = null) where T : EventModelEvent
+  public async Task WaitFor<T>(string streamName, Func<T, bool> predicate, int? timeout = null)
+    where T : EventModelEvent
   {
     var cancellationSource = new CancellationTokenSource();
     cancellationSource.CancelAfter(timeout ?? waitForCatchUpTimeout);
@@ -164,6 +165,7 @@ public class TestSetup : IAsyncDisposable
         return;
       }
     }
+
     Assert.Fail("Did not receive expected event.");
   }
 
@@ -288,6 +290,36 @@ public class TestSetup : IAsyncDisposable
       .WithOAuthBearerToken(CreateTestJwt(asAdmin ? "admin" : asUser))
       .GetStringAsync();
     return Serialization.Deserialize<PageResult<Rm>>(result)!;
+  }
+
+  public async Task<Rm> ReadModel<Ett, Rm>(StrongId id)
+    where Ett : EventModelEntity<Ett> where Rm : EventModelReadModel =>
+    (await ReadModels<Ett, Rm>(id)).Single();
+
+  public async Task<Rm[]> ReadModels<Ett, Rm>(StrongId id)
+    where Ett : EventModelEntity<Ett> where Rm : EventModelReadModel =>
+    Model.ReadModels.OfType<ReadModelDefinition<Rm, Ett>>().Single().Projector(await Fetch<Ett>(id)).ToArray();
+
+  public async Task<Rm> ReadModelWhen<Ett, Rm>(StrongId id, Func<Rm, bool> predicate)
+    where Ett : EventModelEntity<Ett> where Rm : EventModelReadModel
+  {
+    var timer = Stopwatch.StartNew();
+    while (true)
+    {
+      var rms = await ReadModels<Ett, Rm>(id);
+      var match = rms.FirstOrDefault(predicate);
+      if (match != null)
+      {
+        return match;
+      }
+
+      if (timer.ElapsedMilliseconds > waitForCatchUpTimeout)
+      {
+        Assert.Fail("Did not find read model matching predicate within timeout.");
+      }
+
+      await Task.Delay(50);
+    }
   }
 
   public async Task<Rm> ReadModel<Rm>(

@@ -47,7 +47,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
   public bool IsExposed { private get; init; } = true;
   public Action<OpenApiOperation> OpenApiCustomizer { private get; init; } = _ => { };
   public required string StreamPrefix { private get; init; }
-  public required Func<EntityShape, Shape[]> Projector { private get; init; }
+  public required Func<EntityShape, Shape[]> Projector { internal get; init; }
   public BuildCustomFilter CustomFilterBuilder { get; init; } = (_, _, _) => new CustomFilter(null, [], null);
   public required string AreaTag { private get; init; }
   public ReadModelDefaulter<Shape> Defaulter { get; init; } = (_, _, _) => None;
