@@ -61,6 +61,7 @@ public class TestSetup : IAsyncDisposable
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
   private readonly TestConsistencyStateManager consistencyStateManager;
   private readonly Fetcher fetcher;
+  private readonly EventModel.EventParser parser;
   private readonly int waitForCatchUpTimeout;
 
   internal TestSetup(
@@ -70,7 +71,8 @@ public class TestSetup : IAsyncDisposable
     EventModel model,
     int waitForCatchUpTimeout,
     TestConsistencyStateManager consistencyStateManager,
-    Fetcher fetcher)
+    Fetcher fetcher,
+    EventModel.EventParser parser)
   {
     Url = url;
     this.waitForCatchUpTimeout = waitForCatchUpTimeout;
@@ -79,6 +81,7 @@ public class TestSetup : IAsyncDisposable
     Model = model;
     this.consistencyStateManager = consistencyStateManager;
     this.fetcher = fetcher;
+    this.parser = parser;
   }
 
   public string Url { get; }
@@ -144,6 +147,25 @@ public class TestSetup : IAsyncDisposable
       .Match(
         e => e,
         () => throw FailException.ForFailure($"Could not find entity with id {id} of type {typeof(T).Name}"));
+
+  public async Task WaitFor<T>(T evt) where T : EventModelEvent =>
+    await WaitFor<T>(evt.GetStreamName(), e => e.Equals(evt));
+
+  public async Task WaitFor<T>(string streamName, Func<T, bool> predicate, int? timeout = null) where T : EventModelEvent
+  {
+    var cancellationSource = new CancellationTokenSource();
+    cancellationSource.CancelAfter(timeout ?? waitForCatchUpTimeout);
+    await foreach (var evt in EventStoreClient
+                     .SubscribeToStream(streamName, FromStream.Start)
+                     .WithCancellation(cancellationSource.Token))
+    {
+      if (parser(evt).Match(e => e is T t && predicate(t), () => false))
+      {
+        return;
+      }
+    }
+    Assert.Fail("Did not receive expected event.");
+  }
 
   public async Task<CommandAcceptedResult> UploadPath(string path)
   {
