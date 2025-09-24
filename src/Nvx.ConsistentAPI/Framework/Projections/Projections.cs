@@ -23,7 +23,7 @@ public abstract class
 
   public Task HandleEvent(
     ResolvedEvent evt,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    EventModel.EventParser parser,
     Fetcher fetcher,
     EventStoreClient client)
   {

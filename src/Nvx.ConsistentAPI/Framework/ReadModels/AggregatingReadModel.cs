@@ -65,7 +65,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
     WebApplication app,
     EventStoreClient esClient,
     Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    EventModel.EventParser parser,
     Emitter emitter,
     GeneratorSettings settings,
     ILogger logger,
@@ -168,7 +168,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   private async Task SubscribeToStream(
     EventStoreClient client,
     Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    EventModel.EventParser parser,
     DatabaseHandler<Shape> databaseHandler,
     string connectionString,
     TableDetails tableDetails,

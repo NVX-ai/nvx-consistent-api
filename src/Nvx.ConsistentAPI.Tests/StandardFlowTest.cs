@@ -60,6 +60,8 @@ public class StandardFlowTest
       })
       .Parallel();
 
+    await setup.WaitFor(new StockAdded(productId, 5), 20);
+
     const string validTag1 = "Cosmetics";
     const string validTag2 = "Food";
     await setup.Command(new AddStockTags(productId, [validTag1, validTag2, null]));

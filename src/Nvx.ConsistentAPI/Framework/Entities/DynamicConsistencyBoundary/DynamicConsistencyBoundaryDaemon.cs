@@ -7,7 +7,7 @@ namespace Nvx.ConsistentAPI;
 
 public class DynamicConsistencyBoundaryDaemon(
   EventStoreClient client,
-  Func<ResolvedEvent, Option<EventModelEvent>> parser,
+  EventModel.EventParser parser,
   InterestTrigger[] triggers,
   ILogger logger,
   InterestFetcher interestFetcher)
