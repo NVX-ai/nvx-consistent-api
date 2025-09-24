@@ -18,6 +18,7 @@ using Nvx.ConsistentAPI.Framework;
 using Testcontainers.Azurite;
 using Testcontainers.EventStoreDb;
 using Testcontainers.MsSql;
+using Xunit.Sdk;
 
 // ReSharper disable MemberCanBePrivate.Global
 
@@ -27,52 +28,6 @@ public delegate string TestUserByName(string name);
 
 public record TestAuth(string AdminSub, string CandoSub, TestUserByName ByName);
 
-internal static class InstanceTracking
-{
-  private static readonly SemaphoreSlim Semaphore = new(1);
-  private static readonly Dictionary<int, TestSetupHolder> Holders = new();
-
-  internal static async Task<TestSetup> Get(EventModel model, TestSettings? settings = null)
-  {
-    var hash = model.GetHashCode();
-    await Semaphore.WaitAsync();
-    var testSettings = settings ?? new TestSettings();
-    if (Holders.TryGetValue(hash, out var h))
-    {
-      Holders[hash] = h with { Count = h.Count + 1 };
-      Semaphore.Release();
-
-      await h.TestConsistencyStateManager.WaitForConsistency(
-        testSettings.WaitForCatchUpTimeout,
-        ConsistencyWaitType.Long);
-      return new TestSetup(
-        h.Url,
-        h.Auth,
-        h.EventStoreClient,
-        h.Model,
-        testSettings.WaitForCatchUpTimeout,
-        h.TestConsistencyStateManager);
-    }
-
-    var holder = await TestSetup.InitializeInternal(model, testSettings);
-    holder.Logger.LogInformation("Initialized test setup for {Hash}", hash);
-    Holders[hash] = holder;
-    Semaphore.Release();
-    await holder.TestConsistencyStateManager.WaitForConsistency(
-      testSettings.WaitForCatchUpTimeout,
-      ConsistencyWaitType.Long);
-    return new TestSetup(
-      holder.Url,
-      holder.Auth,
-      holder.EventStoreClient,
-      holder.Model,
-      testSettings.WaitForCatchUpTimeout,
-      holder.TestConsistencyStateManager);
-  }
-
-  internal static Task Dispose(int _) => Task.CompletedTask;
-}
-
 internal record TestSetupHolder(
   string Url,
   TestAuth Auth,
@@ -80,7 +35,8 @@ internal record TestSetupHolder(
   EventModel Model,
   int Count,
   ILogger Logger,
-  TestConsistencyStateManager TestConsistencyStateManager);
+  TestConsistencyStateManager TestConsistencyStateManager,
+  Fetcher Fetcher);
 
 internal record TestUser(string Sub, Claim[] Claims);
 
@@ -104,6 +60,7 @@ public class TestSetup : IAsyncDisposable
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
   private readonly TestConsistencyStateManager consistencyStateManager;
+  private readonly Fetcher fetcher;
   private readonly int waitForCatchUpTimeout;
 
   internal TestSetup(
@@ -112,7 +69,8 @@ public class TestSetup : IAsyncDisposable
     EventStoreClient eventStoreClient,
     EventModel model,
     int waitForCatchUpTimeout,
-    TestConsistencyStateManager consistencyStateManager)
+    TestConsistencyStateManager consistencyStateManager,
+    Fetcher fetcher)
   {
     Url = url;
     this.waitForCatchUpTimeout = waitForCatchUpTimeout;
@@ -120,6 +78,7 @@ public class TestSetup : IAsyncDisposable
     EventStoreClient = eventStoreClient;
     Model = model;
     this.consistencyStateManager = consistencyStateManager;
+    this.fetcher = fetcher;
   }
 
   public string Url { get; }
@@ -176,6 +135,15 @@ public class TestSetup : IAsyncDisposable
       .ReceiveJson<CommandAcceptedResult>();
     return result;
   }
+
+  public async Task<T> Fetch<T>(StrongId id) where T : EventModelEntity<T> =>
+    await fetcher
+      .Fetch<T>(id)
+      .Map(fr => fr.Ent)
+      .Async()
+      .Match(
+        e => e,
+        () => throw FailException.ForFailure($"Could not find entity with id {id} of type {typeof(T).Name}"));
 
   public async Task<CommandAcceptedResult> UploadPath(string path)
   {
@@ -559,7 +527,8 @@ public class TestSetup : IAsyncDisposable
       model,
       1,
       logger,
-      new TestConsistencyStateManager(eventStoreClient, app.ConsistencyCheck, logger));
+      new TestConsistencyStateManager(eventStoreClient, app.ConsistencyCheck, logger),
+      app.Fetcher);
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)
