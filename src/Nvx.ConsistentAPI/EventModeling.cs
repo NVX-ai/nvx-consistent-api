@@ -46,7 +46,7 @@ public interface EventModelingReadModelArtifact : Endpoint
     WebApplication app,
     EventStoreClient esClient,
     Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    EventModel.EventParser parser,
     Emitter emitter,
     GeneratorSettings settings,
     ILogger logger,
@@ -84,7 +84,7 @@ public interface EventModelingProjectionArtifact
 
   Task HandleEvent(
     ResolvedEvent evt,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    EventModel.EventParser parser,
     Fetcher fetcher,
     EventStoreClient client);
 }
@@ -153,7 +153,7 @@ public class EventModel
       InterestTriggers = InterestTriggers.Concat(other.InterestTriggers).ToArray()
     };
 
-  public async Task<(Fetcher fetcher, ConsistencyCheck consistencyCheck)> ApplyTo(
+  public async Task<(Fetcher fetcher, ConsistencyCheck consistencyCheck, EventParser parser)> ApplyTo(
     WebApplication app,
     GeneratorSettings settings,
     ILogger logger)
@@ -268,7 +268,7 @@ public class EventModel
       dcbDaemon,
       projectionDaemon);
 
-    return (fetcher, consistencyCheck);
+    return (fetcher, consistencyCheck, parser);
 
     static async Task TryActivateAdmin(Fetcher fetcher, GeneratorSettings settings, Emitter emitter)
     {
@@ -307,9 +307,11 @@ public class EventModel
     return re => parsersDictionary.TryGetValue(re.Event.EventType, out var parser) ? parser(re) : None;
   }
 
-  private static Func<ResolvedEvent, Option<EventModelEvent>> Parser()
+  public delegate Option<EventModelEvent> EventParser(ResolvedEvent resolvedEvent);
+
+  private static EventParser Parser()
   {
-    return AllEventModelEventShapes().Select(ParserBuilder.Build).ToArray().Apply(Compose);
+    return re => AllEventModelEventShapes().Select(ParserBuilder.Build).ToArray().Apply(Compose)(re);
 
     static IEnumerable<Type> AllEventModelEventShapes()
     {

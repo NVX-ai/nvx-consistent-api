@@ -79,7 +79,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
     WebApplication app,
     EventStoreClient esClient,
     Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    EventModel.EventParser parser,
     Emitter emitter,
     GeneratorSettings settings,
     ILogger logger,
@@ -136,7 +136,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
   private async Task Subscribe(
     EventStoreClient client,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    EventModel.EventParser parser,
     DatabaseHandler<Shape> databaseHandler,
     ILogger logger,
     string modelHash,
@@ -307,7 +307,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
   private async Task Initialize(
     EventStoreClient client,
     Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
+    EventModel.EventParser parser,
     DatabaseHandler<Shape> databaseHandler,
     GeneratorSettings settings,
     string modelHash,
