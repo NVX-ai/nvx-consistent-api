@@ -220,6 +220,39 @@ public class TestSetup : IAsyncDisposable
     Assert.Fail("Did not receive expected event.");
   }
 
+  /// <summary>
+  /// Waits for an integration related to an entity to run.
+  /// </summary>
+  /// <param name="entityId">The inline *entity id*, *not the stream name*.</param>
+  /// <param name="taskName">The name of the task.</param>
+  /// <param name="times">How many tasks are expected to complete.</param>
+  public async Task WaitForTodo(string entityId, string taskName, int times = 1)
+  {
+    var sql =
+      $"""
+       SELECT COUNT(1) 
+       FROM {TodoProcessor.TableName}
+       WHERE [RelatedEntityId] = @entityId
+         AND [CompletedAt] IS NOT NULL
+         AND [Name] = @taskName
+       """;
+    var timer = Stopwatch.StartNew();
+    while (true)
+    {
+      await using var connection = new SqlConnection(readModelConnectionString);
+      var count = await connection.QueryFirstAsync<int>(sql, new { entityId, taskName });
+      if (count >= times)
+      {
+        return;
+      }
+
+      if (timer.ElapsedMilliseconds > waitForCatchUpTimeout)
+      {
+        Assert.Fail("Did not find completed todo within timeout.");
+      }
+    }
+  }
+
   public async Task<CommandAcceptedResult> UploadPath(string path)
   {
     var result = await $"{Url}/files/upload"
@@ -711,33 +744,6 @@ public class TestSetup : IAsyncDisposable
         )));
 
   private static SecurityKey[] CreateTestSecurityKey() => [SigningCredentials.Key];
-
-  public async Task WaitForTodo(string entityId, string taskName, int times = 1)
-  {
-    var sql =
-      $"""
-       SELECT COUNT(1) 
-       FROM {TodoProcessor.TableName}
-       WHERE [RelatedEntityId] = @entityId
-         AND [CompletedAt] IS NOT NULL
-         AND [Name] = @taskName
-       """;
-    var timer = Stopwatch.StartNew();
-    while (true)
-    {
-      await using var connection = new SqlConnection(readModelConnectionString);
-      var count = await connection.QueryFirstAsync<int>(sql, new { entityId, taskName });
-      if (count >= times)
-      {
-        return;
-      }
-
-      if (timer.ElapsedMilliseconds > waitForCatchUpTimeout)
-      {
-        Assert.Fail("Did not find completed todo within timeout.");
-      }
-    }
-  }
 }
 
 public class TestSettings
