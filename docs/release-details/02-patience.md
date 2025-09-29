@@ -10,5 +10,7 @@ It doesn't await for any kind of consistency, as is meant to be used after the e
 `ReadModelWhen` will use the new in memory overload to wait for a read model to satisfy a predicate.
 ## Fetching
 `Fetch` allows for direct entity fetching in the integration tests.
+## Wait for ToDo
+`WaitForTodo` allows developers to wait for a todo task to execute successfully related to an entity.
 
 This will allow for precision-waiting in integration tests that depend on tasks being executed and projections happening.
