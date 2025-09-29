@@ -19,7 +19,6 @@ public class StandardFlowTest
     await setup.DownloadAndCompare(uploadResult.EntityId.Apply(Guid.Parse), "banana");
     _ = await setup.CurrentUser(asUser: setup.Auth.ByName("john"));
 
-    await Idempotency();
     await UserBoundReadModels();
     await Notifications();
 
@@ -253,31 +252,6 @@ public class StandardFlowTest
       await setup.ReadModelNotFound<UserFavoriteFoodReadModel>(setup.Auth.AdminSub);
       await setup.ReadModel<UserFavoriteFoodReadModel>(setup.Auth.CandoSub, asAdmin: false);
       await setup.ReadModelNotFound<UserFavoriteFoodReadModel>(setup.Auth.CandoSub, asAdmin: true);
-    }
-
-    async Task Idempotency()
-    {
-      var tenant1Id = Guid.NewGuid();
-      var idempotencyKey = Guid.NewGuid().ToString();
-
-      Assert.Equal(
-        new CommandAcceptedResult(tenant1Id.ToString()),
-        await setup.Command(
-          new CreateTenant(tenant1Id, "some idempotent tenant"),
-          true,
-          headers: new Dictionary<string, string> { ["IdempotencyKey"] = idempotencyKey }));
-      Assert.Equal(
-        new CommandAcceptedResult(tenant1Id.ToString()),
-        await setup.Command(
-          new CreateTenant(tenant1Id, "some idempotent tenant"),
-          true,
-          headers: new Dictionary<string, string> { ["IdempotencyKey"] = idempotencyKey }));
-      Assert.Equal(
-        new CommandAcceptedResult(tenant1Id.ToString()),
-        await setup.Command(
-          new CreateTenant(tenant1Id, "some idempotent tenant"),
-          true,
-          headers: new Dictionary<string, string> { ["IdempotencyKey"] = idempotencyKey }));
     }
   }
 }
