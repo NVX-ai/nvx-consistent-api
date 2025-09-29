@@ -2,7 +2,7 @@
 
 public class IdempotencyTest
 {
-  [Fact]
+  [Fact(DisplayName = "Commands with an idempotency key are run only the first time")]
   public async Task Test()
   {
     await using var setup = await Initializer.Do();
