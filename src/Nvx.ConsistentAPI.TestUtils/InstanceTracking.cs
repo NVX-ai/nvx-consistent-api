@@ -28,7 +28,8 @@ internal static class InstanceTracking
         testSettings.WaitForCatchUpTimeout,
         h.TestConsistencyStateManager,
         h.Fetcher,
-        h.Parser);
+        h.Parser,
+        h.ReadModelsConnectionString);
     }
 
     var holder = await TestSetup.InitializeInternal(model, testSettings);
@@ -46,7 +47,8 @@ internal static class InstanceTracking
       testSettings.WaitForCatchUpTimeout,
       holder.TestConsistencyStateManager,
       holder.Fetcher,
-      holder.Parser);
+      holder.Parser,
+      holder.ReadModelsConnectionString);
   }
 
   internal static Task Dispose(int _) => Task.CompletedTask;

@@ -37,7 +37,8 @@ internal record TestSetupHolder(
   ILogger Logger,
   TestConsistencyStateManager TestConsistencyStateManager,
   Fetcher Fetcher,
-  EventModel.EventParser Parser);
+  EventModel.EventParser Parser,
+  string ReadModelsConnectionString);
 
 internal record TestUser(string Sub, Claim[] Claims);
 
@@ -63,6 +64,7 @@ public class TestSetup : IAsyncDisposable
   private readonly TestConsistencyStateManager consistencyStateManager;
   private readonly Fetcher fetcher;
   private readonly EventModel.EventParser parser;
+  private readonly string readModelConnectionString;
   private readonly int waitForCatchUpTimeout;
 
   internal TestSetup(
@@ -73,7 +75,8 @@ public class TestSetup : IAsyncDisposable
     int waitForCatchUpTimeout,
     TestConsistencyStateManager consistencyStateManager,
     Fetcher fetcher,
-    EventModel.EventParser parser)
+    EventModel.EventParser parser,
+    string readModelConnectionString)
   {
     Url = url;
     this.waitForCatchUpTimeout = waitForCatchUpTimeout;
@@ -83,6 +86,7 @@ public class TestSetup : IAsyncDisposable
     this.consistencyStateManager = consistencyStateManager;
     this.fetcher = fetcher;
     this.parser = parser;
+    this.readModelConnectionString = readModelConnectionString;
   }
 
   public string Url { get; }
@@ -593,13 +597,13 @@ public class TestSetup : IAsyncDisposable
 
     try
     {
+      return Go(GetRandomPort());
+
       int Go(int pn)
       {
         var isTaken = GetConnectionInfo().Any(ci => ci.LocalEndPoint.Port == pn);
         return isTaken ? Go(GetRandomPort()) : pn;
       }
-
-      return Go(GetRandomPort());
     }
     finally
     {
@@ -670,7 +674,8 @@ public class TestSetup : IAsyncDisposable
       logger,
       new TestConsistencyStateManager(eventStoreClient, app.ConsistencyCheck, logger),
       app.Fetcher,
-      app.Parser);
+      app.Parser,
+      sqlCs);
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)
@@ -706,6 +711,33 @@ public class TestSetup : IAsyncDisposable
         )));
 
   private static SecurityKey[] CreateTestSecurityKey() => [SigningCredentials.Key];
+
+  public async Task WaitForTodo(string entityId, string taskName)
+  {
+    var sql =
+      $"""
+       SELECT COUNT(1) 
+       FROM {TodoProcessor.TableName}
+       WHERE [RelatedEntityId] = @entityId
+         AND [CompletedAt] IS NOT NULL
+         AND [Name] = @taskName
+       """;
+    var timer = Stopwatch.StartNew();
+    while (true)
+    {
+      await using var connection = new SqlConnection(readModelConnectionString);
+      var count = await connection.QueryFirstAsync<int>(sql, new { entityId, taskName });
+      if (count > 0)
+      {
+        return;
+      }
+
+      if (timer.ElapsedMilliseconds > waitForCatchUpTimeout)
+      {
+        Assert.Fail("Did not find completed todo within timeout.");
+      }
+    }
+  }
 }
 
 public class TestSettings

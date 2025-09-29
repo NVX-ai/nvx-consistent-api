@@ -47,7 +47,9 @@ public class StandardFlowTest
     await setup.Command(new RemoveValidationRule("create-product", "[\"error\"]"), true);
     await setup.Command(new RemoveValidationRule("create-product", "[\"error 2\"]"), true);
     await setup.Command(new RemoveValidationRule("create-product", "[\"error 3\"]"), true);
-    await setup.Command(new CreateProduct(Guid.NewGuid(), "banana", null));
+    var bananaId = Guid.NewGuid();
+    await setup.Command(new CreateProduct(bananaId, "banana", null));
+    await setup.WaitForTodo(bananaId.ToString(), "announce-new-product");
 
     // Basic command handling and entity projection.
     await setup.ReadModelNotFound<ProductStock>(productId.ToString());
