@@ -712,7 +712,7 @@ public class TestSetup : IAsyncDisposable
 
   private static SecurityKey[] CreateTestSecurityKey() => [SigningCredentials.Key];
 
-  public async Task WaitForTodo(string entityId, string taskName)
+  public async Task WaitForTodo(string entityId, string taskName, int times = 1)
   {
     var sql =
       $"""
@@ -727,7 +727,7 @@ public class TestSetup : IAsyncDisposable
     {
       await using var connection = new SqlConnection(readModelConnectionString);
       var count = await connection.QueryFirstAsync<int>(sql, new { entityId, taskName });
-      if (count > 0)
+      if (count >= times)
       {
         return;
       }
