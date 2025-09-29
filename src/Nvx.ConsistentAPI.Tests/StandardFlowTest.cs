@@ -81,12 +81,12 @@ public class StandardFlowTest
     // fails occasionally, and it takes at least 25 seconds to recover, so this starts now and is verified at the end.
     // The test is technically flaky, but the chances of failure are abyssal.
     var wordInTheProductName = Guid.NewGuid().ToString().ToLowerInvariant();
-    await Enumerable
-      .Range(0, 98)
-      .Select<int, Func<Task<Unit>>>(_ => async () =>
+    var productIds = Enumerable.Range(0, 98).Select(_ => Guid.NewGuid()).ToArray();
+    await productIds
+      .Select<Guid, Func<Task<Unit>>>(id => async () =>
       {
         await setup.Command(
-          new CreateProduct(Guid.NewGuid(), $"{wordInTheProductName} {productId} {Guid.NewGuid()}", null));
+          new CreateProduct(id, $"{wordInTheProductName} {productId} {Guid.NewGuid()}", null));
         return unit;
       })
       .Parallel(25);
@@ -185,16 +185,22 @@ public class StandardFlowTest
     Assert.Equal("cando", canDoUser.Name);
     Assert.Equal("cando@testdomain.com", canDoUser.Email);
 
+    await productIds
+      .Select<Guid, Func<Task<Unit>>>(id => async () =>
+      {
+        await setup.WaitForTodo(id.ToString(), "announce-new-product");
+        return unit;
+      })
+      .Parallel();
+
     var aggregated1 = await setup
       .ReadModels<AggregatingStockReadModel>(
-        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [wordInTheProductName] } },
-        waitType: ConsistencyWaitType.Long);
+        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [wordInTheProductName] } });
     Assert.Equal(50, aggregated1.Items.Count());
     Assert.Equal(98, aggregated1.Total);
 
     var otherProductId = Guid.Parse(aggregated1.Items.First().Id);
     await setup.Command(new HideAggregatingProduct(otherProductId));
-    await setup.WaitForConsistency(ConsistencyWaitType.Long);
 
     var afterHiding = await setup
       .ReadModels<AggregatingStockReadModel>(
@@ -203,7 +209,6 @@ public class StandardFlowTest
     Assert.Equal(97, afterHiding.Total);
 
     await setup.Command(new ShowAggregatingProduct(otherProductId));
-    await setup.WaitForConsistency(ConsistencyWaitType.Long);
 
     var afterShowingAgain = await setup
       .ReadModels<AggregatingStockReadModel>(
