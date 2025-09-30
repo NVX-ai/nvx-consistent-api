@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.Framework.Projections.Model;
 using Nvx.ConsistentAPI.InternalTooling;
+using Nvx.ConsistentAPI.Metrics;
 
 namespace Nvx.ConsistentAPI.Framework.Projections;
 
@@ -161,6 +162,10 @@ public class ProjectionDaemon(
             continue;
           }
 
+          logger.LogInformation(
+            "Catching up projections {ProjectionsBehind}, current position {Position}",
+            projectionsBehind,
+            position);
           var projectorsBehind = projectors.Where(p => projectionsBehind.Contains(p.Name)).ToArray();
           await foreach (var evt in client.ReadAllAsync(
                            Direction.Forwards,
@@ -175,6 +180,7 @@ public class ProjectionDaemon(
                 {
                   continue;
                 }
+                using var _ = new RunningProjectionCountTracker(projector.Name);
                 await projector.HandleEvent(evt, parser, fetcher, client);
                 Interlocked.Increment(ref projectedCount);
               }
@@ -209,6 +215,7 @@ public class ProjectionDaemon(
       }
 
       catchingUp = [];
+      logger.LogInformation("Caught up all projections");
     }
 
     async Task Subscribe()

@@ -173,6 +173,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
     const int streamCacheSize = 500_000;
     var streams = new Dictionary<string, DateTime>();
+    PrometheusMetrics.AddReadModelItemsCached(ShapeType.Name, 0);
     while (!isUpToDate)
     {
       try
@@ -181,6 +182,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
         using var activity = PrometheusMetrics.Source.StartActivity("ReadModelHydration");
         activity?.SetTag("read-model.hydration.name", ShapeType.Name);
         activity?.SetTag("read-model.hydration.kind", "direct");
+        logger.LogInformation("Catching up to {StreamPrefix} for read model {ShapeType}", StreamPrefix, ShapeType);
         using var _ = new HydrationCountTracker();
         var checkpoint = await databaseHandler.Checkpoint();
         lastProcessedEventPosition = lastCheckpointPosition =
@@ -197,6 +199,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
           {
             case StreamMessage.Event(var evt):
             {
+              PrometheusMetrics.AddReadModelEventsProcessed(ShapeType.Name);
               if (streams.TryGetValue(evt.Event.EventStreamId, out var _))
               {
                 lastProcessedEventPosition = evt.Event.Position.CommitPosition;
@@ -221,6 +224,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
                   streams.Remove(key);
                 }
               }
+              PrometheusMetrics.AddReadModelItemsCached(ShapeType.Name, streams.Count);
 
               break;
             }
@@ -234,6 +238,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
         }
 
         isUpToDate = true;
+        logger.LogInformation("Catching up to {StreamPrefix} for read model {ShapeType} completed", StreamPrefix, ShapeType);
         await databaseHandler.MarkAsUpToDate();
       }
       catch (Exception ex)

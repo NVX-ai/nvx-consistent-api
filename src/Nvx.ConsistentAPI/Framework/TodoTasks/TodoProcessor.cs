@@ -326,13 +326,13 @@ internal class TodoProcessor
     async () =>
     {
       using var activity = PrometheusMetrics.Source.StartActivity(nameof(TodoProcessor));
-      using var _ = new RunningTodoCountTracker();
       try
       {
         // Await for all relevant read models to be up-to-date.
         if (t.definition.DependingReadModels.All(_ => ReadModels.All(rm => rm.IsUpToDate(t.todo.EventPosition)))
             && await HydrationDaemon.IsUpToDate(t.todo.EventPosition))
         {
+          using var _ = new RunningTodoCountTracker(t.todo.Name);
           return await TryFetch()
             .Option
             .Bind(fetchResult => fetchResult.Ent.Map(entity => (entity, fetchResult.Revision)))
@@ -370,6 +370,7 @@ internal class TodoProcessor
       catch (Exception ex)
       {
         activity?.SetTag("todo.result", "failure");
+        using var _ = new FailedTodoCountTracker(t.todo.Name);
         if (t.todo.RetryCount == ProcessorEntity.MaxAttempts - 1)
         {
           Logger.LogCritical(
@@ -424,6 +425,7 @@ internal class TodoProcessor
       Task<Unit> Complete()
       {
         var now = DateTime.UtcNow;
+        using var _ = new CompletedTodoCountTracker(t.todo.Name);
         return Emitter
           .Emit(() => new AnyState(new TodoCompleted(t.todo.Id.Apply(Guid.Parse), now)))
           .Async()

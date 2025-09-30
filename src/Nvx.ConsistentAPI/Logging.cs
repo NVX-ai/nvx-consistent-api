@@ -49,9 +49,41 @@ internal static class PrometheusMetrics
   internal static readonly UpDownCounter<int> CatchUpHydration =
     Meter.CreateUpDownCounter<int>("read_models.catching_up");
 
-  internal static readonly UpDownCounter<int> RunningTodos =
-    Meter.CreateUpDownCounter<int>("todo_tasks.running_todos");
-
   internal static readonly UpDownCounter<int> RunningTodoBatch =
     Meter.CreateUpDownCounter<int>("todo_tasks.running_todo_batch");
+
+  private static readonly Counter<int> ReadModelEventsProcessedCounter =
+    Meter.CreateCounter<int>("read_models.events_processed_total");
+  internal static void AddReadModelEventsProcessed(string readModelName) =>
+    ReadModelEventsProcessedCounter.Add(1, new TagList { { "readmodel", readModelName } });
+
+  private static readonly Counter<int> ReadModelItemsCached =
+    Meter.CreateCounter<int>("read_models.items_cached_total");
+  
+  internal static void AddReadModelItemsCached(string readModelName, int delta) =>
+    ReadModelItemsCached.Add(delta, new TagList { { "readmodel", readModelName } });
+  
+  private static readonly Counter<int> RunningTodos =
+    Meter.CreateCounter<int>("todo_tasks.running_todos");
+
+  internal static void AddRunnningTodoCount(string name) =>
+    RunningTodos.Add(1, new TagList { { "name", name } });
+  
+  private static readonly Counter<int> FailedTodos =
+    Meter.CreateCounter<int>("todo_tasks.failed_todos");
+
+  internal static void AddFailedTodoCount(string name) =>
+    FailedTodos.Add(1, new TagList { { "name", name } });
+  
+  private static readonly Counter<int> CompletedTodos =
+    Meter.CreateCounter<int>("todo_tasks.completed_todos");
+
+  internal static void AddCompletedTodoCount(string name) =>
+    CompletedTodos.Add(1, new TagList { { "name", name } });
+  
+  private static readonly Counter<int> RunningProjections =
+    Meter.CreateCounter<int>("projections.running_projections");
+
+  internal static void AddRunningProjectionsCount(string name) =>
+    RunningProjections.Add(1, new TagList { { "name", name } });
 }

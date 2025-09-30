@@ -224,6 +224,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
           {
             case StreamMessage.Event(var evt):
             {
+              PrometheusMetrics.AddReadModelEventsProcessed(ShapeType.Name);
               var parsed = parser(evt);
               var relevantAggregators = Aggregators.Where(a => a.Processes(parsed)).ToArray();
               var canBeAggregated = relevantAggregators.Length != 0;

@@ -1,11 +1,11 @@
 ﻿namespace Nvx.ConsistentAPI.Metrics;
 
-public class RunningTodoCountTracker : IDisposable
+public class CompletedTodoCountTracker : IDisposable
 {
   private static readonly object DisposeLock = new();
   private bool isDisposed;
 
-  public RunningTodoCountTracker(string name) => PrometheusMetrics.AddRunnningTodoCount(name);
+  public CompletedTodoCountTracker(string name) => PrometheusMetrics.AddCompletedTodoCount(name);
 
   public void Dispose()
   {
