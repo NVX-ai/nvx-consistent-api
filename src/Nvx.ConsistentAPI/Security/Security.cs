@@ -205,7 +205,6 @@ public static class FrameworkSecurity
     from tenants in AvailableTenants(user, auth).Apply(Ok<Guid[], ApiError>).ToTask().Async()
     select user.Map(u => (u, tenants));
 
-
   private static AsyncResult<Option<UserSecurity>, ApiError> FetchUser(
     Fetcher fetcher,
     Option<StrongString> subjectId) =>
