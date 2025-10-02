@@ -188,6 +188,7 @@ public class EventModel
       settings,
       logger);
     await projectionDaemon.Initialize();
+    logger.LogInformation("Projection daemon initialized");
 
     var modelHash = Convert.ToBase64String(
       SHA256.HashData(
@@ -201,7 +202,7 @@ public class EventModel
     }
 
     runner.Initialize(RecurringTasks, fetcher, emitter, settings, logger);
-
+    logger.LogInformation("Recurring tasks runner initialized");
 
     await TryActivateAdmin(fetcher, settings, emitter);
 
@@ -227,6 +228,7 @@ public class EventModel
       modelHash);
 
     await hydrationDaemon.Initialize();
+    logger.LogInformation("Read model hydration daemon initialized");
 
     processor = new TodoProcessor
     {
@@ -243,6 +245,7 @@ public class EventModel
 
     var dcbDaemon = new DynamicConsistencyBoundaryDaemon(esClient, parser, InterestTriggers, logger, interestFetcher);
     dcbDaemon.Initialize();
+    logger.LogInformation("Dynamic Consistency Boundary Daemon initialized");
 
     CatchUp.Endpoint(ReadModels, hydrationDaemon, settings, fetcher, emitter, app);
     PreHydrationCompleted.Endpoint(ReadModels, hydrationDaemon, settings, fetcher, emitter, app);
@@ -267,6 +270,7 @@ public class EventModel
       esClient,
       dcbDaemon,
       projectionDaemon);
+    logger.LogInformation("Consistency checks completed");
 
     return (fetcher, consistencyCheck, parser);
 

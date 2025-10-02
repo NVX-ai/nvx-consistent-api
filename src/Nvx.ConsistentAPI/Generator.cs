@@ -362,11 +362,15 @@ public static class Generator
             .MinimumLevel
             .Override("Nvx.ConsistentAPI", Map(settings.LoggingSettings.LogLevel))
             .Enrich.FromLogContext()
-            .WriteTo
-            .File(
+            .Filter.ByExcluding(logEvent =>
+              logEvent.Properties.TryGetValue("RequestPath", out var pathValue) &&
+              pathValue.ToString().Contains("/metrics"))
+            .WriteTo.File(
               Path.Combine(settings.LoggingSettings.LogsFolder, "log-.log"),
               rollingInterval: settings.LoggingSettings.LogFileRollInterval.ToSerilog(),
               retainedFileTimeLimit: TimeSpan.FromDays(settings.LoggingSettings.LogDaysToKeep))
+            .WriteTo.Conditional(_ => settings.LoggingSettings.UseConsoleLogger
+              , wt => wt.Console(restrictedToMinimumLevel: Map(settings.LoggingSettings.LogLevel)))
             .CreateLogger());
       });
     }

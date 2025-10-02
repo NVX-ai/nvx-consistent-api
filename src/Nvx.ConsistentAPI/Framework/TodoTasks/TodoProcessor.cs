@@ -326,7 +326,6 @@ internal class TodoProcessor
     async () =>
     {
       using var activity = PrometheusMetrics.Source.StartActivity(nameof(TodoProcessor));
-      using var _ = new RunningTodoCountTracker();
       try
       {
         // Await for all relevant read models to be up-to-date.
@@ -338,7 +337,11 @@ internal class TodoProcessor
             .Bind(fetchResult => fetchResult.Ent.Map(entity => (entity, fetchResult.Revision)))
             .Iter(async tuple =>
               await RequestLock(tuple.entity, tuple.Revision)
-                .Bind(_ => Emitter.Emit(Decider).Async().Map(_ => unit))
+                .Bind(_ =>
+                {
+                  PrometheusMetrics.AddRunnningTodoCount(t.todo.Name);
+                  return Emitter.Emit(Decider).Async().Map(_ => unit);
+                })
                 .Match(_ => Complete(), e => e.Match(ErrorApi, Outcome))
             );
         }
@@ -372,6 +375,7 @@ internal class TodoProcessor
         activity?.SetTag("todo.result", "failure");
         if (t.todo.RetryCount == ProcessorEntity.MaxAttempts - 1)
         {
+          PrometheusMetrics.AddFailedTodoCount(t.todo.Name);
           Logger.LogCritical(
             ex,
             @"Failed processing todo:\n{Todo}\nFor task {TaskType} after {RetryLimit} retries, it will not run again",
@@ -381,6 +385,7 @@ internal class TodoProcessor
         }
         else
         {
+          PrometheusMetrics.AddFailedRetryTodoCount(t.todo.Name);
           Logger.LogError(
             ex,
             @"Failed processing todo:\n{Todo}\nFor task {TaskType}",
@@ -421,13 +426,15 @@ internal class TodoProcessor
           .MapError(_ => TodoOutcome.Locked)
           .Apply(Elevate);
 
-      Task<Unit> Complete()
+      async Task<Unit> Complete()
       {
         var now = DateTime.UtcNow;
-        return Emitter
+        var result = await Emitter
           .Emit(() => new AnyState(new TodoCompleted(t.todo.Id.Apply(Guid.Parse), now)))
           .Async()
           .Match(_ => unit, _ => unit);
+        PrometheusMetrics.AddRunnningTodoCount(t.todo.Name);
+        return result;
       }
 
       Task<Unit> Release() =>
