@@ -75,6 +75,12 @@ internal static class PrometheusMetrics
   internal static void AddFailedTodoCount(string name) =>
     FailedTodos.Add(1, new TagList { { "name", name } });
   
+  private static readonly Counter<int> FailedRetryTodos =
+    Meter.CreateCounter<int>("todo_tasks.failed_retry_todos");
+
+  internal static void AddFailedRetryTodoCount(string name) =>
+    FailedRetryTodos.Add(1, new TagList { { "name", name } });
+  
   private static readonly Counter<int> CompletedTodos =
     Meter.CreateCounter<int>("todo_tasks.completed_todos");
 
