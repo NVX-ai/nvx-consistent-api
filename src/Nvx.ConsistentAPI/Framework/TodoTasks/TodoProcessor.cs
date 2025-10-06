@@ -226,7 +226,7 @@ internal class TodoProcessor
 
   private readonly List<RunningTodoTaskInsight> runningTodoTasks = [];
 
-  internal static readonly string TableName =
+  private readonly string tableName =
     DatabaseHandler<TodoEventModelReadModel>.TableName(typeof(TodoEventModelReadModel));
 
   public required GeneratorSettings Settings { private get; init; }
@@ -594,7 +594,7 @@ internal class TodoProcessor
              [EventPosition],
              [RetryCount],
              [IsFailed]
-         FROM [{TableName}]
+         FROM [{tableName}]
          WHERE
              ([StartsAt] <= @aMinuteAgo)
              AND [ExpiresAt] > @now
@@ -638,7 +638,7 @@ internal class TodoProcessor
               [EventPosition],
               [RetryCount],
               [IsFailed]
-          FROM [{TableName}]
+          FROM [{tableName}]
           WHERE
               [StartsAt] <= @now
               AND [ExpiresAt] > @now

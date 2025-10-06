@@ -18,7 +18,6 @@ using Nvx.ConsistentAPI.Framework;
 using Testcontainers.Azurite;
 using Testcontainers.EventStoreDb;
 using Testcontainers.MsSql;
-using Xunit.Sdk;
 
 // ReSharper disable MemberCanBePrivate.Global
 
@@ -28,6 +27,52 @@ public delegate string TestUserByName(string name);
 
 public record TestAuth(string AdminSub, string CandoSub, TestUserByName ByName);
 
+internal static class InstanceTracking
+{
+  private static readonly SemaphoreSlim Semaphore = new(1);
+  private static readonly Dictionary<int, TestSetupHolder> Holders = new();
+
+  internal static async Task<TestSetup> Get(EventModel model, TestSettings? settings = null)
+  {
+    var hash = model.GetHashCode();
+    await Semaphore.WaitAsync();
+    var testSettings = settings ?? new TestSettings();
+    if (Holders.TryGetValue(hash, out var h))
+    {
+      Holders[hash] = h with { Count = h.Count + 1 };
+      Semaphore.Release();
+
+      await h.TestConsistencyStateManager.WaitForConsistency(
+        testSettings.WaitForCatchUpTimeout,
+        ConsistencyWaitType.Long);
+      return new TestSetup(
+        h.Url,
+        h.Auth,
+        h.EventStoreClient,
+        h.Model,
+        testSettings.WaitForCatchUpTimeout,
+        h.TestConsistencyStateManager);
+    }
+
+    var holder = await TestSetup.InitializeInternal(model, testSettings);
+    holder.Logger.LogInformation("Initialized test setup for {Hash}", hash);
+    Holders[hash] = holder;
+    Semaphore.Release();
+    await holder.TestConsistencyStateManager.WaitForConsistency(
+      testSettings.WaitForCatchUpTimeout,
+      ConsistencyWaitType.Long);
+    return new TestSetup(
+      holder.Url,
+      holder.Auth,
+      holder.EventStoreClient,
+      holder.Model,
+      testSettings.WaitForCatchUpTimeout,
+      holder.TestConsistencyStateManager);
+  }
+
+  internal static Task Dispose(int _) => Task.CompletedTask;
+}
+
 internal record TestSetupHolder(
   string Url,
   TestAuth Auth,
@@ -35,10 +80,7 @@ internal record TestSetupHolder(
   EventModel Model,
   int Count,
   ILogger Logger,
-  TestConsistencyStateManager TestConsistencyStateManager,
-  Fetcher Fetcher,
-  EventModel.EventParser Parser,
-  string ReadModelsConnectionString);
+  TestConsistencyStateManager TestConsistencyStateManager);
 
 internal record TestUser(string Sub, Claim[] Claims);
 
@@ -62,9 +104,6 @@ public class TestSetup : IAsyncDisposable
 
   private static readonly ConcurrentDictionary<string, string> Tokens = new();
   private readonly TestConsistencyStateManager consistencyStateManager;
-  private readonly Fetcher fetcher;
-  private readonly EventModel.EventParser parser;
-  private readonly string readModelConnectionString;
   private readonly int waitForCatchUpTimeout;
 
   internal TestSetup(
@@ -73,10 +112,7 @@ public class TestSetup : IAsyncDisposable
     EventStoreClient eventStoreClient,
     EventModel model,
     int waitForCatchUpTimeout,
-    TestConsistencyStateManager consistencyStateManager,
-    Fetcher fetcher,
-    EventModel.EventParser parser,
-    string readModelConnectionString)
+    TestConsistencyStateManager consistencyStateManager)
   {
     Url = url;
     this.waitForCatchUpTimeout = waitForCatchUpTimeout;
@@ -84,9 +120,6 @@ public class TestSetup : IAsyncDisposable
     EventStoreClient = eventStoreClient;
     Model = model;
     this.consistencyStateManager = consistencyStateManager;
-    this.fetcher = fetcher;
-    this.parser = parser;
-    this.readModelConnectionString = readModelConnectionString;
   }
 
   public string Url { get; }
@@ -142,115 +175,6 @@ public class TestSetup : IAsyncDisposable
       )
       .ReceiveJson<CommandAcceptedResult>();
     return result;
-  }
-
-  /// <summary>
-  ///   Fetches an entity of type T with the given id, or throws if not found.
-  /// </summary>
-  /// <param name="id">Entity id</param>
-  /// <typeparam name="T">Entity type</typeparam>
-  /// <returns>The entity</returns>
-  /// <exception cref="FailException">Thrown if the entity is not found</exception>
-  public async Task<T> Fetch<T>(StrongId id) where T : EventModelEntity<T> =>
-    await fetcher
-      .Fetch<T>(id)
-      .Map(fr => fr.Ent)
-      .Async()
-      .Match(
-        e => e,
-        () => throw FailException.ForFailure($"Could not find entity with id {id} of type {typeof(T).Name}"));
-
-  /// <summary>
-  ///   Waits for a [times] amount of events that evaluate equal to the given event to appear in the event store.
-  /// </summary>
-  /// <param name="evt">The event to wait for</param>
-  /// <param name="times">How many times the event should appear</param>
-  /// <param name="timeout">How long to wait before giving up</param>
-  /// <typeparam name="T">The event type</typeparam>
-  /// <returns>A task that completes when the event(s) are seen, or fails if the timeout is reached</returns>
-  /// <exception cref="FailException">Thrown if the event is not seen in time</exception>
-  public async Task WaitFor<T>(T evt, int times = 1, TimeSpan? timeout = null) where T : EventModelEvent =>
-    await WaitFor<T>(e => e.Equals(evt), evt.GetStreamName(), times, timeout);
-
-  /// <summary>
-  ///   Waits for a [times] amount of events that match the given predicate to appear in the event store.
-  /// </summary>
-  /// <param name="predicate">Predicate to match events</param>
-  /// <param name="streamName">Optional stream name to filter on</param>
-  /// <param name="times">How many times the event should appear</param>
-  /// <param name="timeout">How long to wait before giving up</param>
-  /// <typeparam name="T">The event type</typeparam>
-  /// <returns>A task that completes when the event(s) are seen, or fails if the timeout is reached</returns>
-  /// <exception cref="FailException">Thrown if the event is not seen in time</exception>
-  public async Task WaitFor<T>(
-    Func<T, bool> predicate,
-    string? streamName = null,
-    int times = 1,
-    TimeSpan? timeout = null)
-    where T : EventModelEvent
-  {
-    var cancellationSource = new CancellationTokenSource();
-    cancellationSource.CancelAfter(timeout ?? TimeSpan.FromMilliseconds(waitForCatchUpTimeout));
-    var count = 0;
-    if (streamName is not null)
-    {
-      await foreach (var evt in EventStoreClient
-                       .SubscribeToStream(streamName, FromStream.Start)
-                       .WithCancellation(cancellationSource.Token))
-      {
-        if (parser(evt).Match(e => e is T t && predicate(t), () => false) && ++count == times)
-        {
-          return;
-        }
-      }
-    }
-    else
-    {
-      await foreach (var evt in EventStoreClient
-                       .SubscribeToAll(FromAll.Start)
-                       .WithCancellation(cancellationSource.Token))
-      {
-        if (parser(evt).Match(e => e is T t && predicate(t), () => false) && ++count == times)
-        {
-          return;
-        }
-      }
-    }
-
-    Assert.Fail("Did not receive expected event.");
-  }
-
-  /// <summary>
-  /// Waits for an integration related to an entity to run.
-  /// </summary>
-  /// <param name="entityId">The inline *entity id*, *not the stream name*.</param>
-  /// <param name="taskName">The name of the task.</param>
-  /// <param name="times">How many tasks are expected to complete.</param>
-  public async Task WaitForTodo(string entityId, string taskName, int times = 1)
-  {
-    var sql =
-      $"""
-       SELECT COUNT(1) 
-       FROM {TodoProcessor.TableName}
-       WHERE [RelatedEntityId] = @entityId
-         AND [CompletedAt] IS NOT NULL
-         AND [Name] = @taskName
-       """;
-    var timer = Stopwatch.StartNew();
-    while (true)
-    {
-      await using var connection = new SqlConnection(readModelConnectionString);
-      var count = await connection.QueryFirstAsync<int>(sql, new { entityId, taskName });
-      if (count >= times)
-      {
-        return;
-      }
-
-      if (timer.ElapsedMilliseconds > waitForCatchUpTimeout)
-      {
-        Assert.Fail("Did not find completed todo within timeout.");
-      }
-    }
   }
 
   public async Task<CommandAcceptedResult> UploadPath(string path)
@@ -374,76 +298,6 @@ public class TestSetup : IAsyncDisposable
       .WithOAuthBearerToken(CreateTestJwt(asAdmin ? "admin" : asUser))
       .GetStringAsync();
     return Serialization.Deserialize<PageResult<Rm>>(result)!;
-  }
-
-  /// <summary>
-  ///   Reads a single read model of type Rm for entity type Ett with the given id.
-  ///   Does not use the read model persistence, instead, fetches the entity and projects in memory.
-  /// </summary>
-  /// <param name="id">The entity id</param>
-  /// <typeparam name="Ett">The entity type</typeparam>
-  /// <typeparam name="Rm">The read model type</typeparam>
-  /// <returns>The read model for the entity</returns>
-  /// <exception cref="FailException">
-  ///   Thrown if the entity is not found or if more than one read model is projected
-  /// </exception>
-  public async Task<Rm> ReadModel<Ett, Rm>(StrongId id)
-    where Ett : EventModelEntity<Ett> where Rm : EventModelReadModel =>
-    (await ReadModels<Ett, Rm>(id)).Single();
-
-  /// <summary>
-  ///   Reads all read models of type Rm for entity type Ett with the given id.
-  ///   Does not use the read model persistence, instead, fetches the entity and projects in memory.
-  /// </summary>
-  /// <param name="id">The entity id</param>
-  /// <typeparam name="Ett">The entity type</typeparam>
-  /// <typeparam name="Rm">The read model type</typeparam>
-  /// <returns>All read models for the entity</returns>
-  /// <exception cref="FailException">Thrown if the entity is not found</exception>
-  public async Task<Rm[]> ReadModels<Ett, Rm>(StrongId id)
-    where Ett : EventModelEntity<Ett> where Rm : EventModelReadModel =>
-    Model.ReadModels.OfType<ReadModelDefinition<Rm, Ett>>().Single().Projector(await Fetch<Ett>(id)).ToArray();
-
-  /// <summary>
-  ///   Reads a read model of type Rm for entity type Ett with the given id, waiting until a read model matching the
-  ///   given predicate is found, or the timeout is reached.
-  ///   Does not use the read model persistence, instead, fetches the entity and projects in memory.
-  /// </summary>
-  /// <param name="id">The entity id</param>
-  /// <param name="predicate">Predicate to match the read model</param>
-  /// <typeparam name="Ett">The entity type</typeparam>
-  /// <typeparam name="Rm">The read model type</typeparam>
-  /// <returns>The read model matching the predicate</returns>
-  /// <exception cref="FailException">
-  ///   Thrown if the timeout is reached without finding a matching read model
-  /// </exception>
-  public async Task<Rm> ReadModelWhen<Ett, Rm>(StrongId id, Func<Rm, bool> predicate)
-    where Ett : EventModelEntity<Ett> where Rm : EventModelReadModel
-  {
-    var timer = Stopwatch.StartNew();
-    while (true)
-    {
-      try
-      {
-        var rms = await ReadModels<Ett, Rm>(id);
-        var match = rms.FirstOrDefault(predicate);
-        if (match != null)
-        {
-          return match;
-        }
-      }
-      catch
-      {
-        // ignore
-      }
-
-      if (timer.ElapsedMilliseconds > waitForCatchUpTimeout)
-      {
-        Assert.Fail("Did not find read model matching predicate within timeout.");
-      }
-
-      await Task.Delay(50);
-    }
   }
 
   public async Task<Rm> ReadModel<Rm>(
@@ -630,13 +484,13 @@ public class TestSetup : IAsyncDisposable
 
     try
     {
-      return Go(GetRandomPort());
-
       int Go(int pn)
       {
         var isTaken = GetConnectionInfo().Any(ci => ci.LocalEndPoint.Port == pn);
         return isTaken ? Go(GetRandomPort()) : pn;
       }
+
+      return Go(GetRandomPort());
     }
     finally
     {
@@ -705,10 +559,7 @@ public class TestSetup : IAsyncDisposable
       model,
       1,
       logger,
-      new TestConsistencyStateManager(eventStoreClient, app.ConsistencyCheck, logger),
-      app.Fetcher,
-      app.Parser,
-      sqlCs);
+      new TestConsistencyStateManager(eventStoreClient, app.ConsistencyCheck, logger));
   }
 
   private static async Task<string> CreateAzurite(TestSettings settings)
