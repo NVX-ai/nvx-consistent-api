@@ -13,7 +13,7 @@ public class ReadModelHydrationDaemon(
   GeneratorSettings settings,
   EventStoreClient client,
   Fetcher fetcher,
-  EventModel.EventParser parser,
+  Func<ResolvedEvent, Option<EventModelEvent>> parser,
   IdempotentReadModel[] readModels,
   ILogger logger,
   InterestFetcher interestFetcher,

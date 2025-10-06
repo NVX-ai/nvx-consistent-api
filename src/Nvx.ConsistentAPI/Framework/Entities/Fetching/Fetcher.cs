@@ -130,7 +130,7 @@ public class Fetcher<Entity> : EntityFetcher
   public Fetcher(
     EventStoreClient client,
     Func<StrongId, Option<Entity>> defaulter,
-    EventModel.EventParser parser,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     int cacheSize,
     TimeSpan cacheExpiration,
     bool isSlidingCache,
@@ -217,7 +217,7 @@ public class Fetcher<Entity> : EntityFetcher
   private static Func<Option<StrongId>, Position?, Fetcher, bool, CancellationToken, Task<FetchResult<Entity>>> Build(
     EventStoreClient client,
     Func<StrongId, Option<Entity>> defaulter,
-    EventModel.EventParser parser,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     MemoryCache cache,
     TimeSpan cacheExpiration,
     bool isSlidingCache,

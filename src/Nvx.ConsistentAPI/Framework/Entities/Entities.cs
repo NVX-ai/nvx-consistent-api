@@ -39,7 +39,7 @@ public interface EntityDefinition
 
   EntityFetcher GetFetcher(
     EventStoreClient client,
-    EventModel.EventParser parser,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     InterestFetcher interestFetcher);
 }
 
@@ -56,7 +56,7 @@ public class EntityDefinition<EntityShape, EntityId> :
 
   public EntityFetcher GetFetcher(
     EventStoreClient client,
-    EventModel.EventParser parser,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     InterestFetcher interestFetcher) =>
     new Fetcher<EntityShape>(
       client,

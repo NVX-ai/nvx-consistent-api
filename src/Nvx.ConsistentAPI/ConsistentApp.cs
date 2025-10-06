@@ -3,15 +3,10 @@ using Nvx.ConsistentAPI.InternalTooling;
 
 namespace Nvx.ConsistentAPI;
 
-public sealed class ConsistentApp(
-  WebApplication webApp,
-  Fetcher fetcher,
-  ConsistencyCheck consistencyCheck,
-  EventModel.EventParser parser) : IAsyncDisposable
+public sealed class ConsistentApp(WebApplication webApp, Fetcher fetcher, ConsistencyCheck consistencyCheck) : IAsyncDisposable
 {
   public WebApplication WebApp { get; } = webApp;
   public Fetcher Fetcher { get; } = fetcher;
-  public EventModel.EventParser Parser { get; } = parser;
   internal ConsistencyCheck ConsistencyCheck { get; } = consistencyCheck;
 
   public async ValueTask DisposeAsync() => await WebApp.DisposeAsync();

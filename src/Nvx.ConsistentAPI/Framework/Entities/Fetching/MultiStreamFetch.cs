@@ -12,7 +12,7 @@ internal static class MultiStreamFetch
     Entity defaulted,
     Position? upToRevision,
     EventStoreClient client,
-    EventModel.EventParser parser,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     MemoryCacheEntryOptions entryOptions,
     Fetcher fetcher,
     string[] interests,

@@ -46,7 +46,7 @@ public interface EventModelingReadModelArtifact : Endpoint
     WebApplication app,
     EventStoreClient esClient,
     Fetcher fetcher,
-    EventModel.EventParser parser,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
     GeneratorSettings settings,
     ILogger logger,
@@ -84,7 +84,7 @@ public interface EventModelingProjectionArtifact
 
   Task HandleEvent(
     ResolvedEvent evt,
-    EventModel.EventParser parser,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Fetcher fetcher,
     EventStoreClient client);
 }
@@ -115,7 +115,7 @@ public class EventModel
 
   private TodoProcessor? processor;
   public EventModelingCommandArtifact[] Commands { private get; init; } = [];
-  public EventModelingReadModelArtifact[] ReadModels { internal get; init; } = [];
+  public EventModelingReadModelArtifact[] ReadModels { private get; init; } = [];
   public EventModelingProjectionArtifact[] Projections { private get; init; } = [];
   public TodoTaskDefinition[] Tasks { private get; init; } = [];
   public EntityDefinition[] Entities { private get; init; } = [];
@@ -153,7 +153,7 @@ public class EventModel
       InterestTriggers = InterestTriggers.Concat(other.InterestTriggers).ToArray()
     };
 
-  public async Task<(Fetcher fetcher, ConsistencyCheck consistencyCheck, EventParser parser)> ApplyTo(
+  public async Task<(Fetcher fetcher, ConsistencyCheck consistencyCheck)> ApplyTo(
     WebApplication app,
     GeneratorSettings settings,
     ILogger logger)
@@ -272,7 +272,7 @@ public class EventModel
       projectionDaemon);
     logger.LogInformation("Consistency checks completed");
 
-    return (fetcher, consistencyCheck, parser);
+    return (fetcher, consistencyCheck);
 
     static async Task TryActivateAdmin(Fetcher fetcher, GeneratorSettings settings, Emitter emitter)
     {
@@ -311,11 +311,9 @@ public class EventModel
     return re => parsersDictionary.TryGetValue(re.Event.EventType, out var parser) ? parser(re) : None;
   }
 
-  public delegate Option<EventModelEvent> EventParser(ResolvedEvent resolvedEvent);
-
-  private static EventParser Parser()
+  private static Func<ResolvedEvent, Option<EventModelEvent>> Parser()
   {
-    return re => AllEventModelEventShapes().Select(ParserBuilder.Build).ToArray().Apply(Compose)(re);
+    return AllEventModelEventShapes().Select(ParserBuilder.Build).ToArray().Apply(Compose);
 
     static IEnumerable<Type> AllEventModelEventShapes()
     {

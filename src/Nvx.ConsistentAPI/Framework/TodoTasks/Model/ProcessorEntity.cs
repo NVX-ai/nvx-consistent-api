@@ -38,7 +38,34 @@ public partial record ProcessorEntity(
           CacheSize = 8196
         }
       ],
-      ReadModels = [TodoEventModelReadModel.Definition],
+      ReadModels =
+      [
+        new ReadModelDefinition<TodoEventModelReadModel, ProcessorEntity>
+        {
+          StreamPrefix = StreamPrefix,
+          Projector = entity =>
+          [
+            new TodoEventModelReadModel(
+              entity.Id.ToString(),
+              entity.RelatedEntityId,
+              entity.StartsAt,
+              entity.ExpiresAt,
+              entity.CompletedAt,
+              entity.JsonData,
+              entity.Type,
+              entity.LockedUntil,
+              entity.SerializedRelatedEntityId,
+              entity.EventPosition?.CommitPosition,
+              entity.AttemptCount,
+              entity.AttemptCount >= MaxAttempts
+            )
+          ],
+          ShouldHydrate = (entity, isBackwards) =>
+            DateTime.UtcNow < entity.ExpiresAt || (isBackwards && entity.CompletedAt.HasValue),
+          IsExposed = false,
+          AreaTag = OperationTags.FrameworkManagement
+        }
+      ],
       Projections = [new TodoProcessorCompletedToSnapshot()]
     };
 

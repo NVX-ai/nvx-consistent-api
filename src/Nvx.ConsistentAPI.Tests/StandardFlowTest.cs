@@ -19,6 +19,11 @@ public class StandardFlowTest
     await setup.DownloadAndCompare(uploadResult.EntityId.Apply(Guid.Parse), "banana");
     _ = await setup.CurrentUser(asUser: setup.Auth.ByName("john"));
 
+    await Idempotency();
+    await UserBoundReadModels();
+    await Tenancy();
+    await Notifications();
+
     await setup.Command(new AssignApplicationPermission(setup.Auth.CandoSub, "product-creator"), true);
     await setup.UnauthorizedCommand(new CreateProduct(Guid.NewGuid(), "banana", null));
     await setup.ForbiddenCommand(new CreateProduct(Guid.NewGuid(), "banana", null));
@@ -42,9 +47,7 @@ public class StandardFlowTest
     await setup.Command(new RemoveValidationRule("create-product", "[\"error\"]"), true);
     await setup.Command(new RemoveValidationRule("create-product", "[\"error 2\"]"), true);
     await setup.Command(new RemoveValidationRule("create-product", "[\"error 3\"]"), true);
-    var bananaId = Guid.NewGuid();
-    await setup.Command(new CreateProduct(bananaId, "banana", null));
-    await setup.WaitForTodo(bananaId.ToString(), "announce-new-product");
+    await setup.Command(new CreateProduct(Guid.NewGuid(), "banana", null));
 
     // Basic command handling and entity projection.
     await setup.ReadModelNotFound<ProductStock>(productId.ToString());
@@ -56,8 +59,6 @@ public class StandardFlowTest
         return unit;
       })
       .Parallel();
-
-    await setup.WaitFor(new StockAdded(productId, 5), 20);
 
     const string validTag1 = "Cosmetics";
     const string validTag2 = "Food";
@@ -77,12 +78,12 @@ public class StandardFlowTest
     // fails occasionally, and it takes at least 25 seconds to recover, so this starts now and is verified at the end.
     // The test is technically flaky, but the chances of failure are abyssal.
     var wordInTheProductName = Guid.NewGuid().ToString().ToLowerInvariant();
-    var productIds = Enumerable.Range(0, 98).Select(_ => Guid.NewGuid()).ToArray();
-    await productIds
-      .Select<Guid, Func<Task<Unit>>>(id => async () =>
+    await Enumerable
+      .Range(0, 98)
+      .Select<int, Func<Task<Unit>>>(_ => async () =>
       {
         await setup.Command(
-          new CreateProduct(id, $"{wordInTheProductName} {productId} {Guid.NewGuid()}", null));
+          new CreateProduct(Guid.NewGuid(), $"{wordInTheProductName} {productId} {Guid.NewGuid()}", null));
         return unit;
       })
       .Parallel(25);
@@ -181,22 +182,16 @@ public class StandardFlowTest
     Assert.Equal("cando", canDoUser.Name);
     Assert.Equal("cando@testdomain.com", canDoUser.Email);
 
-    await productIds
-      .Select<Guid, Func<Task<Unit>>>(id => async () =>
-      {
-        await setup.WaitForTodo(id.ToString(), "announce-new-product");
-        return unit;
-      })
-      .Parallel();
-
     var aggregated1 = await setup
       .ReadModels<AggregatingStockReadModel>(
-        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [wordInTheProductName] } });
+        queryParameters: new Dictionary<string, string[]> { { "ts-Name", [wordInTheProductName] } },
+        waitType: ConsistencyWaitType.Long);
     Assert.Equal(50, aggregated1.Items.Count());
     Assert.Equal(98, aggregated1.Total);
 
     var otherProductId = Guid.Parse(aggregated1.Items.First().Id);
     await setup.Command(new HideAggregatingProduct(otherProductId));
+    await setup.WaitForConsistency(ConsistencyWaitType.Long);
 
     var afterHiding = await setup
       .ReadModels<AggregatingStockReadModel>(
@@ -205,6 +200,7 @@ public class StandardFlowTest
     Assert.Equal(97, afterHiding.Total);
 
     await setup.Command(new ShowAggregatingProduct(otherProductId));
+    await setup.WaitForConsistency(ConsistencyWaitType.Long);
 
     var afterShowingAgain = await setup
       .ReadModels<AggregatingStockReadModel>(
@@ -220,5 +216,114 @@ public class StandardFlowTest
     var ingestedProduct = await setup.ReadModel<ProductStock>(
       ingestedProductId.ToString());
     Assert.Equal("Blah", ingestedProduct.Name);
+
+    return;
+
+    async Task Notifications()
+    {
+      var message = Guid.NewGuid().ToString();
+      await setup.Command(new SendNotificationToUser(message, setup.Auth.ByName("john")), true);
+      var notifications = await setup.ReadModels<UserNotificationReadModel>(asUser: "john");
+      Assert.Single(notifications.Items);
+      var notification = notifications.Items.First();
+      Assert.Equal(message, notification.Message);
+      Assert.False(notification.IsRead);
+      Assert.Equal("banana", notification.AdditionalDetails.GetValueOrDefault("banana"));
+    }
+
+    async Task Tenancy()
+    {
+      // Tenancy
+      var tenant1Id = Guid.NewGuid();
+      var tenant2Id = Guid.NewGuid();
+      var tenant3Id = Guid.NewGuid();
+      var tenant1Name = Guid.NewGuid().ToString();
+      var tenant2Name = Guid.NewGuid().ToString();
+      await setup.Command(new CreateTenant(tenant1Id, tenant1Name), true);
+      await setup.Command(new CreateTenant(tenant2Id, tenant2Name), true);
+      await setup.Command(new AddToTenant(setup.Auth.CandoSub), true, tenant1Id);
+      await setup.Command(new AddToTenant(setup.Auth.CandoSub), true, tenant2Id);
+      await setup.Command(new AssignTenantPermission(setup.Auth.CandoSub, "banana"), true, tenant3Id);
+      var building1Name = Guid.NewGuid().ToString();
+      var building2Name = Guid.NewGuid().ToString();
+      var building3Name = Guid.NewGuid().ToString();
+      await setup.Command(new RegisterOrganizationBuilding(building1Name), true, tenant1Id);
+      await setup.Command(new RegisterOrganizationBuilding(building2Name), true, tenant1Id);
+      await setup.Command(new RegisterOrganizationBuilding(building3Name), true, tenant2Id);
+
+      var buildings1 = await setup.ReadModels<OrganizationBuildingReadModel>(tenantId: tenant1Id);
+      Assert.Equal(2, buildings1.Total);
+      Assert.Contains(buildings1.Items, model => model.Name == building1Name);
+      Assert.Contains(buildings1.Items, model => model.Name == building2Name);
+      var buildings2 = await setup.ReadModels<OrganizationBuildingReadModel>(tenantId: tenant2Id);
+      Assert.Single(buildings2.Items);
+      Assert.Equal(building3Name, buildings2.Items.ElementAt(0).Name);
+      var currentUser = await setup.CurrentUser();
+      Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant1Id && td.TenantName == tenant1Name);
+      Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
+      Assert.Contains(currentUser.Tenants, td => td.TenantId == tenant3Id && td.TenantName == "");
+      Assert.Equal("banana", currentUser.TenantPermissions[tenant3Id].First());
+
+      var newTenant1Name = Guid.NewGuid().ToString();
+      var newTenant3Name = Guid.NewGuid().ToString();
+      var candoBeforeRename = await setup.CurrentUser();
+      Assert.Contains(candoBeforeRename.Tenants, td => td.TenantId == tenant1Id && td.TenantName == tenant1Name);
+      Assert.Contains(candoBeforeRename.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
+      await setup.Command(new RenameTenant(tenant1Id, newTenant1Name), true);
+      await setup.Command(new RenameTenant(tenant3Id, newTenant3Name), true);
+
+      var canDoAfterRename = await setup.CurrentUser();
+      Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
+      Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
+      Assert.Contains(canDoAfterRename.Tenants, td => td.TenantId == tenant3Id && td.TenantName == newTenant3Name);
+
+      await setup.Command(new RemoveFromTenant(setup.Auth.CandoSub), true, tenant3Id);
+
+      var canDoUserAfter = await setup.CurrentUser();
+      Assert.DoesNotContain(canDoUserAfter.Tenants, td => td.TenantId == tenant3Id);
+      Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant1Id && td.TenantName == newTenant1Name);
+      Assert.Contains(canDoUserAfter.Tenants, td => td.TenantId == tenant2Id && td.TenantName == tenant2Name);
+    }
+
+    async Task UserBoundReadModels()
+    {
+      await setup.Command(new RegisterFavoriteFood("pizza"), true);
+      await setup.Command(new RegisterFavoriteFood("banana"));
+      var adminFavoriteFoods = await setup.ReadModels<UserFavoriteFoodReadModel>(true);
+      Assert.Equal(1, adminFavoriteFoods.Total);
+      Assert.Contains(adminFavoriteFoods.Items, model => model.Name == "pizza");
+      var nonAdminFavoriteFoods = await setup.ReadModels<UserFavoriteFoodReadModel>();
+      Assert.Equal(1, nonAdminFavoriteFoods.Total);
+      Assert.Contains(nonAdminFavoriteFoods.Items, model => model.Name == "banana");
+      await setup.ReadModel<UserFavoriteFoodReadModel>(setup.Auth.AdminSub, asAdmin: true);
+      await setup.ReadModelNotFound<UserFavoriteFoodReadModel>(setup.Auth.AdminSub);
+      await setup.ReadModel<UserFavoriteFoodReadModel>(setup.Auth.CandoSub, asAdmin: false);
+      await setup.ReadModelNotFound<UserFavoriteFoodReadModel>(setup.Auth.CandoSub, asAdmin: true);
+    }
+
+    async Task Idempotency()
+    {
+      var tenant1Id = Guid.NewGuid();
+      var idempotencyKey = Guid.NewGuid().ToString();
+
+      Assert.Equal(
+        new CommandAcceptedResult(tenant1Id.ToString()),
+        await setup.Command(
+          new CreateTenant(tenant1Id, "some idempotent tenant"),
+          true,
+          headers: new Dictionary<string, string> { ["IdempotencyKey"] = idempotencyKey }));
+      Assert.Equal(
+        new CommandAcceptedResult(tenant1Id.ToString()),
+        await setup.Command(
+          new CreateTenant(tenant1Id, "some idempotent tenant"),
+          true,
+          headers: new Dictionary<string, string> { ["IdempotencyKey"] = idempotencyKey }));
+      Assert.Equal(
+        new CommandAcceptedResult(tenant1Id.ToString()),
+        await setup.Command(
+          new CreateTenant(tenant1Id, "some idempotent tenant"),
+          true,
+          headers: new Dictionary<string, string> { ["IdempotencyKey"] = idempotencyKey }));
+    }
   }
 }

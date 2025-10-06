@@ -11,7 +11,7 @@ internal static class SingleStreamFetch
     Entity defaulted,
     Position? upToRevision,
     EventStoreClient client,
-    EventModel.EventParser parser,
+    Func<ResolvedEvent, Option<EventModelEvent>> parser,
     MemoryCacheEntryOptions entryOptions,
     Fetcher fetcher,
     CancellationToken cancellationToken) where Entity : EventModelEntity<Entity>

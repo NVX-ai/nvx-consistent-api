@@ -15,7 +15,7 @@ public class ProjectionDaemon(
   Fetcher fetcher,
   Emitter emitter,
   EventStoreClient client,
-  EventModel.EventParser parser,
+  Func<ResolvedEvent, Option<EventModelEvent>> parser,
   WebApplication app,
   GeneratorSettings gs,
   ILogger logger)
