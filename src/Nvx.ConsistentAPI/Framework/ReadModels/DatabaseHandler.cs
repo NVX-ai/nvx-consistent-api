@@ -257,9 +257,6 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     await using var connection = new SqlConnection(connectionString);
     const string sql = "INSERT INTO [UpToDateReadModels] ([ModelName]) VALUES (@ModelName)";
     await connection.ExecuteAsync(sql, new { ModelName = tableName });
-    const string removeCheckpointsSql =
-      "DELETE FROM [ReadModelCheckpoints] WHERE [ModelName] = @ModelName";
-    await connection.ExecuteAsync(removeCheckpointsSql, new { ModelName = tableName });
   }
 
   private IEnumerable<string> GenerateCreateListTablesScript()
