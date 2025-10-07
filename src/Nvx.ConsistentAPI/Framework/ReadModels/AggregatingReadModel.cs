@@ -1,10 +1,12 @@
 ﻿using System.Data.Common;
+using System.Diagnostics;
 using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.InternalTooling;
+using EventTypeFilter = EventStore.Client.EventTypeFilter;
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable AutoPropertyCanBeMadeGetOnly.Global
@@ -244,6 +246,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
                     var ids = new List<string>();
 
+                    var stopwatch = Stopwatch.StartNew();
                     foreach (var aggregator in relevantAggregators)
                     {
                       ids.AddRange(
@@ -254,6 +257,8 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                           transaction,
                           tableDetails));
                     }
+                    stopwatch.Stop();
+                    PrometheusMetrics.RecordAggregatingProcessingTime(ShapeType.Name, stopwatch.ElapsedMilliseconds);
 
                     if (canBeAggregated)
                     {
@@ -365,7 +370,8 @@ public abstract class ReadModelAggregator<E> : ReadModelAggregator where E : Eve
     Fetcher fetcher,
     DbConnection dbConnection,
     DbTransaction dbTransaction,
-    TableDetails tableDetails) =>
+    TableDetails tableDetails
+    ) =>
     evt.Event is E e
       ? Aggregate(evt.As(e), fetcher, dbConnection, dbTransaction, tableDetails)
       : Task.FromResult<string[]>([]);

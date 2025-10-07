@@ -92,4 +92,19 @@ internal static class PrometheusMetrics
 
   internal static void AddRunningProjectionsCount(string name) =>
     RunningProjections.Add(1, new TagList { { "name", name } });
+  
+  private static readonly Histogram<double> TodoProcessingTime =
+    Meter.CreateHistogram<double>("todo_tasks.processing_time_ms", "ms");
+  internal static void RecordTodoProcessingTime(string name, double milliseconds) =>
+    TodoProcessingTime.Record(milliseconds, new TagList { { "name", name } });
+  
+  private static readonly Histogram<double> AggregatingProcessingTime =
+    Meter.CreateHistogram<double>("read_models.aggregating_time_ms", "ms");
+  internal static void RecordAggregatingProcessingTime(string readModelName, double milliseconds) =>
+    AggregatingProcessingTime.Record(milliseconds, new TagList { { "readmodel", readModelName } });
+  
+  private static readonly Histogram<double> ReadModelProcessingTime =
+    Meter.CreateHistogram<double>("read_models.processing_time_ms", "ms");
+  internal static void RecordReadModelProcessingTime(string readModelName, double milliseconds) =>
+    ReadModelProcessingTime.Record(milliseconds, new TagList { { "readmodel", readModelName } });
 }

@@ -76,7 +76,9 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     nameof(TraceabilityFields.FrameworkLastUpdatedAt),
     nameof(TraceabilityFields.FrameworkCreatedBy),
     nameof(TraceabilityFields.FrameworkLastUpdatedBy),
-    nameof(TraceabilityFields.FrameworkRelatedEntityId)
+    nameof(TraceabilityFields.FrameworkRelatedEntityId),
+    nameof(TraceabilityFields.FrameworkCreatedCommitPosition),
+    nameof(TraceabilityFields.FrameworkLastUpdatedCommitPosition)
   ];
 
   // ReSharper disable once StaticMemberInGenericType
@@ -316,7 +318,9 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     sb.AppendLine("    [FrameworkLastUpdatedAt] DATETIME2 NULL,");
     sb.AppendLine("    [FrameworkCreatedBy] NVARCHAR(256) NULL,");
     sb.AppendLine("    [FrameworkLastUpdatedBy] NVARCHAR(256) NULL,");
-    sb.AppendLine("    [FrameworkRelatedEntityId] NVARCHAR(256) NULL");
+    sb.AppendLine("    [FrameworkRelatedEntityId] NVARCHAR(256) NULL,");
+    sb.AppendLine("    [FrameworkCreatedCommitPosition] NUMERIC(20, 0) NULL,");
+    sb.AppendLine("    [FrameworkLastUpdatedCommitPosition] NUMERIC(20, 0) NULL");
     sb.AppendLine(");");
     sb.AppendLine("END");
 
@@ -993,4 +997,7 @@ public record TraceabilityFields(
   DateTime FrameworkLastUpdatedAt,
   string? FrameworkCreatedBy,
   string? FrameworkLastUpdatedBy,
-  string FrameworkRelatedEntityId);
+  string FrameworkRelatedEntityId,
+  ulong? FrameworkCreatedCommitPosition,
+  ulong? FrameworkLastUpdatedCommitPosition
+  );

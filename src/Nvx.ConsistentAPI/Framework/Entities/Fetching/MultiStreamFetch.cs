@@ -28,7 +28,7 @@ internal static class MultiStreamFetch
       ? m.StreamRevisions
       : new Dictionary<string, long>();
 
-    (Entity e, Option<Position> gp, Option<long> r, DateTime? fe, DateTime? le, string? fu, string? lu) seed =
+    (Entity e, Option<Position> gp, Option<long> r, ulong fep, ulong lep, DateTime? fe, DateTime? le, string? fu, string? lu) seed =
       cached switch
       {
         MultipleStreamCacheResult<Entity> multiple =>
@@ -36,11 +36,13 @@ internal static class MultiStreamFetch
           multiple.Entity,
           multiple.GlobalPosition,
           multiple.Revision,
+          multiple.FirstEventPosition,
+          multiple.LastEventPosition,
           multiple.FirstEventAt,
           multiple.LastEventAt,
           multiple.FirstUserSubFound,
           multiple.LastUserSubFound),
-        _ => (defaulted, None, None, null, null, null, null)
+        _ => (defaulted, None, None, 0, 0, null, null, null, null)
       };
 
     var hadEvents = seed.gp.IsSome;
@@ -57,6 +59,8 @@ internal static class MultiStreamFetch
         revisions[re.Event.EventStreamId] = re.Event.EventNumber.ToInt64();
 
         var metadata = EventMetadata.TryParse(re);
+        var firstEventPosition = seed.fep == 0 ? re.Event.Position.CommitPosition : seed.fep;
+        var lastEventPosition = re.Event.Position.CommitPosition;
         var firstEventAt = seed.fe ?? metadata.CreatedAt;
         var lastEventAt = metadata.CreatedAt;
         var firstUserSubFound = seed.fu ?? metadata.RelatedUserSub;
@@ -75,6 +79,8 @@ internal static class MultiStreamFetch
           folded,
           re.Event.Position,
           revision,
+          firstEventPosition,
+          lastEventPosition,
           firstEventAt,
           lastEventAt,
           firstUserSubFound,
@@ -90,6 +96,8 @@ internal static class MultiStreamFetch
               seed.gp,
               seed.r,
               revisions,
+              seed.fep,
+              seed.lep,
               seed.fe ?? DateTime.UtcNow,
               seed.le ?? DateTime.UtcNow,
               seed.fu,
@@ -108,6 +116,8 @@ internal static class MultiStreamFetch
           seed.gp,
           seed.r,
           revisions,
+          seed.fep,
+          seed.lep,
           seed.fe ?? DateTime.UtcNow,
           seed.le ?? DateTime.UtcNow,
           seed.fu,
@@ -116,8 +126,8 @@ internal static class MultiStreamFetch
     }
 
     return hadEvents || seed.gp.IsSome
-      ? new FetchResult<Entity>(seed.e, seed.r.DefaultValue(0), seed.gp, seed.fe, seed.le, seed.fu, seed.lu)
-      : new FetchResult<Entity>(None, -1, None, null, null, null, null);
+      ? new FetchResult<Entity>(seed.e, seed.r.DefaultValue(0), seed.gp, seed.fep, seed.lep, seed.fe, seed.le, seed.fu, seed.lu)
+      : new FetchResult<Entity>(None, -1, None, 0, 0,null, null, null, null);
   }
    private static async IAsyncEnumerable<ResolvedEvent> Zip(
     string[] streamNames,

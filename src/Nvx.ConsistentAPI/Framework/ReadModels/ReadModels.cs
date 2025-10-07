@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Logging;
@@ -119,6 +120,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
   {
     if (foundEntity is FoundEntity<EntityShape> thisEntity)
     {
+      var stopwatch = Stopwatch.StartNew();
       await UpdateReadModel(
         entityId,
         checkpoint,
@@ -127,6 +129,8 @@ public class ReadModelDefinition<Shape, EntityShape> :
         dbFactory.Get<Shape>(),
         logger,
         cancellationToken);
+      stopwatch.Stop();
+      PrometheusMetrics.RecordReadModelProcessingTime(ShapeType.Name, stopwatch.ElapsedMilliseconds);
     }
   }
 
@@ -362,7 +366,10 @@ public class ReadModelDefinition<Shape, EntityShape> :
                   e.LastEventAt,
                   e.FirstUserSubFound,
                   e.LastUserSubFound,
-                  id.StreamId()),
+                  id.StreamId(),
+                  e.FirstEventPosition,
+                  e.LastEventPosition
+                  ),
                 id,
                 cancellationToken)
               : unit.ToTask(),
@@ -386,6 +393,8 @@ public interface FoundEntity
 
 public record FoundEntity<T>(
   T Entity,
+  ulong FirstEventPosition,
+  ulong LastEventPosition,
   DateTime FirstEventAt,
   DateTime LastEventAt,
   string? FirstUserSubFound,
@@ -401,6 +410,8 @@ public record FoundEntity<T>(
     .Ent.Bind(e => fr.GlobalPosition.Map(gp => (e, gp)))
     .Map(tuple => new FoundEntity<T>(
       tuple.e,
+      fr.FirstEventPosition,
+      fr.LastEventPosition,
       fr.FirstEventAt ?? DateTime.UnixEpoch,
       fr.LastEventAt ?? fr.FirstEventAt ?? DateTime.UnixEpoch,
       fr.FirstUserSubFound,

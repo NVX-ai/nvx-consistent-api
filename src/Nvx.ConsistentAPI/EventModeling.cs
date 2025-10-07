@@ -242,6 +242,7 @@ public class EventModel
     };
 
     processor.Initialize();
+    logger.LogInformation("Todo processor initialized");
 
     var dcbDaemon = new DynamicConsistencyBoundaryDaemon(esClient, parser, InterestTriggers, logger, interestFetcher);
     dcbDaemon.Initialize();

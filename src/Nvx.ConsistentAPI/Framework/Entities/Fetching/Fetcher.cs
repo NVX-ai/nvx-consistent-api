@@ -194,6 +194,8 @@ public class Fetcher<Entity> : EntityFetcher
         fr.Ent.Map(e => (T)(object)e),
         fr.Revision,
         fr.GlobalPosition,
+        fr.FirstEventPosition,
+        fr.LastEventPosition,
         fr.FirstEventAt,
         fr.LastEventAt,
         fr.FirstUserSubFound,
@@ -237,7 +239,7 @@ public class Fetcher<Entity> : EntityFetcher
       .Bind(defaulter)
       .Match(
         e => Fetch(e, r, f, sk, ct),
-        () => new FetchResult<Entity>(None, -1, None, null, null, null, null).Apply(Task.FromResult));
+        () => new FetchResult<Entity>(None, -1, None, 0, 0,null, null, null, null).Apply(Task.FromResult));
 
     async Task<FetchResult<Entity>> Fetch(
       Entity defaulted,
@@ -283,6 +285,8 @@ public record FetchResult<Entity>(
   Option<Entity> Ent,
   long Revision,
   Option<Position> GlobalPosition,
+  ulong FirstEventPosition,
+  ulong LastEventPosition,
   DateTime? FirstEventAt,
   DateTime? LastEventAt,
   string? FirstUserSubFound,
@@ -294,6 +298,8 @@ internal record SingleStreamCacheResult<TEntity>(
   TEntity Entity,
   Option<long> Revision,
   Option<Position> GlobalPosition,
+  ulong FirstEventPosition,
+  ulong LastEventPosition,
   DateTime FirstEventAt,
   DateTime LastEventAt,
   string? FirstUserSubFound,
@@ -304,6 +310,8 @@ internal record MultipleStreamCacheResult<TEntity>(
   Option<Position> GlobalPosition,
   Option<long> Revision,
   Dictionary<string, long> StreamRevisions,
+  ulong FirstEventPosition,
+  ulong LastEventPosition,
   DateTime FirstEventAt,
   DateTime LastEventAt,
   string? FirstUserSubFound,
