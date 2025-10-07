@@ -353,27 +353,24 @@ public static class Generator
       }
     });
 
-    if (settings.LoggingSettings.LogsFolder != null)
+    builder.Services.AddLogging(loggingBuilder =>
     {
-      builder.Services.AddLogging(loggingBuilder =>
-      {
-        loggingBuilder.AddSerilog(
-          new LoggerConfiguration()
-            .MinimumLevel
-            .Override("Nvx.ConsistentAPI", Map(settings.LoggingSettings.LogLevel))
-            .Enrich.FromLogContext()
-            .Filter.ByExcluding(logEvent =>
-              logEvent.Properties.TryGetValue("RequestPath", out var pathValue) &&
-              pathValue.ToString().Contains("/metrics"))
-            .WriteTo.File(
-              Path.Combine(settings.LoggingSettings.LogsFolder, "log-.log"),
+      loggingBuilder.AddSerilog(
+        new LoggerConfiguration()
+          .MinimumLevel
+          .Override("Nvx.ConsistentAPI", Map(settings.LoggingSettings.LogLevel))
+          .Enrich.FromLogContext()
+          .Filter.ByExcluding(logEvent =>
+            logEvent.Properties.TryGetValue("RequestPath", out var pathValue) &&
+            pathValue.ToString().Contains("/metrics"))
+          .WriteTo.Conditional(_ => settings.LoggingSettings.LogsFolder != null,
+            wt => wt.File(Path.Combine(settings.LoggingSettings.LogsFolder ?? "./", "log-.log"),
               rollingInterval: settings.LoggingSettings.LogFileRollInterval.ToSerilog(),
-              retainedFileTimeLimit: TimeSpan.FromDays(settings.LoggingSettings.LogDaysToKeep))
-            .WriteTo.Conditional(_ => settings.LoggingSettings.UseConsoleLogger
-              , wt => wt.Console(restrictedToMinimumLevel: Map(settings.LoggingSettings.LogLevel)))
-            .CreateLogger());
-      });
-    }
+              retainedFileTimeLimit: TimeSpan.FromDays(settings.LoggingSettings.LogDaysToKeep)))
+          .WriteTo.Conditional(_ => settings.LoggingSettings.UseConsoleLogger
+            , wt => wt.Console(restrictedToMinimumLevel: Map(settings.LoggingSettings.LogLevel)))
+          .CreateLogger());
+    });
 
     var app = builder.Build();
     app.UseCors(corsPolicyName);
