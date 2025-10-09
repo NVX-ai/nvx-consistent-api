@@ -209,13 +209,14 @@ public class HydrationDaemonWorker
 
   private static readonly string SafeInsertModelHashReadModelLockSql =
     $"""
-     MERGE [ModelHashReadModelLocks] AS target
-     USING (
+     ;WITH cte AS (
        SELECT
          @ModelHash AS ModelHash,
          @ReadModelName AS ReadModelName,
          DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS LockedUntil
-     ) AS source
+     )
+     MERGE [ModelHashReadModelLocks] AS target
+     USING cte AS source
      ON target.[ModelHash] = source.ModelHash
      WHEN NOT MATCHED THEN
          INSERT (
