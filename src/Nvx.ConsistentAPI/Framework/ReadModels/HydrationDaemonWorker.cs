@@ -152,7 +152,7 @@ public class HydrationDaemonWorker
 
   private const string ReleaseSql =
     """
-    UPDATE [HydrationQueue]
+    UPDATE [HydrationQueue] WITH (ROWLOCK)
     SET [WorkerId] = NULL,
         [LockedUntil] = NULL
     WHERE [WorkerId] = @WorkerId
