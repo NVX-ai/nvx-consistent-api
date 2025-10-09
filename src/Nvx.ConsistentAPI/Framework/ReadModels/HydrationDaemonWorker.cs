@@ -245,20 +245,12 @@ public class HydrationDaemonWorker
 
   private static readonly string TryRefreshStreamLockSql =
     $"""
-     ;WITH cte AS (
-       SELECT 
-         DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS NewLockedUntil
-       FROM [HydrationQueue] WITH (ROWLOCK)
-       WHERE [WorkerId] = @WorkerId
-         AND [StreamName] = @StreamName
-         AND [ModelHash] = @ModelHash
-     )
-     UPDATE cte
-     SET [LockedUntil] = cte.NewLockedUntil
-     FROM cte
+     UPDATE [HydrationQueue] WITH (ROWLOCK)
+     SET [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE())
      WHERE [WorkerId] = @WorkerId
        AND [StreamName] = @StreamName
        AND [ModelHash] = @ModelHash
+       AND [LockedUntil] < GETUTCDATE()
      """;
 
   public static readonly string[] TableCreationScripts =
