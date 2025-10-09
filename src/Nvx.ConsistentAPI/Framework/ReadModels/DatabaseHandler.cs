@@ -200,6 +200,14 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
         END
       """;
 
+    const string createTableLockUniqueTableNameScript =
+      """
+        IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UQ_ReadModelLocks_TableName')
+        BEGIN
+        CREATE UNIQUE INDEX [UQ_ReadModelLocks_TableName] ON [ReadModelLocks]([TableName])
+        END
+      """;
+
     const string createUpToDateReadModelScript =
       """
         IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UpToDateReadModels')
@@ -213,6 +221,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
 
     await connection.ExecuteAsync(createCheckpointsTableScript);
     await connection.ExecuteAsync(createLockTableScript);
+    await connection.ExecuteAsync(createTableLockUniqueTableNameScript);
     await connection.ExecuteAsync(createUpToDateReadModelScript);
     await connection.ExecuteAsync(GenerateCreateTableScript());
     foreach (var listSql in GenerateCreateListTablesScript())
@@ -741,34 +750,39 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
 
   public async Task<bool> TryAcquireLock(Guid processId, CancellationToken token)
   {
-    await using var connection = new SqlConnection(connectionString);
-    await connection.ExecuteAsync("DELETE FROM [ReadModelLocks] WHERE [LockedUntil] < GETUTCDATE()", token);
-    const string insertSQL =
+    const string tryLockSql =
       """
-        INSERT INTO [ReadModelLocks] 
-          ([TableName], [ProcessId], [LockedUntil]) 
-        VALUES
-          (@TableName, @ProcessId, DATEADD(SECOND, 25, GETUTCDATE()))
+      MERGE [ReadModelLocks] WITH (ROWLOCK) AS Target
+      USING (
+        SELECT
+          @TableName AS TableName,
+          @ProcessId AS ProcessId,
+          DATEADD(SECOND, 25, GETUTCDATE()) AS LockedUntil
+      ) AS Source
+      ON Target.[TableName] = Source.[TableName]
+      WHEN MATCHED THEN
+        UPDATE SET
+          [ProcessId] = Source.ProcessId,
+          [LockedUntil] = Source.LockedUntil
+      WHEN NOT MATCHED THEN
+        INSERT ([TableName], [ProcessId], [LockedUntil])
+        VALUES (Source.TableName, Source.ProcessId, Source.LockedUntil);
       """;
 
     try
     {
-      var existingLock = await connection.QueryFirstOrDefaultAsync<ReadModelLock>(
-        SelectLastActiveLockSql,
-        new { TableName = tableName });
-      if (existingLock is not null)
-      {
-        return false;
-      }
-
-      await connection.ExecuteAsync(insertSQL, new { TableName = tableName, ProcessId = processId });
-      var oldestActiveLock = await connection.QueryFirstAsync<ReadModelLock>(
-        SelectLastActiveLockSql,
-        new { TableName = tableName });
-      return oldestActiveLock.ProcessId == processId;
+      await using var connection = new SqlConnection(connectionString);
+      return await connection
+               .ExecuteAsync(
+                 new CommandDefinition(
+                   tryLockSql,
+                   new { TableName = tableName, ProcessId = processId },
+                   cancellationToken: token))
+             > 0;
     }
-    catch
+    catch (Exception ex)
     {
+      logger.LogWarning(ex, "Failed to acquire lock for {TableName}", tableName);
       return false;
     }
   }
@@ -779,7 +793,12 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     {
       await using var connection = new SqlConnection(connectionString);
       await connection.ExecuteAsync(
-        "DELETE FROM [ReadModelLocks] WHERE [TableName] = @TableName AND [ProcessId] = @ProcessId",
+        """
+        UPDATE [ReadModelLocks] WITH (ROWLOCK) 
+        SET    [LockedUntil] = GETUTCDATE()
+        WHERE [TableName] = @TableName
+          AND [ProcessId] = @ProcessId
+        """,
         new { TableName = tableName, ProcessId = processId });
     }
     catch
