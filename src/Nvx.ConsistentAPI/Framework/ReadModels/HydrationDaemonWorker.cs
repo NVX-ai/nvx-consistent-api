@@ -75,7 +75,7 @@ public class HydrationDaemonWorker
 
   private const string UpdateHydrationState =
     """
-    UPDATE [HydrationQueue]
+    UPDATE [HydrationQueue] WITH (ROWLOCK)
     SET [WorkerId] = NULL,
         [LockedUntil] = NULL,
         [LastHydratedPosition] = @LastHydratedPosition
