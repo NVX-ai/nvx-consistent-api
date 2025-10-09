@@ -277,7 +277,6 @@ public class HydrationDaemonWorker
   private readonly string connectionString;
   private readonly DatabaseHandlerFactory dbFactory;
   private readonly Fetcher fetcher;
-  private readonly string getCandidatesSql;
   private readonly ILogger logger;
   private readonly string modelHash;
 
@@ -300,7 +299,6 @@ public class HydrationDaemonWorker
     IdempotentReadModel[] readModels,
     DatabaseHandlerFactory dbFactory,
     MessageHub messageHub,
-    int swarmSize,
     ILogger logger)
   {
     this.modelHash = modelHash;
@@ -308,16 +306,6 @@ public class HydrationDaemonWorker
     this.fetcher = fetcher;
     this.readModels = readModels;
     this.dbFactory = dbFactory;
-    getCandidatesSql =
-      $"""
-         SELECT TOP {swarmSize * 2} *
-         FROM [HydrationQueue]
-         WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
-           AND [ModelHash] = @ModelHash
-           AND [TimesLocked] < 25
-           AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])
-         ORDER BY [IsDynamicConsistencyBoundary], [Position] ASC
-       """;
     this.logger = logger;
     task = Task.Run(Process);
     messageHub.Subscribe(this);

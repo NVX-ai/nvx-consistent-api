@@ -80,7 +80,6 @@ public class ReadModelHydrationDaemon(
       readModels,
       new DatabaseHandlerFactory(settings.ReadModelConnectionString, logger),
       messageHub,
-      settings.ParallelHydration,
       logger))
     .ToArray();
 
