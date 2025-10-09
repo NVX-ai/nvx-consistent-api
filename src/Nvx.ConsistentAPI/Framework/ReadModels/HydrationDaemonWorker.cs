@@ -492,11 +492,11 @@ public class HydrationDaemonWorker
     try
     {
       await using var connection = new SqlConnection(connectionString);
-      var candidates =
-        await connection.QueryAsync<HydrationQueueEntry>(
+      var candidate =
+        await connection.QuerySingleOrDefaultAsync<HydrationQueueEntry>(
           LockCandidateSql,
           new { ModelHash = modelHash, workerId, lockLength = StreamLockLengthSeconds });
-      return candidates.OrderBy(_ => Guid.NewGuid()).FirstOrDefault();
+      return candidate?.WorkerId == workerId ? candidate : null;
     }
     catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
     {
