@@ -760,7 +760,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
           DATEADD(SECOND, 25, GETUTCDATE()) AS LockedUntil
       ) AS Source
       ON Target.[TableName] = Source.[TableName]
-      WHEN MATCHED THEN
+      WHEN MATCHED AND (Target.[LockedUntil] < GETUTCDATE() OR Target.[ProcessId] = Source.[ProcessId]) THEN
         UPDATE SET
           [ProcessId] = Source.ProcessId,
           [LockedUntil] = Source.LockedUntil
@@ -782,35 +782,14 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     }
     catch (Exception ex)
     {
-      logger.LogWarning(ex, "Failed to acquire lock for {TableName}", tableName);
+      logger.LogError(ex, "Failed to acquire lock for {TableName}", tableName);
       return false;
-    }
-  }
-
-  public async Task ReleaseLock(Guid processId)
-  {
-    try
-    {
-      await using var connection = new SqlConnection(connectionString);
-      await connection.ExecuteAsync(
-        """
-        UPDATE [ReadModelLocks] WITH (ROWLOCK) 
-        SET    [LockedUntil] = GETUTCDATE()
-        WHERE [TableName] = @TableName
-          AND [ProcessId] = @ProcessId
-        """,
-        new { TableName = tableName, ProcessId = processId });
-    }
-    catch
-    {
-      /* ignored */
     }
   }
 
   public async Task<bool> TryRefreshLock(Guid processId, CancellationToken token)
   {
-    await using var connection = new SqlConnection(connectionString);
-    const string updateSQL =
+    const string refreshLockSql =
       """
         UPDATE [ReadModelLocks] WITH (ROWLOCK)
         SET [LockedUntil] = DATEADD(SECOND, 25, GETUTCDATE())
@@ -821,16 +800,8 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
       """;
     try
     {
-      await connection.ExecuteAsync("DELETE FROM [ReadModelLocks] WHERE [LockedUntil] < GETUTCDATE()", token);
-      var existingLock = await connection.QueryFirstOrDefaultAsync<ReadModelLock>(
-        SelectLastActiveLockSql,
-        new { TableName = tableName });
-      if (existingLock is null || existingLock.ProcessId != processId)
-      {
-        return false;
-      }
-
-      return await connection.ExecuteAsync(updateSQL, new { TableName = tableName, ProcessId = processId }) > 0;
+      await using var connection = new SqlConnection(connectionString);
+      return await connection.ExecuteAsync(refreshLockSql, new { TableName = tableName, ProcessId = processId }) > 0;
     }
     catch
     {
