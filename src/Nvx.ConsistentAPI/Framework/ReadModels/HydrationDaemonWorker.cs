@@ -86,7 +86,7 @@ public class HydrationDaemonWorker
 
   private const string UpsertSql =
     """
-    MERGE [HydrationQueue] AS target
+    MERGE [HydrationQueue] WITH (ROWLOCK) AS target
     USING (
       SELECT
         @StreamName AS StreamName,
