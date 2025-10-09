@@ -215,7 +215,7 @@ public class HydrationDaemonWorker
          @ReadModelName AS ReadModelName,
          DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS LockedUntil
      )
-     MERGE [ModelHashReadModelLocks] AS target
+     MERGE [ModelHashReadModelLocks] WITH (ROWLOCK) AS target
      USING cte AS source
      ON target.[ModelHash] = source.ModelHash
      WHEN NOT MATCHED THEN
