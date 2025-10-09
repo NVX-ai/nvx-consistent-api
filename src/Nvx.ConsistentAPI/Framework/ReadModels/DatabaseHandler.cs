@@ -812,7 +812,7 @@ public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
     await using var connection = new SqlConnection(connectionString);
     const string updateSQL =
       """
-        UPDATE [ReadModelLocks]
+        UPDATE [ReadModelLocks] WITH (ROWLOCK)
         SET [LockedUntil] = DATEADD(SECOND, 25, GETUTCDATE())
         WHERE
           [TableName] = @TableName
