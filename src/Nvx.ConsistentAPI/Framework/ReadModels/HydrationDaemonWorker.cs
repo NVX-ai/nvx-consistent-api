@@ -176,6 +176,37 @@ public class HydrationDaemonWorker
     ORDER BY [LastHydratedPosition] DESC
     """;
 
+  private const string LockCandidateSql =
+    """
+    ;WITH cte AS (
+      SELECT TOP 1 *
+      FROM [HydrationQueue] WITH (ROWLOCK, READPAST)
+      WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
+        AND [ModelHash] = @ModelHash
+        AND [TimesLocked] < 25
+        AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])
+      ORDER BY [IsDynamicConsistencyBoundary], [Position] ASC
+    )
+    UPDATE cte
+    SET 
+      [WorkerId] = @WorkerId,
+      [LockedUntil] = DATEADD(SECOND, @lockLength, GETUTCDATE()),
+      [TimesLocked] = [TimesLocked] + 1
+    OUTPUT
+      inserted.[StreamName],
+      inserted.[SerializedId],
+      inserted.[IdTypeName],
+      inserted.[IdTypeNamespace],
+      inserted.[ModelHash],
+      inserted.[Position],
+      inserted.[WorkerId],
+      inserted.[LockedUntil],
+      inserted.[TimesLocked],
+      inserted.[CreatedAt],
+      inserted.[IsDynamicConsistencyBoundary],
+      inserted.[LastHydratedPosition];
+    """;
+
   private static readonly string SafeInsertModelHashReadModelLockSql =
     $"""
      MERGE [ModelHashReadModelLocks] AS target
@@ -478,7 +509,9 @@ public class HydrationDaemonWorker
     {
       await using var connection = new SqlConnection(connectionString);
       var candidates =
-        await connection.QueryAsync<HydrationQueueEntry>(getCandidatesSql, new { ModelHash = modelHash });
+        await connection.QueryAsync<HydrationQueueEntry>(
+          LockCandidateSql,
+          new { ModelHash = modelHash, workerId, lockLength = StreamLockLengthSeconds });
       return candidates.OrderBy(_ => Guid.NewGuid()).FirstOrDefault();
     }
     catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
@@ -499,12 +532,6 @@ public class HydrationDaemonWorker
       return;
     }
 
-    if (!await TryLockStream(candidate))
-    {
-      await Task.Delay(15);
-      return;
-    }
-
     var ableReadModels = readModels.Where(rm => rm.CanProject(candidate.StreamName)).ToArray();
     if (ableReadModels.Length == 0)
     {
@@ -516,29 +543,29 @@ public class HydrationDaemonWorker
     var hydrateTask = Hydrate(cancellationSource.Token);
     var nextRefreshAt = DateTime.UtcNow.AddSeconds(2);
 
-    while (!hydrateTask.IsCompleted)
-    {
-      if (nextRefreshAt < DateTime.UtcNow)
-      {
-        if (!await TryRefreshLock(candidate.StreamName))
-        {
-          await cancellationSource.CancelAsync();
-          logger.LogWarning(
-            "Lost lock on stream {Stream} at position {Position} for worker {WorkerId} and model {ModelHash}",
-            candidate.StreamName,
-            candidate.Position,
-            workerId,
-            modelHash);
-          return;
-        }
-
-        nextRefreshAt = DateTime.UtcNow.AddSeconds(RefreshStreamLockFrequencySeconds);
-      }
-
-      // It might mask the error from the cancellation of the hydration.
-      // ReSharper disable once MethodSupportsCancellation
-      await Task.Delay(10);
-    }
+    // while (!hydrateTask.IsCompleted)
+    // {
+    //   if (nextRefreshAt < DateTime.UtcNow)
+    //   {
+    //     if (!await TryRefreshLock(candidate.StreamName))
+    //     {
+    //       await cancellationSource.CancelAsync();
+    //       logger.LogWarning(
+    //         "Lost lock on stream {Stream} at position {Position} for worker {WorkerId} and model {ModelHash}",
+    //         candidate.StreamName,
+    //         candidate.Position,
+    //         workerId,
+    //         modelHash);
+    //       return;
+    //     }
+    //
+    //     nextRefreshAt = DateTime.UtcNow.AddSeconds(RefreshStreamLockFrequencySeconds);
+    //   }
+    //
+    //   // It might mask the error from the cancellation of the hydration.
+    //   // ReSharper disable once MethodSupportsCancellation
+    //   await Task.Delay(10);
+    // }
 
     await MarkAsHydrated(candidate with { LastHydratedPosition = await hydrateTask });
     return;
