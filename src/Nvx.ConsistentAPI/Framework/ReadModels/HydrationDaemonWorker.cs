@@ -253,7 +253,7 @@ public class HydrationDaemonWorker
          AND [StreamName] = @StreamName
          AND [ModelHash] = @ModelHash
      )
-     UPDATE [HydrationQueue]
+     UPDATE cte
      SET [LockedUntil] = cte.NewLockedUntil
      FROM cte
      WHERE [WorkerId] = @WorkerId
