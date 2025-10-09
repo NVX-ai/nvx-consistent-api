@@ -233,26 +233,14 @@ public class HydrationDaemonWorker
 
   private static readonly string TryModelHashReadModelLockSql =
     $"""
-     ;WITH cte AS (
-       SELECT 
-         DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS NewLockedUntil
-       FROM [ModelHashReadModelLocks] WITH (ROWLOCK)
-       WHERE [ReadModelName] = @ReadModelName
-         AND (
-           [LockedUntil] IS NULL 
-           OR [LockedUntil] < GETUTCDATE()
-           OR [ModelHash] = @ModelHash
-         )
-     )
-     UPDATE [ModelHashReadModelLocks]
-     SET [LockedUntil] = cte.NewLockedUntil
-     FROM cte
-     WHERE [ModelHashReadModelLocks].[ReadModelName] = @ReadModelName
-       AND (
-         [ModelHashReadModelLocks].[LockedUntil] IS NULL 
-         OR [ModelHashReadModelLocks].[LockedUntil] < GETUTCDATE()
-         OR [ModelHashReadModelLocks].[ModelHash] = @ModelHash
-       )
+      UPDATE [ModelHashReadModelLocks]
+      SET [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE())
+      WHERE 
+        [ReadModelName] = @ReadModelName
+        AND 
+         [LockedUntil] IS NULL 
+         OR [LockedUntil] < GETUTCDATE()
+         OR [ModelHash] = @ModelHash
      """;
 
   private static readonly string TryRefreshStreamLockSql =
@@ -260,7 +248,7 @@ public class HydrationDaemonWorker
      ;WITH cte AS (
        SELECT 
          DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS NewLockedUntil
-       FROM [HydrationQueue] WITH (ROWLOCK)
+       FROM [HydrationQueue]
        WHERE [WorkerId] = @WorkerId
          AND [StreamName] = @StreamName
          AND [ModelHash] = @ModelHash
