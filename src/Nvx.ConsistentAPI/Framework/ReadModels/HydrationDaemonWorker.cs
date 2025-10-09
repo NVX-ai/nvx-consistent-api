@@ -162,7 +162,7 @@ public class HydrationDaemonWorker
 
   private const string ResetStreamSql =
     """
-    DELETE FROM [HydrationQueue]
+    DELETE FROM [HydrationQueue] WITH (ROWLOCK)
     WHERE [StreamName] LIKE @StreamPrefix + '%'
       AND [ModelHash] = @ModelHash
     """;
