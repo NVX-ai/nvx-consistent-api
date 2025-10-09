@@ -60,6 +60,16 @@ public class HydrationDaemonWorker
     END
     """;
 
+  private const string ModelHashReadModelLocksIndexCreationSql =
+    """
+    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ModelHashReadModelLocks_ReadModelName')
+    BEGIN
+      CREATE NONCLUSTERED INDEX [IX_ModelHashReadModelLocks_ReadModelName]
+      ON [dbo].[ModelHashReadModelLocks] ([ReadModelName])
+      INCLUDE ([ModelHash], [LockedUntil]);
+    END
+    """;
+
   private const int StreamLockLengthSeconds = 90;
   private const int RefreshStreamLockFrequencySeconds = StreamLockLengthSeconds / 3;
 
@@ -229,7 +239,8 @@ public class HydrationDaemonWorker
     QueueTableCreationSql,
     GetCandidatesIndexCreationSql,
     TryLockIndexCreationSql,
-    ModelHashReadModelLockTableCreationSql
+    ModelHashReadModelLockTableCreationSql,
+    ModelHashReadModelLocksIndexCreationSql
   ];
 
   private readonly string connectionString;
