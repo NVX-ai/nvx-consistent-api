@@ -233,7 +233,7 @@ public class HydrationDaemonWorker
 
   private static readonly string TryModelHashReadModelLockSql =
     $"""
-      UPDATE [ModelHashReadModelLocks]
+      UPDATE [ModelHashReadModelLocks] WITH (ROWLOCK)
       SET [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE())
       WHERE 
         [ReadModelName] = @ReadModelName
@@ -248,7 +248,7 @@ public class HydrationDaemonWorker
      ;WITH cte AS (
        SELECT 
          DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS NewLockedUntil
-       FROM [HydrationQueue]
+       FROM [HydrationQueue] WITH (ROWLOCK)
        WHERE [WorkerId] = @WorkerId
          AND [StreamName] = @StreamName
          AND [ModelHash] = @ModelHash
