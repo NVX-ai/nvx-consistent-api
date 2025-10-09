@@ -243,24 +243,19 @@ public class HydrationDaemonWorker
          OR [ModelHash] = @ModelHash
      """;
 
-  private static readonly string TryLockStreamSql =
-    $"""
-     UPDATE [HydrationQueue]
-     SET [WorkerId] = @WorkerId,
-         [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()),
-         [TimesLocked] = [TimesLocked] + 1
-     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
-       AND [StreamName] = @StreamName
-       AND [ModelHash] = @ModelHash
-       AND [TimesLocked] = @TimesLocked
-       AND ([WorkerId] IS NULL OR [WorkerId] = @ExistingWorkerId)
-       AND [Position] = @Position
-     """;
-
   private static readonly string TryRefreshStreamLockSql =
     $"""
+     ;WITH cte AS (
+       SELECT 
+         DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS NewLockedUntil
+       FROM [HydrationQueue]
+       WHERE [WorkerId] = @WorkerId
+         AND [StreamName] = @StreamName
+         AND [ModelHash] = @ModelHash
+     )
      UPDATE [HydrationQueue]
-     SET [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE())
+     SET [LockedUntil] = cte.NewLockedUntil
+     FROM cte
      WHERE [WorkerId] = @WorkerId
        AND [StreamName] = @StreamName
        AND [ModelHash] = @ModelHash
@@ -532,29 +527,29 @@ public class HydrationDaemonWorker
     var hydrateTask = Hydrate(cancellationSource.Token);
     var nextRefreshAt = DateTime.UtcNow.AddSeconds(2);
 
-    // while (!hydrateTask.IsCompleted)
-    // {
-    //   if (nextRefreshAt < DateTime.UtcNow)
-    //   {
-    //     if (!await TryRefreshLock(candidate.StreamName))
-    //     {
-    //       await cancellationSource.CancelAsync();
-    //       logger.LogWarning(
-    //         "Lost lock on stream {Stream} at position {Position} for worker {WorkerId} and model {ModelHash}",
-    //         candidate.StreamName,
-    //         candidate.Position,
-    //         workerId,
-    //         modelHash);
-    //       return;
-    //     }
-    //
-    //     nextRefreshAt = DateTime.UtcNow.AddSeconds(RefreshStreamLockFrequencySeconds);
-    //   }
-    //
-    //   // It might mask the error from the cancellation of the hydration.
-    //   // ReSharper disable once MethodSupportsCancellation
-    //   await Task.Delay(10);
-    // }
+    while (!hydrateTask.IsCompleted)
+    {
+      if (nextRefreshAt < DateTime.UtcNow)
+      {
+        if (!await TryRefreshLock(candidate.StreamName))
+        {
+          await cancellationSource.CancelAsync();
+          logger.LogWarning(
+            "Lost lock on stream {Stream} at position {Position} for worker {WorkerId} and model {ModelHash}",
+            candidate.StreamName,
+            candidate.Position,
+            workerId,
+            modelHash);
+          return;
+        }
+
+        nextRefreshAt = DateTime.UtcNow.AddSeconds(RefreshStreamLockFrequencySeconds);
+      }
+
+      // It might mask the error from the cancellation of the hydration.
+      // ReSharper disable once MethodSupportsCancellation
+      await Task.Delay(10);
+    }
 
     await MarkAsHydrated(candidate with { LastHydratedPosition = await hydrateTask });
     return;
@@ -635,31 +630,6 @@ public class HydrationDaemonWorker
     {
       await Task.Delay(Random.Shared.Next(150));
       await MarkAsHydrated(entry);
-    }
-  }
-
-  private async Task<bool> TryLockStream(HydrationQueueEntry entry)
-  {
-    try
-    {
-      await using var connection = new SqlConnection(connectionString);
-      var rowsUpdated = await connection.ExecuteAsync(
-        TryLockStreamSql,
-        new
-        {
-          WorkerId = workerId,
-          entry.StreamName,
-          ModelHash = modelHash,
-          entry.TimesLocked,
-          ExistingWorkerId = entry.WorkerId,
-          entry.Position
-        });
-      return rowsUpdated > 0;
-    }
-    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
-    {
-      await Task.Delay(Random.Shared.Next(150));
-      return await TryLockStream(entry);
     }
   }
 
