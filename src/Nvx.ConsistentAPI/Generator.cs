@@ -1,5 +1,6 @@
 using System.Reflection;
 using Dapper;
+using MessagePipe;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -214,6 +215,8 @@ public static class Generator
       });
     }
 
+    builder.Services.AddMessagePipe().AddInMemoryDistributedMessageBroker();
+
     builder
       .Services
       .AddAuthentication(options =>
@@ -376,6 +379,7 @@ public static class Generator
     }
 
     var app = builder.Build();
+    GlobalMessagePipe.SetProvider(app.Services);
     app.UseCors(corsPolicyName);
     app.UseRouting();
     app.MapHub<NotificationHub>("/message-hub");
