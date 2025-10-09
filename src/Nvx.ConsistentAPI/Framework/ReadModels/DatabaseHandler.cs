@@ -61,14 +61,6 @@ public interface DatabaseHandler
 
 public class DatabaseHandler<Shape> : DatabaseHandler where Shape : HasId
 {
-  private const string SelectLastActiveLockSql =
-    """
-      SELECT [TableName], [ProcessId], [LockedUntil]
-      FROM [ReadModelLocks]
-      WHERE [TableName] = @TableName
-      ORDER BY [LockedUntil]
-    """;
-
   // ReSharper disable once StaticMemberInGenericType
   private static readonly string[] TraceabilityColumnNames =
   [
