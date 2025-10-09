@@ -97,8 +97,8 @@ public class HydrationDaemonWorker
         @IdTypeNamespace AS IdTypeNamespace,
         @IsDynamicConsistencyBoundary AS IsDynamicConsistencyBoundary
     ) AS source
-    ON target.[StreamName] = source.StreamName
-       AND target.[ModelHash] = source.ModelHash
+    ON  target.[StreamName] = source.StreamName
+    AND target.[ModelHash] = source.ModelHash
     WHEN MATCHED THEN
         UPDATE SET 
           [TimesLocked] = 0,
@@ -209,26 +209,12 @@ public class HydrationDaemonWorker
 
   private static readonly string SafeInsertModelHashReadModelLockSql =
     $"""
-     ;WITH cte AS (
-       SELECT
-         @ModelHash AS ModelHash,
-         @ReadModelName AS ReadModelName,
-         DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS LockedUntil
-     )
-     MERGE [ModelHashReadModelLocks] WITH (ROWLOCK) AS target
-     USING cte AS source
-     ON target.[ModelHash] = source.ModelHash
-     WHEN NOT MATCHED THEN
-         INSERT (
-           [ModelHash],
-           [ReadModelName],
-           [LockedUntil]
-         )
-         VALUES (
-           source.ModelHash,
-           source.ReadModelName,
-           source.LockedUntil
-         );
+     INSERT INTO [ModelHashReadModelLocks] WITH (ROWLOCK) 
+     SELECT 
+       @ModelHash AS ModelHash,
+       @ReadModelName AS ReadModelName,
+       DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS LockedUntil
+     WHERE NOT EXISTS (SELECT TOP 1 1 FROM [ModelHashReadModelLocks] WHERE ModelHash = @ModelHash)
      """;
 
   private static readonly string TryModelHashReadModelLockSql =
