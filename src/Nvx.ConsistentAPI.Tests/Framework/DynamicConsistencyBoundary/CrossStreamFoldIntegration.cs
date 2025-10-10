@@ -11,16 +11,16 @@ public class CrossStreamFoldIntegration
     var tag = Guid.NewGuid().ToString();
     await setup.InsertEvents(new InterestedEntityAddedAnInterest(interestedEntityId, concernedEntityId));
 
+    await setup.WaitForConsistency(ConsistencyWaitType.Long);
     var beforeTags = await setup.ReadModel<EntityThatDependsReadModel>(
-      interestedEntityId.ToString(),
-      waitType: ConsistencyWaitType.Long);
+      interestedEntityId.ToString());
     Assert.Empty(beforeTags.DependedOnTags);
 
     await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, tag));
 
+    await setup.WaitForConsistency(ConsistencyWaitType.Long);
     var withTags = await setup.ReadModel<EntityThatDependsReadModel>(
-      interestedEntityId.ToString(),
-      waitType: ConsistencyWaitType.Long);
+      interestedEntityId.ToString());
     Assert.Single(withTags.DependedOnTags);
     Assert.Contains(withTags.DependedOnTags, t => t == tag);
 
@@ -28,25 +28,25 @@ public class CrossStreamFoldIntegration
     await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, Guid.NewGuid().ToString()));
     await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, Guid.NewGuid().ToString()));
 
+    await setup.WaitForConsistency(ConsistencyWaitType.Long);
     var moreTags = await setup.ReadModel<EntityThatDependsReadModel>(
-      interestedEntityId.ToString(),
-      waitType: ConsistencyWaitType.Long);
+      interestedEntityId.ToString());
     Assert.Equal(4, moreTags.DependedOnTags.Length);
     Assert.Contains(moreTags.DependedOnTags, t => t == tag);
 
+    await setup.WaitForConsistency(ConsistencyWaitType.Long);
     await setup.InsertEvents(new InterestedEntityRemovedInterest(interestedEntityId, concernedEntityId));
     var afterDependencyRemoved = await setup.ReadModel<EntityThatDependsReadModel>(
-      interestedEntityId.ToString(),
-      waitType: ConsistencyWaitType.Long);
+      interestedEntityId.ToString());
     Assert.Empty(afterDependencyRemoved.DependsOnIds);
     Assert.Empty(afterDependencyRemoved.DependedOnTags);
 
     await setup.InsertEvents(new FirstDegreeConcernedEntityTagged(concernedEntityId, Guid.NewGuid().ToString()));
 
+    await setup.WaitForConsistency(ConsistencyWaitType.Long);
     var updatedTagsAfterDependencyRemoved =
       await setup.ReadModel<EntityThatDependsReadModel>(
-        interestedEntityId.ToString(),
-        waitType: ConsistencyWaitType.Long);
+        interestedEntityId.ToString());
     Assert.Empty(updatedTagsAfterDependencyRemoved.DependsOnIds);
     Assert.Empty(updatedTagsAfterDependencyRemoved.DependedOnTags);
   }
