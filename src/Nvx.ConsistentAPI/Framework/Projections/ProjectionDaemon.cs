@@ -1,5 +1,4 @@
 using EventStore.Client;
-using MessagePipe;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -24,16 +23,10 @@ public class ProjectionDaemon(
   private const string SubscriptionVersion = "1";
   private static readonly SemaphoreSlim CatchUpLock = new(1);
   private string[] catchingUp = [];
-  private bool isProjecting;
   private ulong lastCatchUpProcessedPosition;
   private ulong lastProcessedPosition;
   private int projectedCount;
-
-  private IDistributedPublisher<Uuid, ResolvedEvent> publisher =
-    GlobalMessagePipe.GetDistributedPublisher<Uuid, ResolvedEvent>();
-
-  private IDistributedSubscriber<Uuid, ResolvedEvent> subscriber =
-    GlobalMessagePipe.GetDistributedSubscriber<Uuid, ResolvedEvent>();
+  private bool isProjecting;
 
   public ProjectorDaemonInsights Insights(ulong lastEventPosition)
   {
@@ -187,7 +180,6 @@ public class ProjectionDaemon(
                 {
                   continue;
                 }
-
                 using var _ = new RunningProjectionCountTracker(projector.Name);
                 await projector.HandleEvent(evt, parser, fetcher, client);
                 Interlocked.Increment(ref projectedCount);
