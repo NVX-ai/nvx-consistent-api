@@ -185,7 +185,7 @@ public class HydrationDaemonWorker
         AND [ModelHash] = @ModelHash
         AND [TimesLocked] < 25
         AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])
-      ORDER BY [IsDynamicConsistencyBoundary], [Position] ASC
+      ORDER BY [IsDynamicConsistencyBoundary] ASC, [Position] DESC
     )
     UPDATE cte
     SET 
