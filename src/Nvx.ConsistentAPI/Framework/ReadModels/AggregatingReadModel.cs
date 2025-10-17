@@ -324,7 +324,6 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
       {
         activity?.Dispose();
         ClearTracker();
-        await databaseHandler.ReleaseLock(processId);
         await Task.Delay(250);
       }
     }

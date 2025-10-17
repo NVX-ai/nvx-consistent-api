@@ -10,7 +10,8 @@ public class DynamicConsistencyBoundaryDaemon(
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   InterestTrigger[] triggers,
   ILogger logger,
-  InterestFetcher interestFetcher)
+  InterestFetcher interestFetcher,
+  GeneratorSettings settings)
 {
   private readonly SemaphoreSlim semaphore = new(25);
   private ulong? currentProcessedPosition;
@@ -49,6 +50,10 @@ public class DynamicConsistencyBoundaryDaemon(
 
   internal void Initialize()
   {
+    if (!settings.EnabledFeatures.HasFlag(FrameworkFeatures.Projections))
+    {
+      return;
+    }
     _ = Task.Run(async () =>
     {
       var position = FromAll.End;
