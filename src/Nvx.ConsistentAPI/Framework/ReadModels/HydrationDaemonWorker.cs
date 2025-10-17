@@ -48,6 +48,17 @@ public class HydrationDaemonWorker
     END
     """;
 
+  private const string LastHydratedPositionForStreamIndexCreationSql =
+    """
+    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_HydrationQueue_LastHydratedPositionForStream')
+    BEGIN
+      CREATE NONCLUSTERED INDEX [IX_HydrationQueue_LastHydratedPositionForStream]
+      ON [dbo].[HydrationQueue] ([TimesLocked], [Position])
+      INCLUDE ([LastHydratedPosition], [StreamName])
+      WITH (ONLINE = ON);
+    END
+    """;
+
   private const string ModelHashReadModelLockTableCreationSql =
     """
     IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ModelHashReadModelLocks')
@@ -245,7 +256,8 @@ public class HydrationDaemonWorker
     GetCandidatesIndexCreationSql,
     TryLockIndexCreationSql,
     ModelHashReadModelLockTableCreationSql,
-    ModelHashReadModelLocksIndexCreationSql
+    ModelHashReadModelLocksIndexCreationSql,
+    LastHydratedPositionForStreamIndexCreationSql
   ];
 
   private readonly string connectionString;
