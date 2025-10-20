@@ -337,6 +337,11 @@ public class ReadModelHydrationDaemon(
         .Async()
         .Iter(async @event =>
         {
+          if (!@event.ShouldTriggerHydration(EventMetadata.TryParse(evt), false))
+          {
+            return;
+          }
+
           // Skip processing if the event is known to not be the last of the stream.
           var isMidStream = fetcher
             .GetCachedStreamRevision(@event.GetStreamName(), @event.GetEntityId())
