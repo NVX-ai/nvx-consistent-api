@@ -369,8 +369,7 @@ public abstract class ReadModelAggregator<E> : ReadModelAggregator where E : Eve
     Fetcher fetcher,
     DbConnection dbConnection,
     DbTransaction dbTransaction,
-    TableDetails tableDetails
-    ) =>
+    TableDetails tableDetails) =>
     evt.Event is E e
       ? Aggregate(evt.As(e), fetcher, dbConnection, dbTransaction, tableDetails)
       : Task.FromResult<string[]>([]);

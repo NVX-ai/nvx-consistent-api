@@ -371,10 +371,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
                   e.LastEventAt,
                   e.FirstUserSubFound,
                   e.LastUserSubFound,
-                  id.StreamId(),
-                  e.FirstEventPosition,
-                  e.LastEventPosition
-                  ),
+                  id.StreamId()),
                 id,
                 cancellationToken)
               : unit.ToTask(),
@@ -398,8 +395,6 @@ public interface FoundEntity
 
 public record FoundEntity<T>(
   T Entity,
-  ulong FirstEventPosition,
-  ulong LastEventPosition,
   DateTime FirstEventAt,
   DateTime LastEventAt,
   string? FirstUserSubFound,
@@ -415,8 +410,6 @@ public record FoundEntity<T>(
     .Ent.Bind(e => fr.GlobalPosition.Map(gp => (e, gp)))
     .Map(tuple => new FoundEntity<T>(
       tuple.e,
-      fr.FirstEventPosition,
-      fr.LastEventPosition,
       fr.FirstEventAt ?? DateTime.UnixEpoch,
       fr.LastEventAt ?? fr.FirstEventAt ?? DateTime.UnixEpoch,
       fr.FirstUserSubFound,

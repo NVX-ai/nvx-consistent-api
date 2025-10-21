@@ -17,7 +17,7 @@ internal static class SingleStreamFetch
     CancellationToken cancellationToken) where Entity : EventModelEntity<Entity>
   {
     var cached = resetCache ? new Miss() : cache.Find(defaulted.GetStreamName());
-    (Entity e, Option<long> r, Option<Position> gp, ulong fep, ulong lep, DateTime? fe, DateTime? le, string? fu, string? lu) seed =
+    (Entity e, Option<long> r, Option<Position> gp, DateTime? fe, DateTime? le, string? fu, string? lu) seed =
       upToRevision is null
         ? cached switch
         {
@@ -26,15 +26,13 @@ internal static class SingleStreamFetch
             single.Entity,
             single.Revision,
             single.GlobalPosition,
-            single.FirstEventPosition,
-            single.LastEventPosition,
             single.FirstEventAt,
             single.LastEventAt,
             single.FirstUserSubFound,
             single.LastUserSubFound),
-          _ => (defaulted, None, None, 0, 0, null, null, null, null)
+          _ => (defaulted, None, None, null, null, null, null)
         }
-        : (defaulted, None, None, 0, 0, null, null, null, null);
+        : (defaulted, None, None, null, null, null, null);
 
     var read = client.ReadStreamAsync(
       Direction.Forwards,
@@ -44,25 +42,23 @@ internal static class SingleStreamFetch
 
     if (await read.ReadState == ReadState.StreamNotFound)
     {
-      return new FetchResult<Entity>(None, -1, None, 0, 0, null, null, null, null);
+      return new FetchResult<Entity>(None, -1, None, null, null, null, null);
     }
 
     var result = await read
       .TakeWhile(re => upToRevision is null || re.Event.Position <= upToRevision)
       .AggregateAwaitAsync<
         ResolvedEvent,
-        (Entity entity, long rev, Option<Position> gp, ulong fep, ulong lep, DateTime? fe, DateTime? le, string? fu, string? lu),
+        (Entity entity, long rev, Option<Position> gp, DateTime? fe, DateTime? le, string? fu, string? lu),
         FetchResult<Entity>>(
-        (seed.e, seed.r.DefaultValue(-1), seed.gp, seed.fep, seed.lep, seed.fe, seed.le, seed.fu, seed.lu),
+        (seed.e, seed.r.DefaultValue(-1), seed.gp, seed.fe, seed.le, seed.fu, seed.lu),
         async (acc, @event) =>
           await parser(@event)
-            .Match<ValueTask<(Entity entity, long rev, Option<Position> gp, ulong fep, ulong lep, DateTime? fe, DateTime? le, string? fu,
+            .Match<ValueTask<(Entity entity, long rev, Option<Position> gp, DateTime? fe, DateTime? le, string? fu,
               string? lu)>>(
               async evt =>
               {
                 var metadata = EventMetadata.TryParse(@event);
-                var firstEventPosition = acc.fep == 0 ? @event.Event.Position.CommitPosition : acc.fep;
-                var lastEventPosition = @event.Event.Position.CommitPosition;
                 var firstEventAt = acc.fe ?? metadata.CreatedAt;
                 var lastEventAt = metadata.CreatedAt;
                 var firstUserSubFound = acc.fu ?? metadata.RelatedUserSub;
@@ -74,8 +70,6 @@ internal static class SingleStreamFetch
                     new RevisionFetchWrapper(fetcher, @event.OriginalEvent.Position, resetCache)),
                   @event.Event.EventNumber.ToInt64(),
                   Some(@event.Event.Position),
-                  firstEventPosition,
-                  lastEventPosition,
                   firstEventAt,
                   lastEventAt,
                   firstUserSubFound,
@@ -84,8 +78,6 @@ internal static class SingleStreamFetch
               () =>
               {
                 var (createdAt, _, _, relatedUserSub, _) = EventMetadata.TryParse(@event);
-                var firstEventPosition = acc.fep == 0 ? @event.Event.Position.CommitPosition : acc.fep;
-                var lastEventPosition = @event.Event.Position.CommitPosition;
                 DateTime? firstEventAt = acc.fe ?? createdAt;
                 DateTime? lastEventAt = createdAt;
                 var firstUserSubFound = acc.fu ?? relatedUserSub;
@@ -95,15 +87,13 @@ internal static class SingleStreamFetch
                     acc.entity,
                     acc.rev,
                     acc.gp,
-                    firstEventPosition,
-                    lastEventPosition,
                     firstEventAt,
                     lastEventAt,
                     firstUserSubFound,
                     lastUserSubFound));
               }),
         tuple => ValueTask.FromResult(
-          new FetchResult<Entity>(tuple.entity, tuple.rev, tuple.gp, tuple.fep, tuple.lep, tuple.fe, tuple.le, tuple.fu, tuple.lu)),
+          new FetchResult<Entity>(tuple.entity, tuple.rev, tuple.gp, tuple.fe, tuple.le, tuple.fu, tuple.lu)),
         cancellationToken);
 
     if (result.Revision < 0 || upToRevision is not null)
@@ -119,8 +109,6 @@ internal static class SingleStreamFetch
           entity,
           result.Revision,
           result.GlobalPosition,
-          result.FirstEventPosition,
-          result.LastEventPosition,
           result.FirstEventAt ?? DateTime.UtcNow,
           result.LastEventAt ?? DateTime.UtcNow,
           result.FirstUserSubFound,
