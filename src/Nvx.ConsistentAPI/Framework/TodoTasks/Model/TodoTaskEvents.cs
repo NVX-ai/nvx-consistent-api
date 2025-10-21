@@ -12,7 +12,6 @@ public record TodoCreated(
   string? SerializedRelatedEntityId) : EventModelEvent
 {
   public string GetStreamName() => ProcessorEntity.GetStreamName(Id);
-
   public StrongId GetEntityId() => new StrongGuid(Id);
 }
 
@@ -59,4 +58,5 @@ public record TodoModelSnapshot(
   public string GetStreamName() => ProcessorEntity.GetStreamName(Id);
 
   public StrongId GetEntityId() => new StrongGuid(Id);
+  public bool ShouldTriggerHydration(EventMetadata metadata, bool isBackwards) => !isBackwards;
 }

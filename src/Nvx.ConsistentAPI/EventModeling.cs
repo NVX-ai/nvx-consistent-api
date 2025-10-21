@@ -243,7 +243,13 @@ public class EventModel
 
     processor.Initialize();
 
-    var dcbDaemon = new DynamicConsistencyBoundaryDaemon(esClient, parser, InterestTriggers, logger, interestFetcher);
+    var dcbDaemon = new DynamicConsistencyBoundaryDaemon(
+      esClient,
+      parser,
+      InterestTriggers,
+      logger,
+      interestFetcher,
+      settings);
     dcbDaemon.Initialize();
     logger.LogInformation("Dynamic Consistency Boundary Daemon initialized");
 
