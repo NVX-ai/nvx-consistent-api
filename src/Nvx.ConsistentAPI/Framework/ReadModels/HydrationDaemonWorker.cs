@@ -48,6 +48,17 @@ public class HydrationDaemonWorker
     END
     """;
 
+  private const string LastHydratedPositionForStreamIndexCreationSql =
+    """
+    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_HydrationQueue_LastHydratedPositionForStream')
+    BEGIN
+      CREATE NONCLUSTERED INDEX [IX_HydrationQueue_LastHydratedPositionForStream]
+      ON [dbo].[HydrationQueue] ([TimesLocked], [Position])
+      INCLUDE ([LastHydratedPosition], [StreamName])
+      WITH (ONLINE = ON);
+    END
+    """;
+
   private const string ModelHashReadModelLockTableCreationSql =
     """
     IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ModelHashReadModelLocks')
@@ -60,12 +71,22 @@ public class HydrationDaemonWorker
     END
     """;
 
+  private const string ModelHashReadModelLocksIndexCreationSql =
+    """
+    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ModelHashReadModelLocks_ReadModelName')
+    BEGIN
+      CREATE NONCLUSTERED INDEX [IX_ModelHashReadModelLocks_ReadModelName]
+      ON [dbo].[ModelHashReadModelLocks] ([ReadModelName])
+      INCLUDE ([ModelHash], [LockedUntil]);
+    END
+    """;
+
   private const int StreamLockLengthSeconds = 90;
   private const int RefreshStreamLockFrequencySeconds = StreamLockLengthSeconds / 3;
 
   private const string UpdateHydrationState =
     """
-    UPDATE [HydrationQueue]
+    UPDATE [HydrationQueue] WITH (ROWLOCK)
     SET [WorkerId] = NULL,
         [LockedUntil] = NULL,
         [LastHydratedPosition] = @LastHydratedPosition
@@ -76,7 +97,7 @@ public class HydrationDaemonWorker
 
   private const string UpsertSql =
     """
-    MERGE [HydrationQueue] AS target
+    MERGE [HydrationQueue] WITH (ROWLOCK) AS target
     USING (
       SELECT
         @StreamName AS StreamName,
@@ -87,8 +108,8 @@ public class HydrationDaemonWorker
         @IdTypeNamespace AS IdTypeNamespace,
         @IsDynamicConsistencyBoundary AS IsDynamicConsistencyBoundary
     ) AS source
-    ON target.[StreamName] = source.StreamName
-       AND target.[ModelHash] = source.ModelHash
+    ON  target.[StreamName] = source.StreamName
+    AND target.[ModelHash] = source.ModelHash
     WHEN MATCHED THEN
         UPDATE SET 
           [TimesLocked] = 0,
@@ -142,7 +163,7 @@ public class HydrationDaemonWorker
 
   private const string ReleaseSql =
     """
-    UPDATE [HydrationQueue]
+    UPDATE [HydrationQueue] WITH (ROWLOCK)
     SET [WorkerId] = NULL,
         [LockedUntil] = NULL
     WHERE [WorkerId] = @WorkerId
@@ -152,7 +173,7 @@ public class HydrationDaemonWorker
 
   private const string ResetStreamSql =
     """
-    DELETE FROM [HydrationQueue]
+    DELETE FROM [HydrationQueue] WITH (ROWLOCK)
     WHERE [StreamName] LIKE @StreamPrefix + '%'
       AND [ModelHash] = @ModelHash
     """;
@@ -166,32 +187,50 @@ public class HydrationDaemonWorker
     ORDER BY [LastHydratedPosition] DESC
     """;
 
+  private const string LockCandidateSql =
+    """
+    ;WITH cte AS (
+      SELECT TOP 1 *
+      FROM [HydrationQueue] WITH (ROWLOCK, READPAST)
+      WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
+        AND [ModelHash] = @ModelHash
+        AND [TimesLocked] < 25
+        AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])
+      ORDER BY [IsDynamicConsistencyBoundary] ASC, [Position] DESC
+    )
+    UPDATE cte
+    SET 
+      [WorkerId] = @WorkerId,
+      [LockedUntil] = DATEADD(SECOND, @lockLength, GETUTCDATE()),
+      [TimesLocked] = [TimesLocked] + 1
+    OUTPUT
+      inserted.[StreamName],
+      inserted.[SerializedId],
+      inserted.[IdTypeName],
+      inserted.[IdTypeNamespace],
+      inserted.[ModelHash],
+      inserted.[Position],
+      inserted.[WorkerId],
+      inserted.[LockedUntil],
+      inserted.[TimesLocked],
+      inserted.[CreatedAt],
+      inserted.[IsDynamicConsistencyBoundary],
+      inserted.[LastHydratedPosition];
+    """;
+
   private static readonly string SafeInsertModelHashReadModelLockSql =
     $"""
-     MERGE [ModelHashReadModelLocks] AS target
-     USING (
-       SELECT
-         @ModelHash AS ModelHash,
-         @ReadModelName AS ReadModelName,
-         DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS LockedUntil
-     ) AS source
-     ON target.[ModelHash] = source.ModelHash
-     WHEN NOT MATCHED THEN
-         INSERT (
-           [ModelHash],
-           [ReadModelName],
-           [LockedUntil]
-         )
-         VALUES (
-           source.ModelHash,
-           source.ReadModelName,
-           source.LockedUntil
-         );
+     INSERT INTO [ModelHashReadModelLocks] WITH (ROWLOCK) 
+     SELECT 
+       @ModelHash AS ModelHash,
+       @ReadModelName AS ReadModelName,
+       DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()) AS LockedUntil
+     WHERE NOT EXISTS (SELECT TOP 1 1 FROM [ModelHashReadModelLocks] WHERE ModelHash = @ModelHash)
      """;
 
   private static readonly string TryModelHashReadModelLockSql =
     $"""
-      UPDATE [ModelHashReadModelLocks]
+      UPDATE [ModelHashReadModelLocks] WITH (ROWLOCK)
       SET [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE())
       WHERE 
         [ReadModelName] = @ReadModelName
@@ -201,27 +240,14 @@ public class HydrationDaemonWorker
          OR [ModelHash] = @ModelHash
      """;
 
-  private static readonly string TryLockStreamSql =
-    $"""
-     UPDATE [HydrationQueue]
-     SET [WorkerId] = @WorkerId,
-         [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE()),
-         [TimesLocked] = [TimesLocked] + 1
-     WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
-       AND [StreamName] = @StreamName
-       AND [ModelHash] = @ModelHash
-       AND [TimesLocked] = @TimesLocked
-       AND ([WorkerId] IS NULL OR [WorkerId] = @ExistingWorkerId)
-       AND [Position] = @Position
-     """;
-
   private static readonly string TryRefreshStreamLockSql =
     $"""
-     UPDATE [HydrationQueue]
+     UPDATE [HydrationQueue] WITH (ROWLOCK)
      SET [LockedUntil] = DATEADD(SECOND, {StreamLockLengthSeconds}, GETUTCDATE())
      WHERE [WorkerId] = @WorkerId
        AND [StreamName] = @StreamName
        AND [ModelHash] = @ModelHash
+       AND [LockedUntil] < GETUTCDATE()
      """;
 
   public static readonly string[] TableCreationScripts =
@@ -229,13 +255,14 @@ public class HydrationDaemonWorker
     QueueTableCreationSql,
     GetCandidatesIndexCreationSql,
     TryLockIndexCreationSql,
-    ModelHashReadModelLockTableCreationSql
+    ModelHashReadModelLockTableCreationSql,
+    ModelHashReadModelLocksIndexCreationSql,
+    LastHydratedPositionForStreamIndexCreationSql
   ];
 
   private readonly string connectionString;
   private readonly DatabaseHandlerFactory dbFactory;
   private readonly Fetcher fetcher;
-  private readonly string getCandidatesSql;
   private readonly ILogger logger;
   private readonly string modelHash;
 
@@ -258,7 +285,6 @@ public class HydrationDaemonWorker
     IdempotentReadModel[] readModels,
     DatabaseHandlerFactory dbFactory,
     MessageHub messageHub,
-    int swarmSize,
     ILogger logger)
   {
     this.modelHash = modelHash;
@@ -266,16 +292,6 @@ public class HydrationDaemonWorker
     this.fetcher = fetcher;
     this.readModels = readModels;
     this.dbFactory = dbFactory;
-    getCandidatesSql =
-      $"""
-         SELECT TOP {swarmSize * 2} *
-         FROM [HydrationQueue]
-         WHERE ([LockedUntil] IS NULL OR [LockedUntil] < GETUTCDATE())
-           AND [ModelHash] = @ModelHash
-           AND [TimesLocked] < 25
-           AND ([LastHydratedPosition] IS NULL OR [Position] > [LastHydratedPosition])
-         ORDER BY [IsDynamicConsistencyBoundary], [Position] ASC
-       """;
     this.logger = logger;
     task = Task.Run(Process);
     messageHub.Subscribe(this);
@@ -466,9 +482,11 @@ public class HydrationDaemonWorker
     try
     {
       await using var connection = new SqlConnection(connectionString);
-      var candidates =
-        await connection.QueryAsync<HydrationQueueEntry>(getCandidatesSql, new { ModelHash = modelHash });
-      return candidates.OrderBy(_ => Guid.NewGuid()).FirstOrDefault();
+      var candidate =
+        await connection.QuerySingleOrDefaultAsync<HydrationQueueEntry>(
+          LockCandidateSql,
+          new { ModelHash = modelHash, workerId, lockLength = StreamLockLengthSeconds });
+      return candidate?.WorkerId == workerId ? candidate : null;
     }
     catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
     {
@@ -485,12 +503,6 @@ public class HydrationDaemonWorker
       await wakeUpSemaphore.WaitAsync();
       ResumePollingAt = DateTime.UtcNow.AddMilliseconds(waitBackoff * 250 + Random.Shared.Next(1, 250));
       wakeUpSemaphore.Release();
-      return;
-    }
-
-    if (!await TryLockStream(candidate))
-    {
-      await Task.Delay(15);
       return;
     }
 
@@ -608,31 +620,6 @@ public class HydrationDaemonWorker
     {
       await Task.Delay(Random.Shared.Next(150));
       await MarkAsHydrated(entry);
-    }
-  }
-
-  private async Task<bool> TryLockStream(HydrationQueueEntry entry)
-  {
-    try
-    {
-      await using var connection = new SqlConnection(connectionString);
-      var rowsUpdated = await connection.ExecuteAsync(
-        TryLockStreamSql,
-        new
-        {
-          WorkerId = workerId,
-          entry.StreamName,
-          ModelHash = modelHash,
-          entry.TimesLocked,
-          ExistingWorkerId = entry.WorkerId,
-          entry.Position
-        });
-      return rowsUpdated > 0;
-    }
-    catch (SqlException ex) when (ex.Number == 1205) // Deadlock error number
-    {
-      await Task.Delay(Random.Shared.Next(150));
-      return await TryLockStream(entry);
     }
   }
 

@@ -212,6 +212,11 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
               foreach (var parsed in parser(evt))
               {
+                if (!parsed.ShouldTriggerHydration(EventMetadata.TryParse(evt), true))
+                {
+                  continue;
+                }
+
                 await Handle(parsed, evt.Event.Position, evt.Event.EventNumber.ToInt64(), evt.OriginalStreamId);
                 lastProcessedEventPosition = evt.Event.Position.CommitPosition;
                 streams[evt.Event.EventStreamId] = DateTime.UtcNow;
