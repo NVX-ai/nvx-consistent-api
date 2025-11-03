@@ -359,27 +359,19 @@ public class ReadModelDefinition<Shape, EntityShape> :
               .Async(),
             fe => fe)
           .Match(
-            e =>
-            {
-              if (ShouldHydrate(e.Entity, isBackwards))
-              {
-                var result = databaseHandler.Update(
-                  Projector(e.Entity),
-                  checkpoint,
-                  new TraceabilityFields(
-                    e.FirstEventAt,
-                    e.LastEventAt,
-                    e.FirstUserSubFound,
-                    e.LastUserSubFound,
-                    id.StreamId()),
-                  id,
-                  cancellationToken);
-                // PrometheusMetrics.RecordReadModelProcessingTime(ShapeType.Name, e.);
-                return result;
-              }
-              
-              return unit.ToTask();
-            },
+            e => ShouldHydrate(e.Entity, isBackwards)
+              ? databaseHandler.Update(
+                Projector(e.Entity),
+                checkpoint,
+                new TraceabilityFields(
+                  e.FirstEventAt,
+                  e.LastEventAt,
+                  e.FirstUserSubFound,
+                  e.LastUserSubFound,
+                  id.StreamId()),
+                id,
+                cancellationToken)
+              : unit.ToTask(),
             () => unit.ToTask());
       holder.Etag = IdempotentUuid.Generate(checkpoint ?? Guid.NewGuid().ToString()).ToString();
     }
