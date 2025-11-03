@@ -8,38 +8,38 @@
         <WarningsAsErrors>nullable</WarningsAsErrors>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>Nvx.ConsistentAPI</PackageId>
-        <Version>1.0.27</Version>
+        <Version>1.0.28</Version>
         <Authors>NVX.ai, Eighty Data, and Consistently Eventful</Authors>
         <Description>Event Modeling framework</Description>
         <LangVersion>13</LangVersion>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Azure.Storage.Blobs" Version="12.24.0"/>
+        <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
         <PackageReference Include="Dapper" Version="2.1.66"/>
-        <PackageReference Include="DeFuncto.Core" Version="1.1.2"/>
-        <PackageReference Include="jose-jwt" Version="5.1.1"/>
-        <PackageReference Include="JsonLogic" Version="5.4.0"/>
+        <PackageReference Include="DeFuncto.Core" Version="1.1.3" />
+        <PackageReference Include="jose-jwt" Version="5.2.0" />
+        <PackageReference Include="JsonLogic" Version="5.4.3" />
         <PackageReference Include="Microsoft.ApplicationInsights" Version="2.23.0"/>
         <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.23.0"/>
-        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.3"/>
-        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.3"/>
-        <PackageReference Include="Microsoft.Azure.SignalR" Version="1.30.2"/>
-        <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1"/>
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.10" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.10" />
+        <PackageReference Include="Microsoft.Azure.SignalR" Version="1.32.0" />
+        <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.2" />
         <PackageReference Include="Microsoft.Extensions.Logging.ApplicationInsights" Version="2.23.0"/>
-        <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.6.1"/>
-        <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.6.1"/>
-        <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>
-        <PackageReference Include="EventStore.Client.Grpc.Streams" Version="23.3.8"/>
-        <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.11.2"/>
-        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.2"/>
+        <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.14.0" />
+        <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.14.0" />
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+        <PackageReference Include="EventStore.Client.Grpc.Streams" Version="23.3.9" />
+        <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.13.1" />
+        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.13.1" />
         <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.11.2-beta.1"/>
-        <PackageReference Include="OpenTelemetry.Exporter.Zipkin" Version="1.11.2"/>
-        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.11.2"/>
-        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.11.1"/>
-        <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.11.1"/>
+        <PackageReference Include="OpenTelemetry.Exporter.Zipkin" Version="1.13.1" />
+        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.13.1" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.13.0" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.13.0" />
         <PackageReference Include="Serilog.Extensions.Logging.File" Version="3.0.0"/>
-        <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0"/>
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
         <PackageReference Include="Serilog.Sinks.File" Version="6.0.0"/>
         <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="8.0.0"/>
         <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="8.0.0"/>
