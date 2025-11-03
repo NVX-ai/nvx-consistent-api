@@ -433,7 +433,7 @@ internal class TodoProcessor
           .Emit(() => new AnyState(new TodoCompleted(t.todo.Id.Apply(Guid.Parse), now)))
           .Async()
           .Match(_ => unit, _ => unit);
-        PrometheusMetrics.AddRunnningTodoCount(t.todo.Name);
+        PrometheusMetrics.AddCompletedTodoCount(t.todo.Name);
         return result;
       }
 
@@ -465,6 +465,7 @@ internal class TodoProcessor
           // ReSharper disable once AccessToDisposedClosure
           activity?.SetTag("todo.name", t.todo.Name);
 
+          var stopwatch = System.Diagnostics.Stopwatch.StartNew();
           var result = await t.definition
             .Execute(
               t.todo.JsonData,
@@ -472,7 +473,9 @@ internal class TodoProcessor
               GetStrongId(),
               Settings.ReadModelConnectionString,
               Logger);
-
+          stopwatch.Stop();
+          PrometheusMetrics.RecordTodoProcessingTime(t.todo.Name, stopwatch.Elapsed.TotalMilliseconds);
+          
           result.Iter(
             // ReSharper disable once AccessToDisposedClosure
             _ => activity?.SetTag("todo.result", "success"),

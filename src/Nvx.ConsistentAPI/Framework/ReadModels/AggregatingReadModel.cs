@@ -1,10 +1,12 @@
 ﻿using System.Data.Common;
+using System.Diagnostics;
 using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.InternalTooling;
+using EventTypeFilter = EventStore.Client.EventTypeFilter;
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable AutoPropertyCanBeMadeGetOnly.Global
@@ -243,7 +245,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                       new EventWithMetadata<EventModelEvent>(e, evt.Event.Position, evt.Event.EventId, metadata);
 
                     var ids = new List<string>();
-
+                    
                     foreach (var aggregator in relevantAggregators)
                     {
                       ids.AddRange(
@@ -254,7 +256,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                           transaction,
                           tableDetails));
                     }
-
+              
                     if (canBeAggregated)
                     {
                       holder.Etag = IdempotentUuid.Generate(evt.Event.Position.ToString()).ToString();
@@ -364,10 +366,16 @@ public abstract class ReadModelAggregator<E> : ReadModelAggregator where E : Eve
     Fetcher fetcher,
     DbConnection dbConnection,
     DbTransaction dbTransaction,
-    TableDetails tableDetails) =>
-    evt.Event is E e
-      ? Aggregate(evt.As(e), fetcher, dbConnection, dbTransaction, tableDetails)
-      : Task.FromResult<string[]>([]);
+    TableDetails tableDetails)
+  {
+    if (evt.Event is E)
+    {
+      var agg = Aggregate(evt.As((E)evt.Event), fetcher, dbConnection, dbTransaction, tableDetails);
+      PrometheusMetrics.RecordAggregatingProcessingTime(tableDetails.TableName, (DateTime.UtcNow - evt.Metadata.CreatedAt).Milliseconds);
+      return agg;
+    }
+    return Task.FromResult<string[]>([]);
+  }
 
   public bool Processes(Option<EventModelEvent> evt) => evt.Map(e => e is E).DefaultValue(false);
 

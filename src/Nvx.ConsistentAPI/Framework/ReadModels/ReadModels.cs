@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using EventStore.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Logging;
