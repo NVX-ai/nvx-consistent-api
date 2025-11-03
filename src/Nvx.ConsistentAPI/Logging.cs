@@ -101,10 +101,10 @@ internal static class PrometheusMetrics
   private static readonly Histogram<double> AggregatingProcessingTime =
     Meter.CreateHistogram<double>("read_models.aggregating_time_ms", "ms");
   internal static void RecordAggregatingProcessingTime(string readModelName, double milliseconds) =>
-    AggregatingProcessingTime.Record(milliseconds, new TagList { { "readmodel", readModelName } });
+    AggregatingProcessingTime.Record(milliseconds, new TagList { { "name", readModelName } });
   
   private static readonly Histogram<double> ReadModelProcessingTime =
     Meter.CreateHistogram<double>("read_models.processing_time_ms", "ms");
   internal static void RecordReadModelProcessingTime(string readModelName, double milliseconds) =>
-    ReadModelProcessingTime.Record(milliseconds, new TagList { { "readmodel", readModelName } });
+    ReadModelProcessingTime.Record(milliseconds, new TagList { { "name", readModelName } });
 }

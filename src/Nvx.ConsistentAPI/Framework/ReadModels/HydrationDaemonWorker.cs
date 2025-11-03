@@ -256,7 +256,10 @@ public class HydrationDaemonWorker
     GetCandidatesIndexCreationSql,
     TryLockIndexCreationSql,
     ModelHashReadModelLockTableCreationSql,
-    ModelHashReadModelLocksIndexCreationSql,
+    ModelHashReadModelLocksIndexCreationSql
+  ];
+
+  public static readonly string[] IndexCreationScripts = [
     LastHydratedPositionForStreamIndexCreationSql
   ];
 
@@ -582,7 +585,8 @@ public class HydrationDaemonWorker
             },
             cancellationToken);
           await processTask;
-
+          PrometheusMetrics.RecordReadModelProcessingTime(readModel.TableName, (DateTime.UtcNow - candidate.CreatedAt).Milliseconds);
+          
           foreach (var other in lockedByOtherHash)
           {
             var otherPosition = await GetStreamLastHydratedPositionByHash(other.ModelHash, other.ReadModelName);

@@ -120,7 +120,6 @@ public class ReadModelDefinition<Shape, EntityShape> :
   {
     if (foundEntity is FoundEntity<EntityShape> thisEntity)
     {
-      var stopwatch = Stopwatch.StartNew();
       await UpdateReadModel(
         entityId,
         checkpoint,
@@ -129,8 +128,6 @@ public class ReadModelDefinition<Shape, EntityShape> :
         dbFactory.Get<Shape>(),
         logger,
         cancellationToken);
-      stopwatch.Stop();
-      PrometheusMetrics.RecordReadModelProcessingTime(ShapeType.Name, stopwatch.ElapsedMilliseconds);
     }
   }
 
@@ -362,19 +359,27 @@ public class ReadModelDefinition<Shape, EntityShape> :
               .Async(),
             fe => fe)
           .Match(
-            e => ShouldHydrate(e.Entity, isBackwards)
-              ? databaseHandler.Update(
-                Projector(e.Entity),
-                checkpoint,
-                new TraceabilityFields(
-                  e.FirstEventAt,
-                  e.LastEventAt,
-                  e.FirstUserSubFound,
-                  e.LastUserSubFound,
-                  id.StreamId()),
-                id,
-                cancellationToken)
-              : unit.ToTask(),
+            e =>
+            {
+              if (ShouldHydrate(e.Entity, isBackwards))
+              {
+                var result = databaseHandler.Update(
+                  Projector(e.Entity),
+                  checkpoint,
+                  new TraceabilityFields(
+                    e.FirstEventAt,
+                    e.LastEventAt,
+                    e.FirstUserSubFound,
+                    e.LastUserSubFound,
+                    id.StreamId()),
+                  id,
+                  cancellationToken);
+                // PrometheusMetrics.RecordReadModelProcessingTime(ShapeType.Name, e.);
+                return result;
+              }
+              
+              return unit.ToTask();
+            },
             () => unit.ToTask());
       holder.Etag = IdempotentUuid.Generate(checkpoint ?? Guid.NewGuid().ToString()).ToString();
     }
