@@ -1,4 +1,4 @@
-using EventStore.Client;
+using KurrentDB.Client;
 
 namespace Nvx.ConsistentAPI;
 
@@ -145,8 +145,7 @@ internal class PermissionAssignedProjector :
   public override IEnumerable<UserWithPermissionId> GetProjectionIds(
     ApplicationPermissionAssigned sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
-    [new(sourceEvent.Sub, sourceEvent.Permission)];
+    Uuid sourceEventId) => [new(sourceEvent.Sub, sourceEvent.Permission)];
 }
 
 internal class PermissionRevokedProjector :

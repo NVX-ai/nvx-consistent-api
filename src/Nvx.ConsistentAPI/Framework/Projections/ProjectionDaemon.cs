@@ -1,4 +1,4 @@
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -14,7 +14,7 @@ public class ProjectionDaemon(
   EventModelingProjectionArtifact[] projectors,
   Fetcher fetcher,
   Emitter emitter,
-  EventStoreClient client,
+  KurrentDBClient client,
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   WebApplication app,
   GeneratorSettings gs,
@@ -23,10 +23,10 @@ public class ProjectionDaemon(
   private const string SubscriptionVersion = "1";
   private static readonly SemaphoreSlim CatchUpLock = new(1);
   private string[] catchingUp = [];
+  private bool isProjecting;
   private ulong lastCatchUpProcessedPosition;
   private ulong lastProcessedPosition;
   private int projectedCount;
-  private bool isProjecting;
 
   public ProjectorDaemonInsights Insights(ulong lastEventPosition)
   {
@@ -180,6 +180,7 @@ public class ProjectionDaemon(
                 {
                   continue;
                 }
+
                 using var _ = new RunningProjectionCountTracker(projector.Name);
                 await projector.HandleEvent(evt, parser, fetcher, client);
                 Interlocked.Increment(ref projectedCount);

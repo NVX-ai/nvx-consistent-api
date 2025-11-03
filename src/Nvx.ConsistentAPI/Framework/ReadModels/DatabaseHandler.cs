@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Text;
 using Dapper;
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;

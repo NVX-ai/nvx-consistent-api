@@ -1,6 +1,6 @@
 using System.Data.Common;
 using Dapper;
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Nvx.ConsistentAPI;
@@ -336,15 +336,15 @@ public partial record Stock(Guid ProductId, int Amount, string ProductName, Guid
 
   public ValueTask<Stock> Fold(StockNamed sn, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { ProductName = sn.Name });
-  
-  public ValueTask<Stock> Fold(StockTagged st, EventMetadata metadata, RevisionFetcher fetcher) =>
-    ValueTask.FromResult(this with { Tags = st.Tags });
 
   public ValueTask<Stock> Fold(StockPictureAdded evt, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { PictureId = evt.PictureId });
 
   public ValueTask<Stock> Fold(StockRetrieved rs, EventMetadata metadata, RevisionFetcher fetcher) =>
     ValueTask.FromResult(this with { Amount = Amount - rs.Amount });
+
+  public ValueTask<Stock> Fold(StockTagged st, EventMetadata metadata, RevisionFetcher fetcher) =>
+    ValueTask.FromResult(this with { Tags = st.Tags });
 
   public static string GetStreamName(Guid productId) => $"{StreamPrefix}{productId}";
   public static Stock Defaulted(StrongGuid id) => new(id.Value, 0, "Unknown product", null, []);
@@ -508,7 +508,9 @@ public record AggregatingStockReadModel(
 // ReSharper restore NotAccessedPositionalProperty.Global
 {
   public static readonly Guid[] Guids =
-    [Guid.Parse("42E95437-3601-4FBA-B81D-18BDC0E90316"), Guid.Parse("3A11C012-480A-4831-98F2-463B9DAD4BB9")];
+  [
+    Guid.Parse("42E95437-3601-4FBA-B81D-18BDC0E90316"), Guid.Parse("3A11C012-480A-4831-98F2-463B9DAD4BB9")
+  ];
 
   // ReSharper disable once UnusedMember.Global
   public StrongId GetStrongId() => new StrongGuid(ProductId);

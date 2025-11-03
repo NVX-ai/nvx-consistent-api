@@ -1,4 +1,4 @@
-﻿using EventStore.Client;
+﻿using KurrentDB.Client;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Nvx.ConsistentAPI;
@@ -12,7 +12,7 @@ public record Concern(string StreamName, StrongId Id) : InterestRelation;
 
 public record Interest(string StreamName, StrongId Id) : InterestRelation;
 
-public class InterestFetcher(EventStoreClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
+public class InterestFetcher(KurrentDBClient client, Func<ResolvedEvent, Option<EventModelEvent>> parser)
 {
   private readonly MemoryCache concernCache = new(new MemoryCacheOptions { SizeLimit = 25_000 });
   private readonly MemoryCache interestCache = new(new MemoryCacheOptions { SizeLimit = 25_000 });

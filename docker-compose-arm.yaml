@@ -11,7 +11,7 @@ services:
     restart: unless-stopped
 
   eventstore:
-    image: "eventstore/eventstore:23.10.0-alpha-arm64v8"
+    image: "kurrentplatform/kurrentdb:25.1.0-experimental-arm64-8.0-jammy"
     restart: unless-stopped
     environment:
       - EVENTSTORE_CLUSTER_SIZE=1

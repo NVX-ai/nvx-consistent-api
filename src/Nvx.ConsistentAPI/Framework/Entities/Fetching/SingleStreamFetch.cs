@@ -1,4 +1,4 @@
-﻿using EventStore.Client;
+﻿using KurrentDB.Client;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Nvx.ConsistentAPI;
@@ -10,7 +10,7 @@ internal static class SingleStreamFetch
     bool resetCache,
     Entity defaulted,
     Position? upToRevision,
-    EventStoreClient client,
+    KurrentDBClient client,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     MemoryCacheEntryOptions entryOptions,
     Fetcher fetcher,

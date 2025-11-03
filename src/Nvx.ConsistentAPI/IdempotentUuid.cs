@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using EventStore.Client;
+using KurrentDB.Client;
 
 namespace Nvx.ConsistentAPI;
 

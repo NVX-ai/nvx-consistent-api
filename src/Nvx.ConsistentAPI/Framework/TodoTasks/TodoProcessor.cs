@@ -1,5 +1,5 @@
 using Dapper;
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;

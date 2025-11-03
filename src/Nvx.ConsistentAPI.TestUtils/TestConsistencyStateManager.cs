@@ -1,13 +1,13 @@
 ﻿using System.Diagnostics;
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.Extensions.Logging;
 using Nvx.ConsistentAPI.InternalTooling;
-using EventTypeFilter = EventStore.Client.EventTypeFilter;
+using EventTypeFilter = KurrentDB.Client.EventTypeFilter;
 
 namespace Nvx.ConsistentAPI.TestUtils;
 
 internal class TestConsistencyStateManager(
-  EventStoreClient eventStoreClient,
+  KurrentDBClient eventStoreClient,
   ConsistencyCheck consistencyCheck,
   ILogger logger)
 {
@@ -61,12 +61,13 @@ internal class TestConsistencyStateManager(
 
   public async Task WaitForConsistency(int timeout, ConsistencyWaitType type)
   {
-    await WaitForAfterProcessing(generation: type switch
-    {
-      ConsistencyWaitType.Short => 3,
-      ConsistencyWaitType.Medium => 6,
-      _ => 9
-    });
+    await WaitForAfterProcessing(
+      generation: type switch
+      {
+        ConsistencyWaitType.Short => 3,
+        ConsistencyWaitType.Medium => 6,
+        _ => 9
+      });
     var timer = Stopwatch.StartNew();
     var timesConsistent = 0;
     var consistenciesNeeded = type switch

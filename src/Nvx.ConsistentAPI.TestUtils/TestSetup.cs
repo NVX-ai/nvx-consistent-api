@@ -7,9 +7,9 @@ using System.Runtime.InteropServices;
 using System.Security.Claims;
 using System.Text;
 using Dapper;
-using EventStore.Client;
 using Flurl;
 using Flurl.Http;
+using KurrentDB.Client;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -48,7 +48,7 @@ internal static class InstanceTracking
       return new TestSetup(
         h.Url,
         h.Auth,
-        h.EventStoreClient,
+        h.KurrentDbClient,
         h.Model,
         testSettings.WaitForCatchUpTimeout,
         h.TestConsistencyStateManager);
@@ -64,7 +64,7 @@ internal static class InstanceTracking
     return new TestSetup(
       holder.Url,
       holder.Auth,
-      holder.EventStoreClient,
+      holder.KurrentDbClient,
       holder.Model,
       testSettings.WaitForCatchUpTimeout,
       holder.TestConsistencyStateManager);
@@ -76,7 +76,7 @@ internal static class InstanceTracking
 internal record TestSetupHolder(
   string Url,
   TestAuth Auth,
-  EventStoreClient EventStoreClient,
+  KurrentDBClient KurrentDbClient,
   EventModel Model,
   int Count,
   ILogger Logger,
@@ -109,7 +109,7 @@ public class TestSetup : IAsyncDisposable
   internal TestSetup(
     string url,
     TestAuth auth,
-    EventStoreClient eventStoreClient,
+    KurrentDBClient eventStoreClient,
     EventModel model,
     int waitForCatchUpTimeout,
     TestConsistencyStateManager consistencyStateManager)
@@ -117,14 +117,14 @@ public class TestSetup : IAsyncDisposable
     Url = url;
     this.waitForCatchUpTimeout = waitForCatchUpTimeout;
     Auth = auth;
-    EventStoreClient = eventStoreClient;
+    KurrentDbClient = eventStoreClient;
     Model = model;
     this.consistencyStateManager = consistencyStateManager;
   }
 
   public string Url { get; }
   public TestAuth Auth { get; private set; }
-  public EventStoreClient EventStoreClient { get; }
+  public KurrentDBClient KurrentDbClient { get; }
   public EventModel Model { get; }
 
   public async ValueTask DisposeAsync()
@@ -149,7 +149,7 @@ public class TestSetup : IAsyncDisposable
           ])));
 
   public async Task InsertEvents(params EventModelEvent[] evt) =>
-    await EventStoreClient.AppendToStreamAsync(
+    await KurrentDbClient.AppendToStreamAsync(
       evt.GroupBy(e => e.GetStreamName()).Single().Key,
       StreamState.Any,
       Emitter.ToEventData(evt, null));
@@ -374,7 +374,7 @@ public class TestSetup : IAsyncDisposable
       .PostAsync(requestContent);
   }
 
-  private static async Task<(EventStoreClient client, string esCs)> AwaitEventStore(TestSettings settings)
+  private static async Task<(KurrentDBClient client, string esCs)> AwaitEventStore(TestSettings settings)
   {
     var builder = new EventStoreDbBuilder()
       .WithImage(settings.EsDbImage)
@@ -397,7 +397,7 @@ public class TestSetup : IAsyncDisposable
 
     await esContainer.StartAsync();
     var esCs = esContainer.GetConnectionString();
-    var client = new EventStoreClient(EventStoreClientSettings.Create(esCs));
+    var client = new KurrentDBClient(KurrentDBClientSettings.Create(esCs));
     var timer = Stopwatch.StartNew();
     while (true)
     {
@@ -632,8 +632,8 @@ public class TestSettings
   private static string EventStoreDefaultConnectionString =>
     RuntimeInformation.ProcessArchitecture == Architecture.Arm64
     && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-      ? "eventstore/eventstore:23.10.0-alpha-arm64v8"
-      : "eventstore/eventstore:23.10.0-jammy";
+      ? "kurrentplatform/kurrentdb:25.1.0-experimental-arm64-8.0-jammy"
+      : "kurrentplatform/kurrentdb:25.1.0";
 
   private static string MsSqlDefaultConnectionString =>
     RuntimeInformation.ProcessArchitecture == Architecture.Arm64

@@ -1,7 +1,7 @@
-using EventStore.Client;
 using FsCheck;
 using FsCheck.Fluent;
 using FsCheck.Xunit;
+using KurrentDB.Client;
 
 namespace Nvx.ConsistentAPI.Tests;
 

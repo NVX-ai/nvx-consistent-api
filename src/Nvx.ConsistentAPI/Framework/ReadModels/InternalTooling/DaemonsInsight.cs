@@ -1,4 +1,4 @@
-﻿using EventStore.Client;
+﻿using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -16,7 +16,7 @@ internal static class DaemonsInsight
   internal static void Endpoint(
     EventModelingReadModelArtifact[] readModels,
     GeneratorSettings settings,
-    EventStoreClient eventStoreClient,
+    KurrentDBClient eventStoreClient,
     Fetcher fetcher,
     Emitter emitter,
     WebApplication app,
@@ -109,7 +109,7 @@ internal static class DaemonsInsight
     GeneratorSettings settings,
     TodoProcessor processor,
     EventModelingReadModelArtifact[] readModels,
-    EventStoreClient eventStoreClient,
+    KurrentDBClient eventStoreClient,
     ReadModelHydrationDaemon readModelDaemon,
     DynamicConsistencyBoundaryDaemon dynamicConsistencyBoundaryDaemon,
     ProjectionDaemon projectionDaemon)

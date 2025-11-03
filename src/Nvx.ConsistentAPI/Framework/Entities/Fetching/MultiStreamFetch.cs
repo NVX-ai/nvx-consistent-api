@@ -1,5 +1,5 @@
 ﻿using System.Runtime.CompilerServices;
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Nvx.ConsistentAPI;
@@ -11,7 +11,7 @@ internal static class MultiStreamFetch
     bool resetCache,
     Entity defaulted,
     Position? upToRevision,
-    EventStoreClient client,
+    KurrentDBClient client,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     MemoryCacheEntryOptions entryOptions,
     Fetcher fetcher,
@@ -119,9 +119,10 @@ internal static class MultiStreamFetch
       ? new FetchResult<Entity>(seed.e, seed.r.DefaultValue(0), seed.gp, seed.fe, seed.le, seed.fu, seed.lu)
       : new FetchResult<Entity>(None, -1, None, null, null, null, null);
   }
-   private static async IAsyncEnumerable<ResolvedEvent> Zip(
+
+  private static async IAsyncEnumerable<ResolvedEvent> Zip(
     string[] streamNames,
-    EventStoreClient client,
+    KurrentDBClient client,
     Dictionary<string, long> streamRevisions,
     [EnumeratorCancellation] CancellationToken cancellationToken)
   {
@@ -147,7 +148,7 @@ internal static class MultiStreamFetch
     }
   }
 
-  private class StreamZipWrapper(EventStoreClient.ReadStreamResult stream)
+  private class StreamZipWrapper(KurrentDBClient.ReadStreamResult stream)
   {
     private readonly IAsyncEnumerator<ResolvedEvent> enumerator = stream.GetAsyncEnumerator();
     private readonly Lazy<Task<ReadState>> readState = new(() => stream.ReadState);

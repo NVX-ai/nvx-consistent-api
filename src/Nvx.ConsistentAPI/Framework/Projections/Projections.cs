@@ -1,6 +1,6 @@
 // ReSharper disable ParameterTypeCanBeEnumerable.Local
 
-using EventStore.Client;
+using KurrentDB.Client;
 
 namespace Nvx.ConsistentAPI;
 
@@ -25,7 +25,7 @@ public abstract class
     ResolvedEvent evt,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Fetcher fetcher,
-    EventStoreClient client)
+    KurrentDBClient client)
   {
     return parser(evt)
       .Match(
@@ -81,7 +81,7 @@ public abstract class
 
   private async Task Emit(
     Func<Task<Result<(Option<EventModelEvent>, Uuid, EventMetadata)[], ApiError>>> decider,
-    EventStoreClient esClient)
+    KurrentDBClient esClient)
   {
     var i = 0;
     while (i < 1000)
@@ -135,7 +135,9 @@ public abstract class
                 StreamState.Any,
                 ToEventData(@event, sourceEventUuid, offset++, metadata));
 
-              if (@event is not EventModelSnapshotEvent)
+              if (@event is not EventModelSnapshotEvent
+                  || !result.NextExpectedStreamState.HasPosition
+                  || result.NextExpectedStreamState.ToInt64() < 0)
               {
                 return unit;
               }
@@ -146,7 +148,7 @@ public abstract class
               var newMetadata = new StreamMetadata(
                 currentStreamMetadata.MaxCount,
                 currentStreamMetadata.MaxAge,
-                result.NextExpectedStreamRevision.ToUInt64(),
+                Convert.ToUInt64(result.NextExpectedStreamState.ToInt64()),
                 currentStreamMetadata.CacheControl,
                 currentStreamMetadata.Acl,
                 currentStreamMetadata.CustomMetadata);
