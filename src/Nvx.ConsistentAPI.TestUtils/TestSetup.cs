@@ -379,19 +379,13 @@ public class TestSetup : IAsyncDisposable
     var builder = new EventStoreDbBuilder()
       .WithImage(settings.EsDbImage)
       .WithEnvironment("EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP", "true")
+      .WithEnvironment("EVENTSTORE_RUN_PROJECTIONS", "None")
       .WithReuse(settings.UsePersistentTestContainers)
       .WithAutoRemove(!settings.UsePersistentTestContainers);
 
-    if (settings.UsePersistentTestContainers)
-    {
-      builder = builder
-        .WithName("consistent-api-integration-test-es")
-        .WithPortBinding(3112, 2113);
-    }
-    else
-    {
-      builder = builder.WithEnvironment("EVENTSTORE_MEM_DB", "True");
-    }
+    builder = settings.UsePersistentTestContainers
+      ? builder.WithName("consistent-api-integration-test-es").WithPortBinding(3112, 2113)
+      : builder.WithTmpfsMount("/var/lib/kurrentdb");
 
     var esContainer = builder.Build();
 
@@ -424,17 +418,18 @@ public class TestSetup : IAsyncDisposable
       .WithReuse(settings.UsePersistentTestContainers)
       .WithAutoRemove(!settings.UsePersistentTestContainers);
 
-    if (settings.UsePersistentTestContainers)
-    {
-      builder = builder.WithName("consistent-api-integration-test-mssql").WithPortBinding(1344, 1433);
-    }
+    builder =
+      settings.UsePersistentTestContainers
+        ? builder.WithName("consistent-api-integration-test-mssql").WithPortBinding(1344, 1433)
+        : TestSettings.IsAppleSilicon
+          ? builder
+          : builder.WithTmpfsMount("/var/opt/mssql/data");
 
     var msSqlContainer = builder.Build();
 
     await msSqlContainer.StartAsync();
     var cs = msSqlContainer.GetConnectionString();
     var timer = Stopwatch.StartNew();
-
 
     while (!settings.UsePersistentTestContainers)
     {
@@ -569,14 +564,13 @@ public class TestSetup : IAsyncDisposable
       .WithReuse(settings.UsePersistentTestContainers)
       .WithAutoRemove(!settings.UsePersistentTestContainers);
 
-    if (settings.UsePersistentTestContainers)
-    {
-      builder = builder
+    builder = settings.UsePersistentTestContainers
+      ? builder
         .WithName("consistent-api-integration-test-azurite")
         .WithPortBinding(11000, 10000)
         .WithPortBinding(11001, 10001)
-        .WithPortBinding(11002, 10002);
-    }
+        .WithPortBinding(11002, 10002)
+      : builder.WithInMemoryPersistence();
 
     var azuriteContainer = builder.Build();
 
@@ -630,22 +624,24 @@ public class TestSettings
   }
 
   private static string EventStoreDefaultConnectionString =>
-    RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-    && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+    IsAppleSilicon
       ? "kurrentplatform/kurrentdb:25.1.0-experimental-arm64-8.0-jammy"
       : "kurrentplatform/kurrentdb:25.1.0";
 
   private static string MsSqlDefaultConnectionString =>
-    RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-    && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-      ? "mcr.microsoft.com/mssql/server:2019-CU28-ubuntu-20.04"
-      : "mcr.microsoft.com/mssql/server:2022-latest";
+    IsAppleSilicon
+      ? "mcr.microsoft.com/mssql/server:2022-latest"
+      : "mcr.microsoft.com/mssql/server:2025-latest";
 
   private static string AzuriteDefaultConnectionString =>
     RuntimeInformation.ProcessArchitecture == Architecture.Arm64
     && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
       ? "mcr.microsoft.com/azure-storage/azurite:3.35.0-arm64"
       : "mcr.microsoft.com/azure-storage/azurite:3.35.0";
+
+  internal static bool IsAppleSilicon =>
+    RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+    && RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
 }
 
 public enum ConsistencyWaitType
