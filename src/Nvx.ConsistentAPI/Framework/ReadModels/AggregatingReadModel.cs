@@ -1,12 +1,11 @@
 ﻿using System.Data.Common;
 using KurrentDB.Client;
-using System.Diagnostics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.InternalTooling;
-using EventTypeFilter = EventStore.Client.EventTypeFilter;
+using EventTypeFilter = KurrentDB.Client.EventTypeFilter;
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable AutoPropertyCanBeMadeGetOnly.Global
@@ -371,9 +370,12 @@ public abstract class ReadModelAggregator<E> : ReadModelAggregator where E : Eve
     if (evt.Event is E)
     {
       var agg = Aggregate(evt.As((E)evt.Event), fetcher, dbConnection, dbTransaction, tableDetails);
-      PrometheusMetrics.RecordAggregatingProcessingTime(tableDetails.TableName, (DateTime.UtcNow - evt.Metadata.CreatedAt).Milliseconds);
+      PrometheusMetrics.RecordAggregatingProcessingTime(
+        tableDetails.TableName,
+        (DateTime.UtcNow - evt.Metadata.CreatedAt).Milliseconds);
       return agg;
     }
+
     return Task.FromResult<string[]>([]);
   }
 

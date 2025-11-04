@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Dapper;
 using KurrentDB.Client;
 using Microsoft.Data.SqlClient;
@@ -465,7 +466,7 @@ internal class TodoProcessor
           // ReSharper disable once AccessToDisposedClosure
           activity?.SetTag("todo.name", t.todo.Name);
 
-          var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+          var stopwatch = Stopwatch.StartNew();
           var result = await t.definition
             .Execute(
               t.todo.JsonData,
@@ -475,7 +476,7 @@ internal class TodoProcessor
               Logger);
           stopwatch.Stop();
           PrometheusMetrics.RecordTodoProcessingTime(t.todo.Name, stopwatch.Elapsed.TotalMilliseconds);
-          
+
           result.Iter(
             // ReSharper disable once AccessToDisposedClosure
             _ => activity?.SetTag("todo.result", "success"),

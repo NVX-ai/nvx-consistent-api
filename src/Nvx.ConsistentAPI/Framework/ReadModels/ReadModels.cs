@@ -1,5 +1,4 @@
 using KurrentDB.Client;
-using System.Diagnostics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
