@@ -171,6 +171,18 @@ public class ReadModelHydrationDaemon(
       await connection.ExecuteAsync(sql);
     }
 
+    foreach (var sqlIndex in HydrationDaemonWorker.IndexCreationScripts)
+    {
+      try
+      {
+        await connection.ExecuteAsync(sqlIndex);
+      }
+      catch
+      {
+        logger.LogError("Index creation script not supported {sqlIndex}", sqlIndex);
+      }
+    }
+
     foreach (var readModel in readModels)
     {
       await HydrationDaemonWorker.TryInitialLockReadModel(modelHash, readModel.TableName, connection);
