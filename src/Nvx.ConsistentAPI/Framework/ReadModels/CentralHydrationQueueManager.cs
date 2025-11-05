@@ -1,4 +1,4 @@
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.Extensions.Logging;
 
 namespace Nvx.ConsistentAPI;
@@ -6,7 +6,11 @@ namespace Nvx.ConsistentAPI;
 internal class CentralHydrationQueueManager(GeneratorSettings settings, ILogger logger)
 {
   private readonly SemaphoreSlim clearanceSemaphore = new(1, 1);
-  private readonly SemaphoreSlim hydrationSemaphore = new(settings.ParallelHydration * 2, settings.ParallelHydration * 2);
+
+  private readonly SemaphoreSlim hydrationSemaphore = new(
+    settings.ParallelHydration * 2,
+    settings.ParallelHydration * 2);
+
   private readonly List<(string stream, Task task)> hydrationTasks = [];
 
   public async Task<int> ProcessingCount()

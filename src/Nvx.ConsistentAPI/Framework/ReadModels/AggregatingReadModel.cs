@@ -1,12 +1,11 @@
 ﻿using System.Data.Common;
-using System.Diagnostics;
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Nvx.ConsistentAPI.InternalTooling;
-using EventTypeFilter = EventStore.Client.EventTypeFilter;
+using EventTypeFilter = KurrentDB.Client.EventTypeFilter;
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable AutoPropertyCanBeMadeGetOnly.Global
@@ -33,7 +32,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   public ReadModelDefaulter<Shape> Defaulter { get; init; } = (_, _, _) => None;
   private ReadModelSyncState SyncState { get; set; } = new(FromAll.Start, DateTime.MinValue, false, false);
 
-  public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClient)
+  public async Task<SingleReadModelInsights> Insights(ulong lastEventPosition, KurrentDBClient eventStoreClient)
   {
     var currentPosition = lastProcessedEventPosition ?? currentCheckpointPosition ?? 0UL;
     var effectivePosition = lastEventPosition;
@@ -65,7 +64,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
   public async Task ApplyTo(
     WebApplication app,
-    EventStoreClient esClient,
+    KurrentDBClient esClient,
     Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
@@ -168,7 +167,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
   private bool HasProcessedRecently() => !isIdle || SyncState.LastSync > DateTime.UtcNow.AddMilliseconds(-1_000);
 
   private async Task SubscribeToStream(
-    EventStoreClient client,
+    KurrentDBClient client,
     Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     DatabaseHandler<Shape> databaseHandler,
@@ -245,7 +244,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                       new EventWithMetadata<EventModelEvent>(e, evt.Event.Position, evt.Event.EventId, metadata);
 
                     var ids = new List<string>();
-                    
+
                     foreach (var aggregator in relevantAggregators)
                     {
                       ids.AddRange(
@@ -256,7 +255,7 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
                           transaction,
                           tableDetails));
                     }
-              
+
                     if (canBeAggregated)
                     {
                       holder.Etag = IdempotentUuid.Generate(evt.Event.Position.ToString()).ToString();
@@ -371,9 +370,12 @@ public abstract class ReadModelAggregator<E> : ReadModelAggregator where E : Eve
     if (evt.Event is E)
     {
       var agg = Aggregate(evt.As((E)evt.Event), fetcher, dbConnection, dbTransaction, tableDetails);
-      PrometheusMetrics.RecordAggregatingProcessingTime(tableDetails.TableName, (DateTime.UtcNow - evt.Metadata.CreatedAt).Milliseconds);
+      PrometheusMetrics.RecordAggregatingProcessingTime(
+        tableDetails.TableName,
+        (DateTime.UtcNow - evt.Metadata.CreatedAt).Milliseconds);
       return agg;
     }
+
     return Task.FromResult<string[]>([]);
   }
 

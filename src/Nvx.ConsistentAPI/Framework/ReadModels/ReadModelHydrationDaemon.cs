@@ -1,6 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using Dapper;
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
@@ -11,7 +11,7 @@ namespace Nvx.ConsistentAPI;
 
 public class ReadModelHydrationDaemon(
   GeneratorSettings settings,
-  EventStoreClient client,
+  KurrentDBClient client,
   Fetcher fetcher,
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   IdempotentReadModel[] readModels,
@@ -66,9 +66,9 @@ public class ReadModelHydrationDaemon(
   };
 
   private readonly SemaphoreSlim lastPositionSemaphore = new(1);
-  private readonly SemaphoreSlim semaphore = new(1);
 
   private readonly CentralHydrationQueueManager queueManager = new(settings, logger);
+  private readonly SemaphoreSlim semaphore = new(1);
 
   // ReSharper disable once UnusedMember.Local
   private readonly HydrationDaemonWorker[] workers = Enumerable

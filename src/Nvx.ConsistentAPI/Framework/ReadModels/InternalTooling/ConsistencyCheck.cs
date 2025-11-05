@@ -1,5 +1,5 @@
 ﻿using Dapper;
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.Data.SqlClient;
 using Nvx.ConsistentAPI.Framework.Projections;
 
@@ -10,7 +10,7 @@ public class ConsistencyCheck(
   string modelHash,
   ReadModelHydrationDaemon daemon,
   EventModelingReadModelArtifact[] aggregatingReadModels,
-  EventStoreClient eventStoreClient,
+  KurrentDBClient eventStoreClient,
   DynamicConsistencyBoundaryDaemon dcbDaemon,
   ProjectionDaemon projectionDaemon)
 {

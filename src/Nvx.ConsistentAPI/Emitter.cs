@@ -1,9 +1,9 @@
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.Extensions.Logging;
 
 namespace Nvx.ConsistentAPI;
 
-public class Emitter(EventStoreClient client, ILogger logger)
+public class Emitter(KurrentDBClient client, ILogger logger)
 {
   private static AsyncResult<string, ApiError> GetId(EventModelEvent[] events)
   {
@@ -45,7 +45,9 @@ public class Emitter(EventStoreClient client, ILogger logger)
           var eventData = ToEventData(events, context);
           var result = await client.AppendToStreamAsync(streamName, StreamState.Any, eventData);
 
-          if (!events.Any(e => e.GetType().GetInterfaces().Any(i => i == typeof(EventModelSnapshotEvent))))
+          if (!events.Any(e => e.GetType().GetInterfaces().Any(i => i == typeof(EventModelSnapshotEvent)))
+              || !result.NextExpectedStreamState.HasPosition
+              || result.NextExpectedStreamState.ToInt64() < 0)
           {
             return id;
           }
@@ -54,7 +56,7 @@ public class Emitter(EventStoreClient client, ILogger logger)
           var newMetadata = new StreamMetadata(
             currentStreamMetadata.MaxCount,
             currentStreamMetadata.MaxAge,
-            result.NextExpectedStreamRevision.ToUInt64(),
+            Convert.ToUInt64(result.NextExpectedStreamState.ToInt64()),
             currentStreamMetadata.CacheControl,
             currentStreamMetadata.Acl,
             currentStreamMetadata.CustomMetadata);
@@ -98,10 +100,14 @@ public class Emitter(EventStoreClient client, ILogger logger)
           var eventData = ToEventData(events, context);
           var result = await client.AppendToStreamAsync(
             streamName,
-            StreamRevision.FromInt64(expectedRevision),
+            expectedRevision < 0
+              ? StreamState.NoStream
+              : StreamState.StreamRevision(Convert.ToUInt64(expectedRevision)),
             eventData);
 
-          if (!events.Any(e => e.GetType().GetInterfaces().Any(i => i == typeof(EventModelSnapshotEvent))))
+          if (!events.Any(e => e.GetType().GetInterfaces().Any(i => i == typeof(EventModelSnapshotEvent)))
+              || !result.NextExpectedStreamState.HasPosition
+              || result.NextExpectedStreamState.ToInt64() < 0)
           {
             return id;
           }
@@ -113,7 +119,7 @@ public class Emitter(EventStoreClient client, ILogger logger)
             new StreamMetadata(
               currentStreamMetadata.MaxCount,
               currentStreamMetadata.MaxAge,
-              result.NextExpectedStreamRevision.ToUInt64(),
+              Convert.ToUInt64(result.NextExpectedStreamState.ToInt64()),
               currentStreamMetadata.CacheControl,
               currentStreamMetadata.Acl,
               currentStreamMetadata.CustomMetadata)

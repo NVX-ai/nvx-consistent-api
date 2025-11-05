@@ -1,4 +1,4 @@
-using EventStore.Client;
+using KurrentDB.Client;
 using Nvx.ConsistentAPI.Framework;
 
 namespace Nvx.ConsistentAPI;

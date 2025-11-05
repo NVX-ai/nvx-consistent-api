@@ -1,5 +1,4 @@
-using System.Diagnostics;
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
@@ -57,7 +56,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
   public bool IsUpToDate(ulong? position) => isUpToDate;
 
-  public Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClien)
+  public Task<SingleReadModelInsights> Insights(ulong lastEventPosition, KurrentDBClient eventStoreClien)
   {
     var currentPosition = lastProcessedEventPosition ?? lastCheckpointPosition ?? lastEventPosition;
     var percentageComplete = isUpToDate || lastEventPosition == 0
@@ -78,7 +77,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
   public async Task ApplyTo(
     WebApplication app,
-    EventStoreClient esClient,
+    KurrentDBClient esClient,
     Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
@@ -136,7 +135,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
   public string TableName => DatabaseHandler<Shape>.TableName(typeof(Shape));
 
   private async Task Subscribe(
-    EventStoreClient client,
+    KurrentDBClient client,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     DatabaseHandler<Shape> databaseHandler,
     ILogger logger,
@@ -230,6 +229,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
                   streams.Remove(key);
                 }
               }
+
               PrometheusMetrics.AddReadModelItemsCached(ShapeType.Name, streams.Count);
 
               break;
@@ -244,7 +244,10 @@ public class ReadModelDefinition<Shape, EntityShape> :
         }
 
         isUpToDate = true;
-        logger.LogInformation("Catching up to {StreamPrefix} for read model {ShapeType} completed", StreamPrefix, ShapeType);
+        logger.LogInformation(
+          "Catching up to {StreamPrefix} for read model {ShapeType} completed",
+          StreamPrefix,
+          ShapeType);
         await databaseHandler.MarkAsUpToDate();
       }
       catch (Exception ex)
@@ -316,7 +319,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
   }
 
   private async Task Initialize(
-    EventStoreClient client,
+    KurrentDBClient client,
     Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     DatabaseHandler<Shape> databaseHandler,

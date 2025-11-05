@@ -1,4 +1,4 @@
-﻿using EventStore.Client;
+﻿using KurrentDB.Client;
 using Microsoft.Extensions.Logging;
 using Nvx.ConsistentAPI.Framework;
 using Nvx.ConsistentAPI.InternalTooling;
@@ -6,7 +6,7 @@ using Nvx.ConsistentAPI.InternalTooling;
 namespace Nvx.ConsistentAPI;
 
 public class DynamicConsistencyBoundaryDaemon(
-  EventStoreClient client,
+  KurrentDBClient client,
   Func<ResolvedEvent, Option<EventModelEvent>> parser,
   InterestTrigger[] triggers,
   ILogger logger,
@@ -54,6 +54,7 @@ public class DynamicConsistencyBoundaryDaemon(
     {
       return;
     }
+
     _ = Task.Run(async () =>
     {
       var position = FromAll.End;

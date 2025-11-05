@@ -1,4 +1,4 @@
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nvx.ConsistentAPI.Framework.SignalRMessage;
@@ -500,8 +500,7 @@ public class AssignToTenantOnTenantPermissionAssigned :
   public override IEnumerable<StrongString> GetProjectionIds(
     TenantPermissionAssigned sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
-    [new(Guid.NewGuid().ToString())];
+    Uuid sourceEventId) => [new(Guid.NewGuid().ToString())];
 }
 
 public class SendNotificationOnTenantPermissionAssigned :
@@ -533,8 +532,7 @@ public class SendNotificationOnTenantPermissionAssigned :
   public override IEnumerable<SignalRMessageId> GetProjectionIds(
     TenantPermissionAssigned sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
-    [new(Guid.NewGuid())];
+    Uuid sourceEventId) => [new(Guid.NewGuid())];
 }
 
 public class SendNotificationOnTenantPermissionRevoked :
@@ -566,8 +564,7 @@ public class SendNotificationOnTenantPermissionRevoked :
   public override IEnumerable<SignalRMessageId> GetProjectionIds(
     TenantPermissionRevoked sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
-    [new(Guid.NewGuid())];
+    Uuid sourceEventId) => [new(Guid.NewGuid())];
 }
 
 public record UserSecurityReadModel(

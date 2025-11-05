@@ -1,4 +1,4 @@
-﻿using EventStore.Client;
+﻿using KurrentDB.Client;
 using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json;
 
@@ -128,7 +128,7 @@ public class Fetcher<Entity> : EntityFetcher
   private readonly string streamPrefix;
 
   public Fetcher(
-    EventStoreClient client,
+    KurrentDBClient client,
     Func<StrongId, Option<Entity>> defaulter,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     int cacheSize,
@@ -215,7 +215,7 @@ public class Fetcher<Entity> : EntityFetcher
     fetch(id, upToRevision, fetcher, resetCache, cancellationToken);
 
   private static Func<Option<StrongId>, Position?, Fetcher, bool, CancellationToken, Task<FetchResult<Entity>>> Build(
-    EventStoreClient client,
+    KurrentDBClient client,
     Func<StrongId, Option<Entity>> defaulter,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     MemoryCache cache,

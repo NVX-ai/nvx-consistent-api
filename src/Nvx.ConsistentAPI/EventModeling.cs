@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using EventStore.Client;
+using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -40,11 +40,11 @@ public interface EventModelingCommandArtifact : Endpoint
 public interface EventModelingReadModelArtifact : Endpoint
 {
   Type ShapeType { get; }
-  Task<SingleReadModelInsights> Insights(ulong lastEventPosition, EventStoreClient eventStoreClien);
+  Task<SingleReadModelInsights> Insights(ulong lastEventPosition, KurrentDBClient eventStoreClien);
 
   Task ApplyTo(
     WebApplication app,
-    EventStoreClient esClient,
+    KurrentDBClient esClient,
     Fetcher fetcher,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Emitter emitter,
@@ -86,7 +86,7 @@ public interface EventModelingProjectionArtifact
     ResolvedEvent evt,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Fetcher fetcher,
-    EventStoreClient client);
+    KurrentDBClient client);
 }
 
 public static class PermissionsEndpoint
@@ -158,7 +158,7 @@ public class EventModel
     GeneratorSettings settings,
     ILogger logger)
   {
-    var esClient = new EventStoreClient(EventStoreClientSettings.Create(settings.EventStoreConnectionString));
+    var esClient = new KurrentDBClient(KurrentDBClientSettings.Create(settings.EventStoreConnectionString));
     var emitter = new Emitter(esClient, logger);
     var parser = Parser();
     var interestFetcher = new InterestFetcher(esClient, parser);

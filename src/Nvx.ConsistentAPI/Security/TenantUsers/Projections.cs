@@ -1,4 +1,4 @@
-﻿using EventStore.Client;
+﻿using KurrentDB.Client;
 
 namespace Nvx.ConsistentAPI.TenantUsers;
 
@@ -20,8 +20,7 @@ public class UserAddedToTenantProjection :
   public override IEnumerable<StrongGuid> GetProjectionIds(
     AddedToTenant sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
-    [new(sourceEvent.TenantId)];
+    Uuid sourceEventId) => [new(sourceEvent.TenantId)];
 }
 
 public class UserAddedToTenantFeedbackProjection :
@@ -42,8 +41,7 @@ public class UserAddedToTenantFeedbackProjection :
   public override IEnumerable<StrongString> GetProjectionIds(
     UserWasAddedToTenant sourceEvent,
     TenantUsersEntity sourceEntity,
-    Uuid sourceEventId) =>
-    [new(sourceEvent.UserId)];
+    Uuid sourceEventId) => [new(sourceEvent.UserId)];
 }
 
 public class UserRemovedFromTenantProjection :
@@ -64,8 +62,7 @@ public class UserRemovedFromTenantProjection :
   public override IEnumerable<StrongGuid> GetProjectionIds(
     RemovedFromTenant sourceEvent,
     UserSecurity sourceEntity,
-    Uuid sourceEventId) =>
-    [new(sourceEvent.TenantId)];
+    Uuid sourceEventId) => [new(sourceEvent.TenantId)];
 }
 
 public class TenantNameUpdatedProjection :
@@ -86,8 +83,7 @@ public class TenantNameUpdatedProjection :
   public override IEnumerable<StrongGuid> GetProjectionIds(
     TenantRenamed sourceEvent,
     Tenant sourceEntity,
-    Uuid sourceEventId) =>
-    [new(sourceEvent.Id)];
+    Uuid sourceEventId) => [new(sourceEvent.Id)];
 }
 
 public class TenantCreatedProjection :
@@ -108,8 +104,7 @@ public class TenantCreatedProjection :
   public override IEnumerable<StrongGuid> GetProjectionIds(
     TenantCreated sourceEvent,
     Tenant sourceEntity,
-    Uuid sourceEventId) =>
-    [new(sourceEvent.Id)];
+    Uuid sourceEventId) => [new(sourceEvent.Id)];
 }
 
 public class TenantNameSetFeedbackProjection :

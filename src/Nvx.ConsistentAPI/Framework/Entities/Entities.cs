@@ -1,4 +1,4 @@
-using EventStore.Client;
+using KurrentDB.Client;
 
 namespace Nvx.ConsistentAPI;
 
@@ -38,7 +38,7 @@ public interface EntityDefinition
   string StreamPrefix { get; }
 
   EntityFetcher GetFetcher(
-    EventStoreClient client,
+    KurrentDBClient client,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     InterestFetcher interestFetcher);
 }
@@ -55,7 +55,7 @@ public class EntityDefinition<EntityShape, EntityId> :
   public required string StreamPrefix { get; init; }
 
   public EntityFetcher GetFetcher(
-    EventStoreClient client,
+    KurrentDBClient client,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     InterestFetcher interestFetcher) =>
     new Fetcher<EntityShape>(
