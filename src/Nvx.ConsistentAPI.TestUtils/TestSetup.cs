@@ -421,9 +421,7 @@ public class TestSetup : IAsyncDisposable
     builder =
       settings.UsePersistentTestContainers
         ? builder.WithName("consistent-api-integration-test-mssql").WithPortBinding(1344, 1433)
-        : TestSettings.IsAppleSilicon
-          ? builder
-          : builder.WithTmpfsMount("/var/opt/mssql/data");
+        : builder.WithTmpfsMount("/var/opt/mssql/data");
 
     var msSqlContainer = builder.Build();
 
@@ -629,14 +627,12 @@ public class TestSettings
       : "kurrentplatform/kurrentdb:25.1.0";
 
   private static string MsSqlDefaultConnectionString => 
-    RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-    && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+    IsAppleSilicon
       ? "mcr.microsoft.com/mssql/server:2022-latest"
       : "mcr.microsoft.com/mssql/server:2025-latest";
 
   private static string AzuriteDefaultConnectionString =>
-    RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-    && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+    IsAppleSilicon
       ? "mcr.microsoft.com/azure-storage/azurite:3.35.0-arm64"
       : "mcr.microsoft.com/azure-storage/azurite:3.35.0";
 
