@@ -626,7 +626,11 @@ public class TestSettings
       ? "kurrentplatform/kurrentdb:25.1.0-experimental-arm64-8.0-jammy"
       : "kurrentplatform/kurrentdb:25.1.0";
 
-  private static string MsSqlDefaultConnectionString => "mcr.microsoft.com/mssql/server:2025-latest";
+  private static string MsSqlDefaultConnectionString => 
+    RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+    && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+      ? "mcr.microsoft.com/mssql/server:2022-latest"
+      : "mcr.microsoft.com/mssql/server:2025-latest";
 
   private static string AzuriteDefaultConnectionString =>
     RuntimeInformation.ProcessArchitecture == Architecture.Arm64
