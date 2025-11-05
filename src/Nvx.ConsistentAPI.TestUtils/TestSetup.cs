@@ -418,9 +418,12 @@ public class TestSetup : IAsyncDisposable
       .WithReuse(settings.UsePersistentTestContainers)
       .WithAutoRemove(!settings.UsePersistentTestContainers);
 
-    builder = settings.UsePersistentTestContainers
-      ? builder.WithName("consistent-api-integration-test-mssql").WithPortBinding(1344, 1433)
-      : builder.WithTmpfsMount("/var/opt/mssql/data");
+    builder =
+      settings.UsePersistentTestContainers
+        ? builder.WithName("consistent-api-integration-test-mssql").WithPortBinding(1344, 1433)
+        : TestSettings.IsAppleSilicon
+          ? builder
+          : builder.WithTmpfsMount("/var/opt/mssql/data");
 
     var msSqlContainer = builder.Build();
 
@@ -621,8 +624,7 @@ public class TestSettings
   }
 
   private static string EventStoreDefaultConnectionString =>
-    RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-    && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+    IsAppleSilicon
       ? "kurrentplatform/kurrentdb:25.1.0-experimental-arm64-8.0-jammy"
       : "kurrentplatform/kurrentdb:25.1.0";
 
@@ -637,6 +639,10 @@ public class TestSettings
     && RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
       ? "mcr.microsoft.com/azure-storage/azurite:3.35.0-arm64"
       : "mcr.microsoft.com/azure-storage/azurite:3.35.0";
+
+  internal static bool IsAppleSilicon =>
+    RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+    && RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
 }
 
 public enum ConsistencyWaitType
