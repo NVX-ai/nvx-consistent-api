@@ -142,6 +142,7 @@ public enum FrameworkFeatures
   Projections = 1 << 5,
   Tasks = 1 << 6,
   Ingestors = 1 << 7,
+  SignalR = 1 << 8,
 
   All = ReadModelHydration
         | ReadModelEndpoints
@@ -151,6 +152,7 @@ public enum FrameworkFeatures
         | Projections
         | Tasks
         | Ingestors
+        | SignalR
 }
 
 public static class FrameworkFeaturesExtensions
@@ -388,9 +390,9 @@ public static class Generator
         .Model(settings)
         .Merge(eventModel);
 
-    if (string.IsNullOrEmpty(settings.AzureSignalRConnectionString))
+    if (!settings.EnabledFeatures.HasFlag(FrameworkFeatures.SignalR))
     {
-      logger.LogInformation("Signal-R connection string not provided, disabling real-time notifications.");
+      logger.LogInformation("Signal-R feature is disabled, not adding SignalR messages to the event model.");
     }
     else
     {
