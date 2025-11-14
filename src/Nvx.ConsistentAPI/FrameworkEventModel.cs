@@ -1,6 +1,4 @@
-using Microsoft.AspNetCore.SignalR;
 using Nvx.ConsistentAPI.Framework.Projections.Model;
-using Nvx.ConsistentAPI.Framework.SignalRMessage;
 using Nvx.ConsistentAPI.TenantUsers;
 
 namespace Nvx.ConsistentAPI;
@@ -8,9 +6,7 @@ namespace Nvx.ConsistentAPI;
 public static class FrameworkEventModel
 {
   public static EventModel Model(
-    GeneratorSettings settings,
-    IHubContext<NotificationHub> hubContext) =>
-    UserSecurity
+    GeneratorSettings settings) => UserSecurity
       .Get
       .Merge(UserWithPermissionProjection.Get)
       .Merge(UserWithTenantPermissionProjection.Get)
@@ -22,7 +18,6 @@ public static class FrameworkEventModel
       .Merge(IdempotencyCache.Get)
       .Merge(UserNotificationSubModel.Get)
       .Merge(TenantUsersSubModel.Get)
-      .Merge(SignalRMessageSubModel.Get(SendNotificationFunctionBuilder.Build(hubContext)))
       .Merge(ProjectionTrackingModel.Get)
       .Merge(RolesModel.Get)
       .Merge(TemplateUserRoleSubModel.Get)

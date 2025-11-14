@@ -528,7 +528,7 @@ public class TestSetup : IAsyncDisposable
           LogFileRollInterval = LogFileRollInterval.Day
         },
         "TestApiToolingApiKey",
-        FrameworkFeatures.All,
+        FrameworkFeatures.All & ~FrameworkFeatures.SignalR,
         settings.HydrationParallelism,
         settings.TodoWorkers),
       model,
