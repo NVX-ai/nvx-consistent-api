@@ -93,6 +93,7 @@ public class HydrationDaemonWorker
     WHERE [StreamName] = @StreamName
       AND [ModelHash] = @ModelHash
       AND [WorkerId] = @WorkerId
+      AND [Position] = @Position
     """;
 
   private const string UpsertSql =
@@ -259,9 +260,7 @@ public class HydrationDaemonWorker
     ModelHashReadModelLocksIndexCreationSql
   ];
 
-  public static readonly string[] IndexCreationScripts = [
-    LastHydratedPositionForStreamIndexCreationSql
-  ];
+  public static readonly string[] IndexCreationScripts = [LastHydratedPositionForStreamIndexCreationSql];
 
   private readonly string connectionString;
   private readonly DatabaseHandlerFactory dbFactory;
@@ -544,7 +543,18 @@ public class HydrationDaemonWorker
       await Task.Delay(10);
     }
 
-    await MarkAsHydrated(candidate with { LastHydratedPosition = await hydrateTask });
+    var lastHydratedPosition = await hydrateTask;
+    await MarkAsHydrated(
+      candidate with
+      {
+        LastHydratedPosition =
+        // If the hydration fails or succeeds past the position, use the last hydrated position, it can happen
+        // that hydrating from dynamic consistency boundaries that the position is smaller than the interest event.
+        // In that case, the position of the record is used.
+        lastHydratedPosition is null || lastHydratedPosition >= candidate.Position
+          ? lastHydratedPosition
+          : candidate.Position
+      });
     return;
 
     async Task<ulong?> Hydrate(CancellationToken cancellationToken)
@@ -585,8 +595,10 @@ public class HydrationDaemonWorker
             },
             cancellationToken);
           await processTask;
-          PrometheusMetrics.RecordReadModelProcessingTime(readModel.TableName, (DateTime.UtcNow - candidate.CreatedAt).Milliseconds);
-          
+          PrometheusMetrics.RecordReadModelProcessingTime(
+            readModel.TableName,
+            (DateTime.UtcNow - candidate.CreatedAt).Milliseconds);
+
           foreach (var other in lockedByOtherHash)
           {
             var otherPosition = await GetStreamLastHydratedPositionByHash(other.ModelHash, other.ReadModelName);
