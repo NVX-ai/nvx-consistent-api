@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
+using Nvx.ConsistentAPI.Framework.SignalRMessage;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
@@ -379,15 +380,24 @@ public static class Generator
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapPrometheusScrapingEndpoint();
+    
+    var logger = app.Services.GetRequiredService<ILogger<WebApplication>>();
 
     var merged =
       FrameworkEventModel
-        .Model(settings, app.Services.GetRequiredService<IHubContext<NotificationHub>>())
+        .Model(settings)
         .Merge(eventModel);
 
-    VerifyPrefixes(merged);
+    if (string.IsNullOrEmpty(settings.AzureSignalRConnectionString))
+    {
+      logger.LogInformation("Signal-R connection string not provided, disabling real-time notifications.");
+    }
+    else
+    {
+      merged.Merge(SignalRMessageSubModel.Get(SendNotificationFunctionBuilder.Build(app.Services.GetRequiredService<IHubContext<NotificationHub>>())));
+    }
 
-    var logger = app.Services.GetRequiredService<ILogger<WebApplication>>();
+    VerifyPrefixes(merged);
 
     var (fetcher, consistencyCheck) = await merged.ApplyTo(app, settings, logger);
 
