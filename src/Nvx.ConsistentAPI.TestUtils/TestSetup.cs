@@ -629,7 +629,7 @@ public class TestSettings
   private static string MsSqlDefaultConnectionString => 
     IsAppleSilicon
       ? "mcr.microsoft.com/mssql/server:2022-latest"
-      : "mcr.microsoft.com/mssql/server:2025-latest";
+      : "mcr.microsoft.com/mssql/server:2022-latest";
 
   private static string AzuriteDefaultConnectionString =>
     IsAppleSilicon

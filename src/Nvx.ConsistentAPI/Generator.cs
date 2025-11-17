@@ -391,17 +391,17 @@ public static class Generator
     var merged =
       FrameworkEventModel
         .Model(settings)
-        .Merge(eventModel);
-    //     .Merge(
-    //       settings.EnabledFeatures.HasFlag(FrameworkFeatures.SignalR)
-    //         ? SignalRMessageSubModel.Get(
-    //           SendNotificationFunctionBuilder.Build(app.Services.GetRequiredService<IHubContext<NotificationHub>>()))
-    //         : new EventModel());
-    //
-    // if (!settings.EnabledFeatures.HasFlag(FrameworkFeatures.SignalR))
-    // {
-    //   logger.LogInformation("Signal-R feature is disabled, not adding SignalR messages to the event model");
-    // }
+        .Merge(eventModel)
+        .Merge(
+          settings.EnabledFeatures.HasFlag(FrameworkFeatures.SignalR)
+            ? SignalRMessageSubModel.Get(
+              SendNotificationFunctionBuilder.Build(app.Services.GetRequiredService<IHubContext<NotificationHub>>()))
+            : new EventModel());
+
+    if (!settings.EnabledFeatures.HasFlag(FrameworkFeatures.SignalR))
+    {
+      logger.LogInformation("Signal-R feature is disabled, not adding SignalR messages to the event model");
+    }
 
     VerifyPrefixes(merged);
 
