@@ -8,6 +8,7 @@ public static class Initializer
     {
       LogsFolder = "logs",
       UsePersistentTestContainers = false,
-      HydrationParallelism = 10
+      UseTmpfsForDatabases =  false,
+      HydrationParallelism = 10,
     });
 }
