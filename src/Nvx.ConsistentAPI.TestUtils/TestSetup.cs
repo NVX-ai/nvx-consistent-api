@@ -423,9 +423,11 @@ public class TestSetup : IAsyncDisposable
     builder =
       settings.UsePersistentTestContainers
         ? builder.WithName("consistent-api-integration-test-mssql").WithPortBinding(1344, 1433)
-        : settings.IsUbuntuPipeline
-          ? builder.WithBindMount("/dev/shm/mssql", "/var/opt/mssql/data")
-          : builder.WithTmpfsMount("/var/opt/mssql/data");
+        : settings.UseTmpfsForDatabases
+          ? settings.IsUbuntuPipeline
+            ? builder.WithBindMount("/dev/shm/mssql", "/var/opt/mssql/data")
+            : builder.WithTmpfsMount("/var/opt/mssql/data")
+          : builder;
 
     var msSqlContainer = builder.Build();
 
