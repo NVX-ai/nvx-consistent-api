@@ -5,9 +5,9 @@ name: .NET
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
@@ -25,6 +25,12 @@ jobs:
         run: dotnet restore ./src/Nvx.ConsistentAPI.sln
       - name: Build Framework
         run: dotnet build -c Release --no-restore ./src/Nvx.ConsistentAPI/Nvx.ConsistentAPI.csproj
+      - name: Create shared memory directories
+        run: |
+          sudo mkdir -p /dev/shm/kurrent
+          sudo mkdir -p /dev/shm/mssql
+          sudo chmod 777 /dev/shm/kurrent
+          sudo chmod 777 /dev/shm/mssql
       - name: Test
         working-directory: ./src/Nvx.ConsistentAPI.Tests
         run: dotnet test --no-restore
