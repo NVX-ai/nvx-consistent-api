@@ -9,6 +9,7 @@ public static class Initializer
       LogsFolder = "logs",
       UsePersistentTestContainers = false,
       HydrationParallelism = 10,
-      IsUbuntuPipeline = Environment.GetEnvironmentVariable("IS_UBUNTU_PIPELINE") == "true"
+      IsUbuntuPipeline = Environment.GetEnvironmentVariable("IS_UBUNTU_PIPELINE") == "true",
+      UseTmpfsForDatabases =  false
     });
 }

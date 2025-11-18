@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
+using Nvx.ConsistentAPI.Framework.SignalRMessage;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
@@ -141,6 +142,7 @@ public enum FrameworkFeatures
   Projections = 1 << 5,
   Tasks = 1 << 6,
   Ingestors = 1 << 7,
+  SignalR = 1 << 8,
 
   All = ReadModelHydration
         | ReadModelEndpoints
@@ -150,6 +152,7 @@ public enum FrameworkFeatures
         | Projections
         | Tasks
         | Ingestors
+        | SignalR
 }
 
 public static class FrameworkFeaturesExtensions
@@ -361,14 +364,17 @@ public static class Generator
           .Override("Nvx.ConsistentAPI", Map(settings.LoggingSettings.LogLevel))
           .Enrich.FromLogContext()
           .Filter.ByExcluding(logEvent =>
-            logEvent.Properties.TryGetValue("RequestPath", out var pathValue) &&
-            pathValue.ToString().Contains("/metrics"))
-          .WriteTo.Conditional(_ => settings.LoggingSettings.LogsFolder != null,
-            wt => wt.File(Path.Combine(settings.LoggingSettings.LogsFolder ?? "./", "log-.log"),
+            logEvent.Properties.TryGetValue("RequestPath", out var pathValue)
+            && pathValue.ToString().Contains("/metrics"))
+          .WriteTo.Conditional(
+            _ => settings.LoggingSettings.LogsFolder != null,
+            wt => wt.File(
+              Path.Combine(settings.LoggingSettings.LogsFolder ?? "./", "log-.log"),
               rollingInterval: settings.LoggingSettings.LogFileRollInterval.ToSerilog(),
               retainedFileTimeLimit: TimeSpan.FromDays(settings.LoggingSettings.LogDaysToKeep)))
-          .WriteTo.Conditional(_ => settings.LoggingSettings.UseConsoleLogger
-            , wt => wt.Console(restrictedToMinimumLevel: Map(settings.LoggingSettings.LogLevel)))
+          .WriteTo.Conditional(
+            _ => settings.LoggingSettings.UseConsoleLogger,
+            wt => wt.Console(Map(settings.LoggingSettings.LogLevel)))
           .CreateLogger());
     });
 
@@ -380,14 +386,24 @@ public static class Generator
     app.UseAuthorization();
     app.MapPrometheusScrapingEndpoint();
 
+    var logger = app.Services.GetRequiredService<ILogger<WebApplication>>();
+
     var merged =
       FrameworkEventModel
-        .Model(settings, app.Services.GetRequiredService<IHubContext<NotificationHub>>())
-        .Merge(eventModel);
+        .Model(settings)
+        .Merge(eventModel)
+        .Merge(
+          settings.EnabledFeatures.HasFlag(FrameworkFeatures.SignalR)
+            ? SignalRMessageSubModel.Get(
+              SendNotificationFunctionBuilder.Build(app.Services.GetRequiredService<IHubContext<NotificationHub>>()))
+            : new EventModel());
+
+    if (!settings.EnabledFeatures.HasFlag(FrameworkFeatures.SignalR))
+    {
+      logger.LogInformation("Signal-R feature is disabled, not adding SignalR messages to the event model");
+    }
 
     VerifyPrefixes(merged);
-
-    var logger = app.Services.GetRequiredService<ILogger<WebApplication>>();
 
     var (fetcher, consistencyCheck) = await merged.ApplyTo(app, settings, logger);
 
