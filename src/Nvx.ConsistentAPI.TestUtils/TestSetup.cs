@@ -386,7 +386,7 @@ public class TestSetup : IAsyncDisposable
     builder = settings.UsePersistentTestContainers
       ? builder.WithName("consistent-api-integration-test-es").WithPortBinding(3112, 2113)
       : settings.IsUbuntuPipeline
-        ? builder.WithBindMount("/dev/shm", "/var/lib/kurrentdb")
+        ? builder.WithBindMount("/dev/shm/kurrent", "/var/lib/kurrentdb")
         : builder.WithTmpfsMount("/var/lib/kurrentdb");
 
     var esContainer = builder.Build();
@@ -424,7 +424,7 @@ public class TestSetup : IAsyncDisposable
       settings.UsePersistentTestContainers
         ? builder.WithName("consistent-api-integration-test-mssql").WithPortBinding(1344, 1433)
         : settings.IsUbuntuPipeline
-          ? builder.WithBindMount("/dev/shm", "/var/opt/mssql/data")
+          ? builder.WithBindMount("/dev/shm/mssql", "/var/opt/mssql/data")
           : builder.WithTmpfsMount("/var/opt/mssql/data");
 
     var msSqlContainer = builder.Build();
