@@ -12,6 +12,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      IS_UBUNTU_PIPELINE: true
 
     steps:
       - uses: actions/checkout@v4

@@ -385,7 +385,9 @@ public class TestSetup : IAsyncDisposable
 
     builder = settings.UsePersistentTestContainers
       ? builder.WithName("consistent-api-integration-test-es").WithPortBinding(3112, 2113)
-      : builder.WithTmpfsMount("/var/lib/kurrentdb");
+      : settings.IsUbuntuPipeline
+        ? builder.WithBindMount("/dev/shm", "/var/lib/kurrentdb")
+        : builder.WithTmpfsMount("/var/lib/kurrentdb");
 
     var esContainer = builder.Build();
 
