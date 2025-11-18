@@ -385,7 +385,9 @@ public class TestSetup : IAsyncDisposable
 
     builder = settings.UsePersistentTestContainers
       ? builder.WithName("consistent-api-integration-test-es").WithPortBinding(3112, 2113)
-      : builder.WithTmpfsMount("/var/lib/kurrentdb");
+      : settings.IsUbuntuPipeline
+        ? builder.WithBindMount("/dev/shm/kurrent", "/var/lib/kurrentdb")
+        : builder.WithTmpfsMount("/var/lib/kurrentdb");
 
     var esContainer = builder.Build();
 
@@ -418,15 +420,14 @@ public class TestSetup : IAsyncDisposable
       .WithReuse(settings.UsePersistentTestContainers)
       .WithAutoRemove(!settings.UsePersistentTestContainers);
 
-    if (settings.UsePersistentTestContainers)
-    {
-      builder = builder.WithName("consistent-api-integration-test-mssql").WithPortBinding(1344, 1433);
-    }
-
-    if (settings.UseTmpfsForDatabases)
-    {
-      builder = builder.WithTmpfsMount("/var/opt/mssql/data");
-    }
+    builder =
+      settings.UsePersistentTestContainers
+        ? builder.WithName("consistent-api-integration-test-mssql").WithPortBinding(1344, 1433)
+        : settings.UseTmpfsForDatabases
+          ? settings.IsUbuntuPipeline
+            ? builder.WithBindMount("/dev/shm/mssql", "/var/opt/mssql/data")
+            : builder.WithTmpfsMount("/var/opt/mssql/data")
+          : builder;
 
     var msSqlContainer = builder.Build();
 
@@ -627,12 +628,14 @@ public class TestSettings
     init => azuriteImage = value;
   }
 
+  public bool IsUbuntuPipeline { get; init; }
+
   private static string EventStoreDefaultConnectionString =>
     IsAppleSilicon
       ? "kurrentplatform/kurrentdb:25.1.0-experimental-arm64-8.0-jammy"
       : "kurrentplatform/kurrentdb:25.1.0";
 
-  private static string MsSqlDefaultConnectionString => 
+  private static string MsSqlDefaultConnectionString =>
     IsAppleSilicon
       ? "mcr.microsoft.com/mssql/server:2022-latest"
       : "mcr.microsoft.com/mssql/server:2025-latest";
