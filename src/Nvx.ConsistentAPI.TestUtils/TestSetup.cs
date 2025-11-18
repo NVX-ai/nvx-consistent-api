@@ -421,7 +421,9 @@ public class TestSetup : IAsyncDisposable
     builder =
       settings.UsePersistentTestContainers
         ? builder.WithName("consistent-api-integration-test-mssql").WithPortBinding(1344, 1433)
-        : builder.WithTmpfsMount("/var/opt/mssql/data");
+        : settings.IsUbuntuPipeline
+          ? builder.WithBindMount("/dev/shm", "/var/opt/mssql/data")
+          : builder.WithTmpfsMount("/var/opt/mssql/data");
 
     var msSqlContainer = builder.Build();
 
@@ -621,12 +623,14 @@ public class TestSettings
     init => azuriteImage = value;
   }
 
+  public bool IsUbuntuPipeline { get; init; }
+
   private static string EventStoreDefaultConnectionString =>
     IsAppleSilicon
       ? "kurrentplatform/kurrentdb:25.1.0-experimental-arm64-8.0-jammy"
       : "kurrentplatform/kurrentdb:25.1.0";
 
-  private static string MsSqlDefaultConnectionString => 
+  private static string MsSqlDefaultConnectionString =>
     IsAppleSilicon
       ? "mcr.microsoft.com/mssql/server:2022-latest"
       : "mcr.microsoft.com/mssql/server:2025-latest";
