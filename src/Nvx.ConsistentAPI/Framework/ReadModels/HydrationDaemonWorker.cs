@@ -248,7 +248,7 @@ public class HydrationDaemonWorker
      WHERE [WorkerId] = @WorkerId
        AND [StreamName] = @StreamName
        AND [ModelHash] = @ModelHash
-       AND [LockedUntil] < GETUTCDATE()
+       AND [LockedUntil] > GETUTCDATE()
      """;
 
   public static readonly string[] TableCreationScripts =
