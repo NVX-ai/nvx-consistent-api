@@ -1,4 +1,6 @@
-﻿using KurrentDB.Client;
+﻿extern alias SystemLinqAsync;
+
+using KurrentDB.Client;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Nvx.ConsistentAPI;
@@ -45,12 +47,11 @@ internal static class SingleStreamFetch
       return new FetchResult<Entity>(None, -1, None, null, null, null, null);
     }
 
-    var result = await read
-      .TakeWhile(re => upToRevision is null || re.Event.Position <= upToRevision)
-      .AggregateAwaitAsync<
+    var result = await SystemLinqAsync::System.Linq.AsyncEnumerable.AggregateAwaitAsync<
         ResolvedEvent,
         (Entity entity, long rev, Option<Position> gp, DateTime? fe, DateTime? le, string? fu, string? lu),
         FetchResult<Entity>>(
+      read.TakeWhile(re => upToRevision is null || re.Event.Position <= upToRevision),
         (seed.e, seed.r.DefaultValue(-1), seed.gp, seed.fe, seed.le, seed.fu, seed.lu),
         async (acc, @event) =>
           await parser(@event)

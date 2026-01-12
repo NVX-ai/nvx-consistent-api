@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
@@ -15,6 +15,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="System.Linq.Async" Version="6.0.1" Aliases="SystemLinqAsync" />
         <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0"/>
         <PackageReference Include="Dapper" Version="2.1.66"/>
         <PackageReference Include="DeFuncto.Core" Version="1.1.3"/>
