@@ -429,6 +429,13 @@ public class TestSetup : IAsyncDisposable
             : builder.WithTmpfsMount("/var/opt/mssql/data")
           : builder;
 
+    // Add CPU constraints to fix SQL Server 2025 CPU topology detection issues
+    builder = builder.WithCreateParameterModifier(parameters =>
+    {
+      parameters.HostConfig ??= new();
+      parameters.HostConfig.CpusetCpus = "0-3";
+    });
+
     var msSqlContainer = builder.Build();
 
     await msSqlContainer.StartAsync();
@@ -602,7 +609,7 @@ public class TestSettings
   private readonly string? msSqlDbImage;
   public string? LogsFolder { get; init; }
   public bool UsePersistentTestContainers { get; init; }
-  public bool UseTmpfsForDatabases { get; init; } = false;
+  public bool UseTmpfsForDatabases { get; init; } = true;
   public int WaitForCatchUpTimeout { get; init; } = 150_000;
   public int HydrationParallelism { get; init; } = 5;
   public int TodoWorkers { get; init; } = 5;
