@@ -15,7 +15,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="System.Linq.Async" Version="6.0.1" Aliases="SystemLinqAsync" />
+        <!-- Exclude System.Linq.Async transitive dependency - .NET 10 has built-in async LINQ support -->
+        <PackageReference Include="System.Linq.Async" Version="6.0.1" ExcludeAssets="all" PrivateAssets="all" />
         <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0"/>
         <PackageReference Include="Dapper" Version="2.1.66"/>
         <PackageReference Include="DeFuncto.Core" Version="1.1.3"/>

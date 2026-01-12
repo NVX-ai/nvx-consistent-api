@@ -1,5 +1,3 @@
-﻿extern alias SystemLinqAsync;
-
 using KurrentDB.Client;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -47,13 +45,11 @@ internal static class SingleStreamFetch
       return new FetchResult<Entity>(None, -1, None, null, null, null, null);
     }
 
-    var result = await SystemLinqAsync::System.Linq.AsyncEnumerable.AggregateAwaitAsync<
-        ResolvedEvent,
-        (Entity entity, long rev, Option<Position> gp, DateTime? fe, DateTime? le, string? fu, string? lu),
-        FetchResult<Entity>>(
-      read.TakeWhile(re => upToRevision is null || re.Event.Position <= upToRevision),
-        (seed.e, seed.r.DefaultValue(-1), seed.gp, seed.fe, seed.le, seed.fu, seed.lu),
-        async (acc, @event) =>
+    var result = await read
+      .TakeWhile(re => upToRevision is null || re.Event.Position <= upToRevision)
+      .AggregateAsync(
+        (entity: seed.e, rev: seed.r.DefaultValue(-1), gp: seed.gp, fe: seed.fe, le: seed.le, fu: seed.fu, lu: seed.lu),
+        async (acc, @event, _) =>
           await parser(@event)
             .Match<ValueTask<(Entity entity, long rev, Option<Position> gp, DateTime? fe, DateTime? le, string? fu,
               string? lu)>>(
@@ -93,7 +89,7 @@ internal static class SingleStreamFetch
                     firstUserSubFound,
                     lastUserSubFound));
               }),
-        tuple => ValueTask.FromResult(
+        (tuple, _) => ValueTask.FromResult(
           new FetchResult<Entity>(tuple.entity, tuple.rev, tuple.gp, tuple.fe, tuple.le, tuple.fu, tuple.lu)),
         cancellationToken);
 
