@@ -602,7 +602,7 @@ public class TestSettings
   private readonly string? msSqlDbImage;
   public string? LogsFolder { get; init; }
   public bool UsePersistentTestContainers { get; init; }
-  public bool UseTmpfsForDatabases { get; init; } = true;
+  public bool UseTmpfsForDatabases { get; init; } = false;
   public int WaitForCatchUpTimeout { get; init; } = 150_000;
   public int HydrationParallelism { get; init; } = 5;
   public int TodoWorkers { get; init; } = 5;
