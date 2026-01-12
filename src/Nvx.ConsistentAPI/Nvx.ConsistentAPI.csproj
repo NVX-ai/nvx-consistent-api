@@ -25,7 +25,7 @@
         <PackageReference Include="KurrentDB.Client" Version="1.1.0" />
         <PackageReference Include="Microsoft.ApplicationInsights" Version="2.23.0" />
         <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.23.0" />
-        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.10" />
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.1" />
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.10" />
         <PackageReference Include="Microsoft.Azure.SignalR" Version="1.32.0" />
         <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.3" />
