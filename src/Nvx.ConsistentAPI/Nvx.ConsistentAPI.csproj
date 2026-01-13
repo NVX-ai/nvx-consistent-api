@@ -21,12 +21,12 @@
         <PackageReference Include="Dapper" Version="2.1.66" />
         <PackageReference Include="DeFuncto.Core" Version="1.1.3" />
         <PackageReference Include="jose-jwt" Version="5.2.0" />
-        <PackageReference Include="JsonLogic" Version="5.4.3" />
-        <PackageReference Include="KurrentDB.Client" Version="1.1.0" />
+        <PackageReference Include="JsonLogic" Version="5.5.0" />
+        <PackageReference Include="KurrentDB.Client" Version="1.3.0" />
         <PackageReference Include="Microsoft.ApplicationInsights" Version="2.23.0" />
         <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.23.0" />
         <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.1" />
-        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.10" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
         <PackageReference Include="Microsoft.Azure.SignalR" Version="1.32.0" />
         <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.3" />
         <PackageReference Include="Microsoft.Extensions.Logging.ApplicationInsights" Version="2.23.0" />
@@ -43,8 +43,9 @@
         <PackageReference Include="Serilog.Extensions.Logging.File" Version="3.0.0" />
         <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
         <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-        <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="9.0.6" />
-        <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="9.0.6" />
+        <PackageReference Include="Microsoft.OpenApi" Version="2.3.0" />
+        <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="10.1.0" />
+        <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.1.0" />
     </ItemGroup>
 
     <ItemGroup>

@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 
 namespace Nvx.ConsistentAPI;
 
@@ -34,7 +34,7 @@ public static class IngestorExtensions
           .Iter(async e => await emitter.Emit(() => new AnyState(e))))
       .WithOpenApi(o =>
       {
-        o.Tags = [new OpenApiTag { Name = ingestor.AreaTag }];
+        o.Tags = new HashSet<OpenApiTagReference> { new(ingestor.AreaTag, null) };
         ingestor.SetOpenApi(o);
         return o;
       });

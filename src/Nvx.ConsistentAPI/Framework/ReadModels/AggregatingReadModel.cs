@@ -3,7 +3,7 @@ using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Nvx.ConsistentAPI.InternalTooling;
 using EventTypeFilter = KurrentDB.Client.EventTypeFilter;
 

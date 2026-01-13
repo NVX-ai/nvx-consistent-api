@@ -20,9 +20,9 @@
         <PackageReference Include="Flurl.Http" Version="4.0.2"/>
         <PackageReference Include="Microsoft.Azure.SignalR" Version="1.32.0" />
         <PackageReference Include="Schick.Keycloak.RestApiClient" Version="26.4.2" />
-        <PackageReference Include="Testcontainers.Azurite" Version="4.8.1" />
-        <PackageReference Include="Testcontainers.EventStoreDb" Version="4.8.1" />
-        <PackageReference Include="Testcontainers.MsSql" Version="4.8.1" />
+        <PackageReference Include="Testcontainers.Azurite" Version="4.10.0" />
+        <PackageReference Include="Testcontainers.KurrentDb" Version="4.10.0" />
+        <PackageReference Include="Testcontainers.MsSql" Version="4.10.0" />
         <PackageReference Include="xunit" Version="2.9.3"/>
     </ItemGroup>
 

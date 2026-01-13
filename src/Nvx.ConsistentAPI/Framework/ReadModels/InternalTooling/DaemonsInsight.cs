@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Nvx.ConsistentAPI.Framework.Projections;
 
 // ReSharper disable NotAccessedPositionalProperty.Global
@@ -89,14 +89,14 @@ internal static class DaemonsInsight
       .WithDescription("Gives insights into the system daemons")
       .WithOpenApi(o =>
       {
-        o.Tags = [new OpenApiTag { Name = OperationTags.FrameworkManagement }];
-        o.Parameters.Add(
+        o.Tags = new HashSet<OpenApiTagReference> { new(OperationTags.FrameworkManagement, null) };
+        o.Parameters?.Add(
           new OpenApiParameter
           {
             In = ParameterLocation.Header,
             Name = "Internal-Tooling-Api-Key",
             Required = false,
-            Schema = new OpenApiSchema { Type = "string" },
+            Schema = new OpenApiSchema { Type = JsonSchemaType.String },
             Description = "API key for accessing tooling endpoints, not required for admin users"
           });
 

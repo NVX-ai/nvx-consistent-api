@@ -1,7 +1,7 @@
 using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Nvx.ConsistentAPI.InternalTooling;
 
 namespace Nvx.ConsistentAPI;

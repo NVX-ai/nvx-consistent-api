@@ -5,8 +5,8 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models;
+using System.Text.Json.Nodes;
+using Microsoft.OpenApi;
 using Nvx.ConsistentAPI.Framework;
 
 namespace Nvx.ConsistentAPI;
@@ -129,7 +129,7 @@ public static class ReadModelRouteBuilder
       .WithOpenApi(o =>
       {
         o.OperationId = $"get{typeof(Shape).Name}".Replace("ReadModel", "");
-        o.Tags = [new OpenApiTag { Name = areaTag }];
+        o.Tags = new HashSet<OpenApiTagReference> { new(areaTag, null) };
         openApiCustomizer(o);
         return o;
       })
@@ -184,23 +184,24 @@ public static class ReadModelRouteBuilder
       .Produces<ErrorResponse>(500)
       .WithOpenApi(o =>
       {
+        o.Parameters ??= [];
         o.Parameters.Add(
           new OpenApiParameter
           {
             In = ParameterLocation.Header,
             Name = "If-None-Match",
             Required = false,
-            Schema = new OpenApiSchema { Type = "string" }
+            Schema = new OpenApiSchema { Type = JsonSchemaType.String }
           });
-        foreach (var response in o.Responses.Where(r => r.Key == "200"))
+        foreach (var response in o.Responses?.Where(r => r.Key == "200") ?? [])
         {
           response
             .Value
-            .Headers
+            .Headers?
             .Add(
               "ETag",
               new OpenApiHeader
-                { Description = "The ETag of the response", Schema = new OpenApiSchema { Type = "string" } });
+                { Description = "The ETag of the response", Schema = new OpenApiSchema { Type = JsonSchemaType.String } });
         }
 
         o.Parameters.Add(
@@ -209,7 +210,7 @@ public static class ReadModelRouteBuilder
             In = ParameterLocation.Query,
             Name = "sortField",
             Required = false,
-            Schema = new OpenApiSchema { Type = "string", Enum = GetSortableFields().ToList() },
+            Schema = new OpenApiSchema { Type = JsonSchemaType.String, Enum = GetSortableFields().OfType<JsonNode>().ToList() },
             Style = ParameterStyle.Form,
             Explode = false
           });
@@ -221,8 +222,8 @@ public static class ReadModelRouteBuilder
             Required = false,
             Schema = new OpenApiSchema
             {
-              Type = "string",
-              Enum = new List<IOpenApiAny> { new OpenApiString("ascending"), new OpenApiString("descending") }
+              Type = JsonSchemaType.String,
+              Enum = new[] { JsonValue.Create("ascending"), JsonValue.Create("descending") }.OfType<JsonNode>().ToList()
             },
             Style = ParameterStyle.Form,
             Explode = false
@@ -233,7 +234,7 @@ public static class ReadModelRouteBuilder
             In = ParameterLocation.Query,
             Name = "pageNumber",
             Required = false,
-            Schema = new OpenApiSchema { Type = "integer" },
+            Schema = new OpenApiSchema { Type = JsonSchemaType.Integer },
             Style = ParameterStyle.Form,
             Explode = false
           });
@@ -243,7 +244,7 @@ public static class ReadModelRouteBuilder
             In = ParameterLocation.Query,
             Name = "pageSize",
             Required = false,
-            Schema = new OpenApiSchema { Type = "integer" },
+            Schema = new OpenApiSchema { Type = JsonSchemaType.Integer },
             Style = ParameterStyle.Form,
             Explode = false
           });
@@ -263,7 +264,7 @@ public static class ReadModelRouteBuilder
         }
 
         o.OperationId = $"list{typeof(Shape).Name}".Replace("ReadModel", "");
-        o.Tags = [new OpenApiTag { Name = areaTag }];
+        o.Tags = new HashSet<OpenApiTagReference> { new(areaTag, null) };
         openApiCustomizer(o);
         return o;
       })
@@ -271,7 +272,7 @@ public static class ReadModelRouteBuilder
 
     return;
 
-    IEnumerable<IOpenApiAny> GetSortableFields()
+    IEnumerable<JsonNode?> GetSortableFields()
     {
       foreach (var prop in typeof(Shape).GetProperties(BindingFlags.Public | BindingFlags.Instance))
       {
@@ -280,7 +281,7 @@ public static class ReadModelRouteBuilder
           continue;
         }
 
-        yield return new OpenApiString(prop.Name);
+        yield return JsonValue.Create(prop.Name);
       }
     }
   }
@@ -323,7 +324,7 @@ public static class ReadModelRouteBuilder
         "Recreates the table tracking the read model, and resubscribes to the event stream immediately")
       .WithOpenApi(o =>
       {
-        o.Tags = [new OpenApiTag { Name = OperationTags.FrameworkManagement }];
+        o.Tags = new HashSet<OpenApiTagReference> { new(OperationTags.FrameworkManagement, null) };
         o.OperationId = $"reset{typeof(Shape).Name}";
         return o;
       })

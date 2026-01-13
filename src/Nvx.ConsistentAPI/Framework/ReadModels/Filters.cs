@@ -1,8 +1,8 @@
 ﻿using System.Reflection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models;
+using System.Text.Json.Nodes;
+using Microsoft.OpenApi;
 
 namespace Nvx.ConsistentAPI;
 
@@ -66,22 +66,22 @@ public interface ReadModelFilter
       {
         var item = ut switch
         {
-          not null when ut == typeof(int) => new OpenApiSchema { Type = "integer" },
-          not null when ut == typeof(long) => new OpenApiSchema { Type = "integer", Format = "int64" },
-          not null when ut == typeof(float) => new OpenApiSchema { Type = "number", Format = "float" },
-          not null when ut == typeof(decimal) => new OpenApiSchema { Type = "number", Format = "float" },
-          not null when ut == typeof(double) => new OpenApiSchema { Type = "number", Format = "double" },
-          not null when ut == typeof(bool) => new OpenApiSchema { Type = "boolean" },
-          not null when ut == typeof(string) => new OpenApiSchema { Type = "string" },
-          not null when ut == typeof(char) => new OpenApiSchema { Type = "string" },
-          not null when ut == typeof(DateTime) => new OpenApiSchema { Type = "datetime" },
-          not null when ut == typeof(Guid) => new OpenApiSchema { Type = "string", Format = "uuid" },
+          not null when ut == typeof(int) => new OpenApiSchema { Type = JsonSchemaType.Integer },
+          not null when ut == typeof(long) => new OpenApiSchema { Type = JsonSchemaType.Integer, Format = "int64" },
+          not null when ut == typeof(float) => new OpenApiSchema { Type = JsonSchemaType.Number, Format = "float" },
+          not null when ut == typeof(decimal) => new OpenApiSchema { Type = JsonSchemaType.Number, Format = "float" },
+          not null when ut == typeof(double) => new OpenApiSchema { Type = JsonSchemaType.Number, Format = "double" },
+          not null when ut == typeof(bool) => new OpenApiSchema { Type = JsonSchemaType.Boolean },
+          not null when ut == typeof(string) => new OpenApiSchema { Type = JsonSchemaType.String },
+          not null when ut == typeof(char) => new OpenApiSchema { Type = JsonSchemaType.String },
+          not null when ut == typeof(DateTime) => new OpenApiSchema { Type = JsonSchemaType.String, Format = "date-time" },
+          not null when ut == typeof(Guid) => new OpenApiSchema { Type = JsonSchemaType.String, Format = "uuid" },
           not null when ut.IsEnum => new OpenApiSchema
-            { Type = "string", Enum = ut.GetEnumNames().Select(IOpenApiAny (ev) => new OpenApiString(ev)).ToList() },
-          _ => new OpenApiSchema { Type = "string" }
+            { Type = JsonSchemaType.String, Enum = ut.GetEnumNames().Select(ev => JsonValue.Create(ev)).OfType<JsonNode>().ToList() },
+          _ => new OpenApiSchema { Type = JsonSchemaType.String }
         };
 
-        return isArray ? new OpenApiSchema { Type = "array", Items = item } : item;
+        return isArray ? new OpenApiSchema { Type = JsonSchemaType.Array, Items = item } : item;
       });
 }
 

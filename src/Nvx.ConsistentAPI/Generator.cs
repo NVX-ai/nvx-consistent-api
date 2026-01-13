@@ -8,8 +8,8 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models;
+using System.Text.Json.Nodes;
+using Microsoft.OpenApi;
 using Nvx.ConsistentAPI.Framework.SignalRMessage;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -40,10 +40,10 @@ internal class AllOperationsFilter(EventModel model) : IOperationFilter
 {
   public void Apply(OpenApiOperation operation, OperationFilterContext context)
   {
-    operation.Tags ??= new List<OpenApiTag>();
+    operation.Tags ??= new HashSet<OpenApiTagReference>();
     if (!operation.Tags.Any())
     {
-      operation.Tags.Add(new OpenApiTag { Name = $"NotTagged{model.ApiName?.Replace(" ", "")}" });
+      operation.Tags.Add(new OpenApiTagReference($"NotTagged{model.ApiName?.Replace(" ", "")}", null));
     }
   }
 }
@@ -51,24 +51,39 @@ internal class AllOperationsFilter(EventModel model) : IOperationFilter
 // ReSharper disable once ClassNeverInstantiated.Global
 internal class RequiredNotNullableSchemaFilter : ISchemaFilter
 {
-  public void Apply(OpenApiSchema schema, SchemaFilterContext context)
+  public void Apply(IOpenApiSchema schema, SchemaFilterContext context)
   {
-    if (schema.Properties == null)
+    if (schema is not OpenApiSchema openApiSchema || openApiSchema.Properties == null)
     {
       return;
     }
 
-    FixNullableProperties(schema, context);
+    FixNullableProperties(openApiSchema, context);
 
-    var notNullableProperties = schema
+    if (openApiSchema.Required == null) return;
+
+    var notNullableProperties = openApiSchema
       .Properties
-      .Where(x => !x.Value.Nullable && !schema.Required.Contains(x.Key))
+      .Where(x => !IsNullable(x.Value) && !openApiSchema.Required.Contains(x.Key))
       .ToList();
 
     foreach (var property in notNullableProperties)
     {
-      schema.Required.Add(property.Key);
+      openApiSchema.Required.Add(property.Key);
     }
+  }
+
+  private static bool IsNullable(IOpenApiSchema schema) =>
+    schema.Type.HasValue && schema.Type.Value.HasFlag(JsonSchemaType.Null);
+
+  private static void SetNullable(IOpenApiSchema schema, bool nullable)
+  {
+    if (schema is not OpenApiSchema openApiSchema || !openApiSchema.Type.HasValue) return;
+
+    if (nullable)
+      openApiSchema.Type |= JsonSchemaType.Null;
+    else
+      openApiSchema.Type &= ~JsonSchemaType.Null;
   }
 
   /// <summary>
@@ -76,11 +91,12 @@ internal class RequiredNotNullableSchemaFilter : ISchemaFilter
   ///   so they always have "Nullable = false",
   ///   see method "SchemaGenerator.GenerateSchemaForMember"
   /// </summary>
-  private static void FixNullableProperties(OpenApiSchema schema, SchemaFilterContext context)
+  private static void FixNullableProperties(IOpenApiSchema schema, SchemaFilterContext context)
   {
+    if (schema.Properties == null) return;
     foreach (var property in schema.Properties)
     {
-      if (property.Value.Reference == null)
+      if (property.Value is not OpenApiSchema { Type: not null })
       {
         continue;
       }
@@ -103,9 +119,11 @@ internal class RequiredNotNullableSchemaFilter : ISchemaFilter
         _ => throw new NotSupportedException()
       };
 
-      property.Value.Nullable = fieldType.IsValueType
+      var shouldBeNullable = fieldType.IsValueType
         ? Nullable.GetUnderlyingType(fieldType) != null
         : !field.IsNonNullableReferenceType();
+
+      SetNullable(property.Value, shouldBeNullable);
     }
   }
 }
@@ -113,19 +131,19 @@ internal class RequiredNotNullableSchemaFilter : ISchemaFilter
 // ReSharper disable once ClassNeverInstantiated.Global
 public class EnumSchemaFilter : ISchemaFilter
 {
-  public void Apply(OpenApiSchema model, SchemaFilterContext context)
+  public void Apply(IOpenApiSchema model, SchemaFilterContext context)
   {
-    if (!context.Type.IsEnum)
+    if (!context.Type.IsEnum || model is not OpenApiSchema schema)
     {
       return;
     }
 
-    model.Type = "string";
-    model.Enum.Clear();
+    schema.Type = JsonSchemaType.String;
+    schema.Enum?.Clear();
 
     foreach (var n in Enum.GetNames(context.Type))
     {
-      model.Enum.Add(new OpenApiString(n));
+      schema.Enum?.Add(JsonValue.Create(n));
     }
   }
 }
@@ -276,14 +294,13 @@ public static class Generator
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.Http,
         Scheme = JwtBearerDefaults.AuthenticationScheme,
-        Description = "Put **_ONLY_** your JWT Bearer token on text box below!",
-        Reference = new OpenApiReference
-          { Id = JwtBearerDefaults.AuthenticationScheme, Type = ReferenceType.SecurityScheme }
+        Description = "Put **_ONLY_** your JWT Bearer token on text box below!"
       };
 
-      swaggerGenOptions.AddSecurityDefinition(jwtSecurityScheme.Reference.Id, jwtSecurityScheme);
+      swaggerGenOptions.AddSecurityDefinition(JwtBearerDefaults.AuthenticationScheme, jwtSecurityScheme);
+      var jwtSecuritySchemeReference = new OpenApiSecuritySchemeReference(JwtBearerDefaults.AuthenticationScheme, null);
       swaggerGenOptions.AddSecurityRequirement(
-        new OpenApiSecurityRequirement { { jwtSecurityScheme, [] } });
+        _ => new OpenApiSecurityRequirement { { jwtSecuritySchemeReference, [] } });
       settings.SwaggerCustomizations.Iter(c => c(swaggerGenOptions));
     });
 

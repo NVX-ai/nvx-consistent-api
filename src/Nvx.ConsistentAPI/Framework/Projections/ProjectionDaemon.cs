@@ -2,8 +2,8 @@ using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models;
+using System.Text.Json.Nodes;
+using Microsoft.OpenApi;
 using Nvx.ConsistentAPI.Framework.Projections.Model;
 using Nvx.ConsistentAPI.InternalTooling;
 using Nvx.ConsistentAPI.Metrics;
@@ -89,7 +89,7 @@ public class ProjectionDaemon(
       .WithOpenApi(o =>
       {
         o.OperationId = "rerunProjection";
-        o.Parameters.Add(
+        o.Parameters?.Add(
           new OpenApiParameter
           {
             Name = "projectionName",
@@ -97,8 +97,8 @@ public class ProjectionDaemon(
             Required = true,
             Schema = new OpenApiSchema
             {
-              Type = "string",
-              Enum = projectionNames.Select(IOpenApiAny (p) => new OpenApiString(p)).ToList()
+              Type = JsonSchemaType.String,
+              Enum = projectionNames.Select(p => JsonValue.Create(p)).OfType<JsonNode>().ToList()
             }
           });
         return o;

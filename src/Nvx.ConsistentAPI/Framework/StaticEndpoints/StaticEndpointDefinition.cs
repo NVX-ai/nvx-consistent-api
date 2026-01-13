@@ -1,7 +1,7 @@
 ﻿using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 
 namespace Nvx.ConsistentAPI.Framework.StaticEndpoints;
 
@@ -72,7 +72,7 @@ public class StaticEndpointDefinition<Shape> : StaticEndpointArtifact
       .WithOpenApi(o =>
       {
         o.OperationId = $"get{typeof(Shape).Name}";
-        o.Tags = [new OpenApiTag { Name = AreaTag }];
+        o.Tags = new HashSet<OpenApiTagReference> { new(AreaTag, null) };
         if (!string.IsNullOrWhiteSpace(Description))
         {
           o.Description = Description;

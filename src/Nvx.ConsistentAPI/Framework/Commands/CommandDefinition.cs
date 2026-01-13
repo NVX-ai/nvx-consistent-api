@@ -5,7 +5,7 @@ using Json.Logic;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Nvx.ConsistentAPI.Framework;
 
 namespace Nvx.ConsistentAPI;
@@ -122,8 +122,8 @@ public class CommandDefinition<Shape, Entity> : EventModelingCommandArtifact
       .Produces<ErrorResponse>(409)
       .WithOpenApi(o =>
       {
-        o.Description = Description.DefaultValue(o.Description);
-        o.Parameters ??= new List<OpenApiParameter>();
+        o.Description = Description.DefaultValue(o.Description ?? "");
+        o.Parameters ??= [];
         o.Parameters.Add(
           new OpenApiParameter
           {
@@ -132,12 +132,12 @@ public class CommandDefinition<Shape, Entity> : EventModelingCommandArtifact
             Description =
               "Commands issued with this key will conflict with another command issued with the same key at the same time, once the first command with this key is executed, subsequent calls to this command will return the stored result",
             Required = false,
-            Schema = new OpenApiSchema { Type = "string" }
+            Schema = new OpenApiSchema { Type = JsonSchemaType.String }
           });
         o.OperationId = typeof(Shape).Name;
         if (!string.IsNullOrWhiteSpace(AreaTag))
         {
-          o.Tags = [new OpenApiTag { Name = AreaTag }];
+          o.Tags = new HashSet<OpenApiTagReference> { new(AreaTag, null) };
         }
 
         OpenApiCustomizer(o);

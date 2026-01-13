@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 
 namespace Nvx.ConsistentAPI.InternalTooling;
 
@@ -54,14 +54,14 @@ internal static class CatchUp
       .WithDescription("Checks if all read models have caught up")
       .WithOpenApi(o =>
       {
-        o.Tags = [new OpenApiTag { Name = OperationTags.FrameworkManagement }];
-        o.Parameters.Add(
+        o.Tags = new HashSet<OpenApiTagReference> { new(OperationTags.FrameworkManagement, null) };
+        o.Parameters?.Add(
           new OpenApiParameter
           {
             In = ParameterLocation.Header,
             Name = "Internal-Tooling-Api-Key",
             Required = false,
-            Schema = new OpenApiSchema { Type = "string" },
+            Schema = new OpenApiSchema { Type = JsonSchemaType.String },
             Description = "API key for accessing tooling endpoints, not required for admin users"
           });
 

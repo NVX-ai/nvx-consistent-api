@@ -16,7 +16,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Nvx.ConsistentAPI.Framework;
 using Testcontainers.Azurite;
-using Testcontainers.EventStoreDb;
+using Testcontainers.KurrentDb;
 using Testcontainers.MsSql;
 
 // ReSharper disable MemberCanBePrivate.Global
@@ -376,8 +376,7 @@ public class TestSetup : IAsyncDisposable
 
   private static async Task<(KurrentDBClient client, string esCs)> AwaitEventStore(TestSettings settings)
   {
-    var builder = new EventStoreDbBuilder()
-      .WithImage(settings.EsDbImage)
+    var builder = new KurrentDbBuilder(settings.EsDbImage)
       .WithEnvironment("EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP", "true")
       .WithEnvironment("EVENTSTORE_RUN_PROJECTIONS", "None")
       .WithReuse(settings.UsePersistentTestContainers)
@@ -415,8 +414,7 @@ public class TestSetup : IAsyncDisposable
 
   private static async Task<string> AwaitSqlServer(TestSettings settings)
   {
-    var builder = new MsSqlBuilder()
-      .WithImage(settings.MsSqlDbImage)
+    var builder = new MsSqlBuilder(settings.MsSqlDbImage)
       .WithReuse(settings.UsePersistentTestContainers)
       .WithAutoRemove(!settings.UsePersistentTestContainers);
 
@@ -570,8 +568,7 @@ public class TestSetup : IAsyncDisposable
 
   private static async Task<string> CreateAzurite(TestSettings settings)
   {
-    var builder = new AzuriteBuilder()
-      .WithImage(settings.AzuriteImage)
+    var builder = new AzuriteBuilder(settings.AzuriteImage)
       .WithReuse(settings.UsePersistentTestContainers)
       .WithAutoRemove(!settings.UsePersistentTestContainers);
 
