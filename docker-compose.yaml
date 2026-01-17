@@ -8,6 +8,8 @@ services:
       MSSQL_SA_PASSWORD: yourStrong(!)Password
       MSSQL_PID: Express
     restart: unless-stopped
+    # Fix SQL Server 2025 CPU topology detection issues
+    cpuset: "0-3"
   eventstore:
     image: "kurrentplatform/kurrentdb:25.1.0"
     restart: unless-stopped
