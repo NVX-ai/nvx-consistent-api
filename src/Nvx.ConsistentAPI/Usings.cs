@@ -1,3 +1,6 @@
+global using GeneratorSettings = Nvx.ConsistentAPI.Configuration.Settings.GeneratorSettings;
+global using FrameworkFeatures = Nvx.ConsistentAPI.Configuration.Settings.FrameworkFeatures;
+global using ILogger = Microsoft.Extensions.Logging.ILogger;
 global using DeFuncto;
 global using DeFuncto.Extensions;
 global using static Nvx.ConsistentAPI.Types;

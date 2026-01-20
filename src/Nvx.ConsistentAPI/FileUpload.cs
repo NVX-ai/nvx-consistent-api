@@ -1,6 +1,7 @@
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Nvx.ConsistentAPI.Configuration.Settings;
 
 namespace Nvx.ConsistentAPI;
 

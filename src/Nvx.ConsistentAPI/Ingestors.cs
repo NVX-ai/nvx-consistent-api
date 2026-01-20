@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.OpenApi.Models;
+using Nvx.ConsistentAPI.Configuration.Settings;
 
 namespace Nvx.ConsistentAPI;
 

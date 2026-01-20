@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Nvx.ConsistentAPI;
+using Nvx.ConsistentAPI.Configuration.Settings;
 using static DeFuncto.Prelude;
 using TestModel = TestEventModel.TestEventModel;
 

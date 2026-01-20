@@ -402,3 +402,6 @@ FodyWeavers.xsd
 **/coverage/**
 
 .idea/
+
+# MacOS files
+.DS_Store

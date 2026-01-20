@@ -1,6 +1,7 @@
 using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Nvx.ConsistentAPI.Configuration.Settings;
 using Nvx.ConsistentAPI.Framework.SignalRMessage;
 
 namespace Nvx.ConsistentAPI;

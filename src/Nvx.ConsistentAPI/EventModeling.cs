@@ -4,6 +4,7 @@ using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Nvx.ConsistentAPI.Configuration.Settings;
 using Nvx.ConsistentAPI.Framework.DaemonCoordination;
 using Nvx.ConsistentAPI.Framework.Projections;
 using Nvx.ConsistentAPI.Framework.StaticEndpoints;
