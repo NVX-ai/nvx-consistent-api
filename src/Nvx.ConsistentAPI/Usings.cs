@@ -10,6 +10,7 @@ global using AuthOptions = DeFuncto.Du4<
   Nvx.ConsistentAPI.EveryoneAuthenticated,
   Nvx.ConsistentAPI.PermissionsRequireAll,
   Nvx.ConsistentAPI.PermissionsRequireOne>;
+global using Nvx.ConsistentAPI.EventModeling;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Nvx.ConsistentApi.Tests")]

@@ -2,113 +2,14 @@ using System.Security.Cryptography;
 using System.Text;
 using KurrentDB.Client;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Nvx.ConsistentAPI.Configuration.Settings;
 using Nvx.ConsistentAPI.Framework.DaemonCoordination;
 using Nvx.ConsistentAPI.Framework.Projections;
 using Nvx.ConsistentAPI.Framework.StaticEndpoints;
 using Nvx.ConsistentAPI.InternalTooling;
 using HashCode = System.HashCode;
 
-namespace Nvx.ConsistentAPI;
-
-public interface Endpoint
-{
-  /// <summary>
-  ///   Authentication options:
-  ///   - Everyone: Everyone is allowed, for tenant bound commands, it overriden by `EveryoneAuthenticated`.
-  ///   - EveryoneAuthenticated: Every authenticated user is allowed, still applies tenancy constraints.
-  ///   - PermissionsRequireAll: Only users with all permissions referenced in the constructor are allowed.
-  ///   - PermissionsRequireOne: Users with at least one of the permissions referenced in the constructor are allowed.
-  /// </summary>
-  AuthOptions Auth { get; }
-}
-
-public interface EventModelingCommandArtifact : Endpoint
-{
-  /// <summary>
-  ///   Called by the framework to wire up the command.
-  /// </summary>
-  /// <param name="app">The web app that will expose the API.</param>
-  /// <param name="fetcher">Entity fetcher.</param>
-  /// <param name="emitter">Event emitter.</param>
-  /// <param name="settings">Framework settings.</param>
-  /// <param name="logger">Logger instance.</param>
-  void ApplyTo(WebApplication app, Fetcher fetcher, Emitter emitter, GeneratorSettings settings, ILogger logger);
-}
-
-public interface EventModelingReadModelArtifact : Endpoint
-{
-  Type ShapeType { get; }
-  Task<SingleReadModelInsights> Insights(ulong lastEventPosition, KurrentDBClient eventStoreClien);
-
-  Task ApplyTo(
-    WebApplication app,
-    KurrentDBClient esClient,
-    Fetcher fetcher,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
-    Emitter emitter,
-    GeneratorSettings settings,
-    ILogger logger,
-    string modelHash);
-
-  bool IsUpToDate(ulong? position = null);
-}
-
-public interface IdempotentReadModel
-{
-  string TableName { get; }
-
-  Task TryProcess(
-    FoundEntity foundEntity,
-    DatabaseHandlerFactory dbFactory,
-    StrongId entityId,
-    string? checkpoint,
-    ILogger logger,
-    CancellationToken cancellationToken);
-
-  bool CanProject(EventModelEvent e);
-  bool CanProject(string streamName);
-}
-
-public interface EventModelingProjectionArtifact
-{
-  /// <summary>
-  ///   The projection name, used to define the subscription and to generate the idempotency keys.
-  ///   <remarks>MUST BE UNIQUE PER PROJECTION AND SHOULD NEVER CHANGE</remarks>
-  /// </summary>
-  string Name { get; }
-
-  string SourcePrefix { get; }
-  bool CanProject(ResolvedEvent evt);
-
-  Task HandleEvent(
-    ResolvedEvent evt,
-    Func<ResolvedEvent, Option<EventModelEvent>> parser,
-    Fetcher fetcher,
-    KurrentDBClient client);
-}
-
-public static class PermissionsEndpoint
-{
-  public static void ApplyTo(this string[] permissions, WebApplication app, GeneratorSettings settings)
-  {
-    if (!settings.EnabledFeatures.HasEndpoints())
-    {
-      return;
-    }
-
-    app
-      .MapGet("/permissions", () => permissions)
-      .WithTags(OperationTags.Authorization)
-      .WithOpenApi(o =>
-      {
-        o.Description = "Returns a list of all the permissions used in the application.";
-        return o;
-      });
-  }
-}
+namespace Nvx.ConsistentAPI.EventModeling;
 
 public class EventModel
 {
@@ -394,13 +295,4 @@ public class EventModel
 
     return hash.ToHashCode();
   }
-}
-
-public record EventWithMetadata<E>(
-  E Event,
-  Position Revision,
-  Uuid EventId,
-  EventMetadata Metadata) where E : EventModelEvent
-{
-  public EventWithMetadata<E2> As<E2>(E2 e) where E2 : EventModelEvent => new(e, Revision, EventId, Metadata);
 }
