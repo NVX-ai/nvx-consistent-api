@@ -10,6 +10,31 @@ using Nvx.ConsistentAPI.Metrics;
 
 namespace Nvx.ConsistentAPI.Framework.Projections;
 
+/// <summary>
+/// Main orchestrator for the projection system. Coordinates initialization, subscription
+/// management, catch-up processing, and provides monitoring insights.
+/// </summary>
+/// <remarks>
+/// The projection daemon manages the lifecycle of projections:
+/// 1. Initialization: Sets up projection tracker state and registers projections
+/// 2. Subscription: Maintains a live subscription for real-time event processing
+/// 3. Catch-up: Processes historical events for projections that are behind
+/// 4. Monitoring: Provides insights into projection progress and status
+/// 5. Administration: Exposes endpoint for resetting/rerunning projections
+///
+/// The daemon delegates actual processing to specialized handlers:
+/// - <see cref="ProjectionSubscriptionHandler"/> for live event subscription
+/// - <see cref="ProjectionCatchUpHandler"/> for historical event processing
+/// - <see cref="ProjectionSetupOperations"/> for initialization operations
+/// </remarks>
+/// <param name="projectors">Array of all projection artifacts to be managed.</param>
+/// <param name="fetcher">Fetcher instance for retrieving entities.</param>
+/// <param name="emitter">Emitter instance for emitting events.</param>
+/// <param name="client">KurrentDB client for event store operations.</param>
+/// <param name="parser">Function to parse resolved events into domain events.</param>
+/// <param name="app">ASP.NET Core application for registering management endpoints.</param>
+/// <param name="gs">Generator settings containing feature flags.</param>
+/// <param name="logger">Logger for diagnostic output.</param>
 public class ProjectionDaemon(
   EventModelingProjectionArtifact[] projectors,
   Fetcher fetcher,
@@ -20,33 +45,58 @@ public class ProjectionDaemon(
   GeneratorSettings gs,
   ILogger logger)
 {
-  private const string SubscriptionVersion = "1";
-  private static readonly SemaphoreSlim CatchUpLock = new(1);
-  private string[] catchingUp = [];
-  private bool isProjecting;
-  private ulong lastCatchUpProcessedPosition;
-  private ulong lastProcessedPosition;
-  private int projectedCount;
+  private readonly ProjectionDaemonState state = new();
 
+  /// <summary>
+  /// Generates current insights about the projection daemon's status and progress.
+  /// Used for monitoring and health checks.
+  /// </summary>
+  /// <param name="lastEventPosition">
+  /// The current last position in the event store, used to calculate progress percentages.
+  /// </param>
+  /// <returns>
+  /// Insights object containing:
+  /// - Current subscription position and progress percentage
+  /// - Catch-up status and progress percentage
+  /// - Total projected event count
+  /// - Active processing indicator
+  /// </returns>
   public ProjectorDaemonInsights Insights(ulong lastEventPosition)
   {
     var daemonPercentage = lastEventPosition == 0
       ? 100m
-      : Convert.ToDecimal(lastProcessedPosition) * 100m / Convert.ToDecimal(lastEventPosition);
-    var catchUpPercentage = lastEventPosition == 0 || catchingUp.Length == 0
+      : Convert.ToDecimal(state.LastProcessedPosition) * 100m / Convert.ToDecimal(lastEventPosition);
+    var catchUpPercentage = lastEventPosition == 0 || state.CatchingUp.Length == 0
       ? 100m
-      : Convert.ToDecimal(lastCatchUpProcessedPosition) * 100m / Convert.ToDecimal(lastEventPosition);
+      : Convert.ToDecimal(state.LastCatchUpProcessedPosition) * 100m / Convert.ToDecimal(lastEventPosition);
 
     return new ProjectorDaemonInsights(
-      lastProcessedPosition,
+      state.LastProcessedPosition,
       Math.Min(100m, daemonPercentage),
-      catchingUp,
-      lastCatchUpProcessedPosition,
+      state.CatchingUp,
+      state.LastCatchUpProcessedPosition,
       Math.Min(100m, catchUpPercentage),
-      projectedCount,
-      isProjecting);
+      state.ProjectedCount,
+      state.IsProjecting);
   }
 
+  /// <summary>
+  /// Initializes the projection daemon by setting up state, starting handlers,
+  /// and registering management endpoints.
+  /// </summary>
+  /// <remarks>
+  /// Initialization sequence:
+  /// 1. Check if Projections feature is enabled
+  /// 2. Perform first-time setup (emit initial snapshot if needed)
+  /// 3. Register any new projections added since last startup
+  /// 4. Start the live subscription handler (fire-and-forget)
+  /// 5. Start the catch-up handler for behind projections (fire-and-forget)
+  /// 6. Register the /rerun-projection endpoint for manual projection resets
+  ///
+  /// The subscription and catch-up handlers run concurrently. The subscription
+  /// processes new events in real-time while catch-up processes historical events
+  /// for projections that are behind.
+  /// </remarks>
   public async Task Initialize()
   {
     if (!gs.EnabledFeatures.HasFlag(FrameworkFeatures.Projections))
@@ -55,10 +105,13 @@ public class ProjectionDaemon(
     }
 
     var projectionNames = projectors.Select(p => p.Name).ToArray();
-    await FirstSetup();
-    await RegisterNewProjections();
-    _ = Subscribe();
-    _ = CatchUp();
+    var catchUpHandler = new ProjectionCatchUpHandler(projectors, fetcher, emitter, client, parser, state, logger);
+    var subscriptionHandler = new ProjectionSubscriptionHandler(projectors, fetcher, emitter, client, parser, state, gs, logger);
+
+    await ProjectionSetupOperations.FirstSetup(fetcher, emitter, projectionNames);
+    await ProjectionSetupOperations.RegisterNewProjections(fetcher, emitter, projectionNames);
+    _ = subscriptionHandler.Subscribe();
+    _ = catchUpHandler.CatchUp();
 
     Delegate resetDelegate = async (HttpContext context) =>
     {
@@ -70,7 +123,7 @@ public class ProjectionDaemon(
             if (context.Request.RouteValues["projectionName"] is string projectionName
                 && projectionNames.Contains(projectionName))
             {
-              await ResetProjection(projectionName);
+              await ResetProjection(projectionName, catchUpHandler);
             }
 
             context.Response.StatusCode = StatusCodes.Status200OK;
@@ -104,199 +157,22 @@ public class ProjectionDaemon(
         return o;
       })
       .ApplyAuth(new PermissionsRequireOne("admin"));
+  }
 
-    return;
-
-    async Task ResetProjection(string projectionName)
-    {
-      await emitter.Emit(() => new AnyState(new ProjectionReset(SubscriptionVersion, projectionName)));
-      logger.LogInformation("Resetting projection {ProjectionName}", projectionName);
-      _ = CatchUp();
-    }
-
-    async Task FirstSetup()
-    {
-      var tracker = await GetTracker();
-
-      var evt = tracker.Checkpoint is null && tracker.ExistingProjections.Length == 0
-        ? new ProjectionSnapshotReached(SubscriptionVersion, projectionNames, projectionNames, null)
-        : new ProjectionSnapshotReached(
-          tracker.Version,
-          tracker.ExistingProjections,
-          tracker.UpToDateProjections,
-          tracker.Checkpoint);
-
-      await emitter.Emit(() => new AnyState(evt));
-    }
-
-    async Task RegisterNewProjections()
-    {
-      var tracker = await GetTracker();
-      foreach (var missingProjection in projectionNames.Except(tracker.ExistingProjections).ToArray())
-      {
-        await emitter.Emit(() => new AnyState(new ProjectionRegistered(SubscriptionVersion, missingProjection)));
-      }
-    }
-
-    Task<ProjectionTrackerEntity> GetTracker() => fetcher
-      .Fetch<ProjectionTrackerEntity>(new ProjectionTrackerId(SubscriptionVersion))
-      .Map(fr => fr.Ent)
-      .Async()
-      .DefaultValue(ProjectionTrackerEntity.Defaulted(new ProjectionTrackerId(SubscriptionVersion)));
-
-    async Task CatchUp()
-    {
-      var keepCatchingUp = true;
-      var position = Position.Start;
-      while (keepCatchingUp)
-      {
-        try
-        {
-          await CatchUpLock.WaitAsync();
-          var tracker = await GetTracker();
-          var projectionsBehind = tracker.ExistingProjections.Except(tracker.UpToDateProjections).ToArray();
-          catchingUp = projectionsBehind;
-          if (projectionsBehind.Length == 0)
-          {
-            keepCatchingUp = false;
-            continue;
-          }
-
-          logger.LogInformation(
-            "Catching up projections {ProjectionsBehind}, current position {Position}",
-            projectionsBehind,
-            position);
-          var projectorsBehind = projectors.Where(p => projectionsBehind.Contains(p.Name)).ToArray();
-          await foreach (var evt in client.ReadAllAsync(
-                           Direction.Forwards,
-                           position,
-                           StreamFilter.Prefix(projectorsBehind.Select(p => p.SourcePrefix).Distinct().ToArray())))
-          {
-            foreach (var projector in projectorsBehind)
-            {
-              try
-              {
-                if (!projector.CanProject(evt))
-                {
-                  continue;
-                }
-
-                using var _ = new RunningProjectionCountTracker(projector.Name);
-                await projector.HandleEvent(evt, parser, fetcher, client);
-                Interlocked.Increment(ref projectedCount);
-              }
-              catch (Exception ex)
-              {
-                logger.LogError(
-                  ex,
-                  "Error during catch-up for event {Event} with projector {Projector}, won't be retried",
-                  evt,
-                  projector.Name);
-              }
-            }
-
-            position = evt.Event.Position;
-            lastCatchUpProcessedPosition = evt.Event.Position.CommitPosition;
-          }
-
-          foreach (var projector in projectionsBehind)
-          {
-            await emitter.Emit(() => new AnyState(new ProjectionUpToDate(SubscriptionVersion, projector)));
-          }
-        }
-        catch (Exception ex)
-        {
-          logger.LogError(ex, "Error during catch-up for projections");
-          await Task.Delay(2_550);
-        }
-        finally
-        {
-          CatchUpLock.Release();
-        }
-      }
-
-      catchingUp = [];
-      logger.LogInformation("Caught up all projections");
-    }
-
-    async Task Subscribe()
-    {
-      while (gs.EnabledFeatures.HasFlag(FrameworkFeatures.Projections))
-      {
-        try
-        {
-          var tracker = await GetTracker();
-          var position = tracker.Checkpoint is null
-            ? FromAll.End
-            : FromAll.After(new Position(tracker.Checkpoint.Value, tracker.Checkpoint.Value));
-
-          await foreach (var message in client.SubscribeToAll(
-                             position,
-                             filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()))
-                           .Messages)
-          {
-            var hasProjected = false;
-            switch (message)
-            {
-              case StreamMessage.Event(var evt):
-                foreach (var projector in projectors)
-                {
-                  try
-                  {
-                    if (!projector.CanProject(evt))
-                    {
-                      continue;
-                    }
-
-                    isProjecting = true;
-                    await projector.HandleEvent(evt, parser, fetcher, client);
-                    isProjecting = false;
-                    hasProjected = true;
-                  }
-                  catch (Exception ex)
-                  {
-                    isProjecting = false;
-                    logger.LogError(
-                      ex,
-                      "Error during projection daemon subscription for event {Event} with projector {Projector}, won't be retried",
-                      evt.Event.EventType,
-                      projector.Name);
-                  }
-                }
-
-                if (hasProjected)
-                {
-                  await emitter.Emit(() => new AnyState(
-                    new ProjectionCheckpointReached(SubscriptionVersion, evt.Event.Position.CommitPosition)));
-                  Interlocked.Increment(ref projectedCount);
-                }
-
-                lastProcessedPosition = evt.Event.Position.CommitPosition;
-
-                break;
-              case StreamMessage.AllStreamCheckpointReached(var checkpoint):
-                var checkpointTracker = await GetTracker();
-                await emitter.Emit(() => new AnyState(
-                  new ProjectionSnapshotReached(
-                    SubscriptionVersion,
-                    checkpointTracker.ExistingProjections,
-                    checkpointTracker.UpToDateProjections,
-                    checkpoint.CommitPosition)));
-                lastProcessedPosition = checkpoint.CommitPosition;
-                break;
-              case StreamMessage.CaughtUp:
-                break;
-              case StreamMessage.FellBehind:
-                break;
-            }
-          }
-        }
-        catch (Exception ex)
-        {
-          logger.LogError(ex, "Error during projection daemon subscription");
-          await Task.Delay(500);
-        }
-      }
-    }
+  /// <summary>
+  /// Resets a projection by emitting a reset event and triggering catch-up.
+  /// The projection will reprocess all historical events from the beginning.
+  /// </summary>
+  /// <param name="projectionName">The name of the projection to reset.</param>
+  /// <param name="catchUpHandler">The catch-up handler to trigger after reset.</param>
+  /// <remarks>
+  /// Because projections use idempotent UUID generation, rerunning a projection
+  /// is safe - duplicate events will be rejected by the event store.
+  /// </remarks>
+  private async Task ResetProjection(string projectionName, ProjectionCatchUpHandler catchUpHandler)
+  {
+    await emitter.Emit(() => new AnyState(new ProjectionReset(ProjectionDaemonState.SubscriptionVersion, projectionName)));
+    logger.LogInformation("Resetting projection {ProjectionName}", projectionName);
+    _ = catchUpHandler.CatchUp();
   }
 }
