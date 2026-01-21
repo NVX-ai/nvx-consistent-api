@@ -2,62 +2,9 @@ using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nvx.ConsistentAPI.Configuration.Settings;
+using Nvx.ConsistentAPI.InternalTooling;
 
-namespace Nvx.ConsistentAPI;
-
-public partial record FileUpload(Guid Id, string FileName, string State, string[] Tags) :
-  EventModelEntity<FileUpload>,
-  Folds<FileUploaded, FileUpload>,
-  Folds<FileConfirmed, FileUpload>,
-  Folds<FileTagged, FileUpload>
-{
-  public const string StreamPrefix = "framework-file-upload-";
-  public string GetStreamName() => GetStreamName(Id.ToString());
-
-  public ValueTask<FileUpload> Fold(FileConfirmed evt, EventMetadata metadata, RevisionFetcher fetcher) =>
-    ValueTask.FromResult(this with { State = "confirmed" });
-
-  public ValueTask<FileUpload> Fold(FileTagged evt, EventMetadata metadata, RevisionFetcher fetcher) =>
-    ValueTask.FromResult(this with { Tags = evt.Tags });
-
-  public ValueTask<FileUpload> Fold(FileUploaded evt, EventMetadata metadata, RevisionFetcher fetcher) =>
-    ValueTask.FromResult(this with { FileName = evt.FileName });
-
-  public static string GetStreamName(string id) => $"{StreamPrefix}{id}";
-  public static FileUpload Defaulted(StrongGuid id) => new(id.Value, string.Empty, "pending", []);
-
-  public static EventModel Get(GeneratorSettings settings) =>
-    new()
-    {
-      Entities =
-        [new EntityDefinition<FileUpload, StrongGuid> { Defaulter = Defaulted, StreamPrefix = StreamPrefix }],
-      Tasks = [FileDefinitions.CleanupUnconfirmed(settings)]
-    };
-}
-
-public record FileUploaded(Guid Id, string FileName) : EventModelEvent
-{
-  public string GetStreamName() => FileUpload.GetStreamName(Id.ToString());
-  public StrongId GetEntityId() => new StrongGuid(Id);
-}
-
-public record FileConfirmed(Guid Id) : EventModelEvent
-{
-  public string GetStreamName() => FileUpload.GetStreamName(Id.ToString());
-  public StrongId GetEntityId() => new StrongGuid(Id);
-}
-
-public record FileTagged(Guid Id, string[] Tags) : EventModelEvent
-{
-  public string GetStreamName() => FileUpload.GetStreamName(Id.ToString());
-  public StrongId GetEntityId() => new StrongGuid(Id);
-}
-
-public record AttachedFile(Guid Id, string[]? Tags);
-
-public record TryDeleteUnconfirmedFile(Guid Id) : TodoData;
-
-public record FileName(string Name, string[] Tags);
+namespace Nvx.ConsistentAPI.FileUploads;
 
 public static class FileDefinitions
 {

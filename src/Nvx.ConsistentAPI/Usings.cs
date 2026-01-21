@@ -11,6 +11,8 @@ global using AuthOptions = DeFuncto.Du4<
   Nvx.ConsistentAPI.PermissionsRequireAll,
   Nvx.ConsistentAPI.PermissionsRequireOne>;
 global using Nvx.ConsistentAPI.EventModeling;
+global using Nvx.ConsistentAPI.FileUploads;
+global using Nvx.ConsistentAPI.RecurringTasks;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Nvx.ConsistentApi.Tests")]
