@@ -21,6 +21,7 @@ public class EntityFoldGenerator : IIncrementalGenerator
         var eventNamespaces = events
           .Select(e => e.ContainingNamespace.ToDisplayString())
           .Append("Nvx.ConsistentAPI")
+          .Append("Nvx.ConsistentAPI.Framework.Events")
           .Distinct()
           .ToArray();
 

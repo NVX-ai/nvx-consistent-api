@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Nvx.ConsistentAPI;
 using Nvx.ConsistentAPI.Configuration.Settings;
+using Nvx.ConsistentAPI.Logging;
 using static DeFuncto.Prelude;
 using TestModel = TestEventModel.TestEventModel;
 

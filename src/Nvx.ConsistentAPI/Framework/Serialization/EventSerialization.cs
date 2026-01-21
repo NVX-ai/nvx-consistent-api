@@ -1,0 +1,24 @@
+using System.Text;
+using Newtonsoft.Json;
+
+namespace Nvx.ConsistentAPI.Framework.Serialization;
+
+public static class EventSerialization
+{
+  private static readonly JsonSerializerSettings EventSettings = new()
+  {
+    DateTimeZoneHandling = DateTimeZoneHandling.RoundtripKind,
+    DateFormatHandling = DateFormatHandling.IsoDateFormat,
+    DateParseHandling = DateParseHandling.DateTimeOffset
+  };
+
+  internal static byte[] ToBytes<T>(T obj) =>
+    Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(obj, EventSettings));
+
+  internal static T? Deserialize<T>(byte[] data) => Deserialize<T>(Encoding.UTF8.GetString(data));
+
+  internal static object? Deserialize(ReadOnlyMemory<byte> data, Type type) =>
+    JsonConvert.DeserializeObject(Encoding.UTF8.GetString(data.ToArray()), type, EventSettings);
+
+  private static T? Deserialize<T>(string data) => JsonConvert.DeserializeObject<T>(data, EventSettings);
+}

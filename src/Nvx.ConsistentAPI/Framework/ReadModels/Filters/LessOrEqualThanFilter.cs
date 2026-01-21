@@ -1,0 +1,71 @@
+using System.Reflection;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
+
+namespace Nvx.ConsistentAPI;
+
+public record LessOrEqualThanFilter(
+  string ColumnName,
+  StringValues ParameterValue,
+  string ParameterName,
+  string TableName,
+  PropertyInfo PropertyInfo)
+  : ReadModelFilter
+{
+  private static readonly Type[] CompatibleTypes =
+  [
+    typeof(int),
+    typeof(long),
+    typeof(float),
+    typeof(double),
+    typeof(char),
+    typeof(DateTime),
+    typeof(decimal),
+    typeof(DateOnly),
+    typeof(DateTimeOffset)
+  ];
+
+  public string WhereClause => $"[{TableName}].[{ColumnName}] <= @lessOrEqualThan{ColumnName}";
+
+  public Dictionary<string, object> SqlParameters =>
+    new() { { ParameterName, ParameterValue.ToParameter(PropertyInfo) } };
+
+  public static IEnumerable<ReadModelFilter> Parse(Type readModelType, IQueryCollection parameters, string tableName)
+  {
+    var columns = parameters
+      .Where(kvp => kvp.Key.Length > 4 && kvp.Key.StartsWith("lte-"))
+      .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Value))
+      .Select(kvp => new KeyValuePair<string, string>(kvp.Key[4..], kvp.Value.ToString()))
+      .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+    var candidates = readModelType
+      .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+      .Where(p => columns.Any(c => c.Key == p.Name))
+      .Where(p => CompatibleTypes.Contains(Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType));
+
+    foreach (var prop in candidates)
+    {
+      yield return new LessOrEqualThanFilter(
+        prop.Name,
+        columns[prop.Name],
+        $"lessOrEqualThan{prop.Name}",
+        tableName,
+        prop);
+    }
+  }
+
+  public static IEnumerable<FilterDto> GenerateFilterDtos(Type readModelType)
+  {
+    var candidates = readModelType
+      .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+      .Where(p => CompatibleTypes.Contains(Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType));
+
+    foreach (var prop in candidates)
+    {
+      var fieldName = prop.Name;
+      var key = $"lte-{prop.Name}";
+      var description = $"Filters records where {prop.Name} is less than or equal to the given value.";
+
+      yield return new FilterDto(fieldName, key, description, ReadModelFilter.FilterSchema(prop.PropertyType));
+    }
+  }
+}
