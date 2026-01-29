@@ -31,12 +31,12 @@ public abstract class
       .Match(
         async me => await (me switch
         {
-          SourceEvent se => Handle(se, evt.Event.EventId, EventMetadata.TryParse(evt)),
+          SourceEvent se => Handle(se, evt.Event.Position, evt.Event.EventId, EventMetadata.TryParse(evt)),
           _ => Task.CompletedTask
         }),
         () => Task.CompletedTask);
 
-    async Task Handle(SourceEvent sourceEvent, Uuid sourceEventUuid, EventMetadata metadata)
+    async Task Handle(SourceEvent sourceEvent, Position sourceEventPosition, Uuid sourceEventUuid, EventMetadata metadata)
     {
       await Emit(Decider, client);
       return;
@@ -45,7 +45,7 @@ public abstract class
       {
         return await
           fetcher
-            .Fetch<SourceEntity>(sourceEvent.GetEntityId())
+            .Fetch<SourceEntity>(sourceEvent.GetEntityId(), sourceEventPosition)
             .Map(r => r.Ent)
             .Async()
             .Map<(SourceEntity e, IEnumerable<ProjectionId> ids)>(e =>
