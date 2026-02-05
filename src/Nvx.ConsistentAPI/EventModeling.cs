@@ -159,6 +159,13 @@ public class EventModel
     ILogger logger)
   {
     var esClient = new KurrentDBClient(KurrentDBClientSettings.Create(settings.EventStoreConnectionString));
+
+    var readModelValid = new ReadModelCheck(logger, esClient, settings.ReadModelConnectionString);
+    if (!await readModelValid.IsReadModelConsistentAt())
+    {
+      throw new InvalidOperationException("Read model database is not consistent with the event store. Please ensure the connection string is correct and the read model database is up to date.");
+    }
+    
     var emitter = new Emitter(esClient, logger);
     var parser = Parser();
     var interestFetcher = new InterestFetcher(esClient, parser);
