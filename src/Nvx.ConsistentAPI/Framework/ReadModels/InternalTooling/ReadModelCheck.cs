@@ -16,8 +16,15 @@ public class ReadModelCheck(
     try
     {
       // Validate if latest position can be fetched
-      var latestPosition = await eventStoreClient.ReadAllAsync(Direction.Backwards, Position.End, 1).FirstAsync();
-      logger.LogInformation("Connected to event store at latest position {Position}", latestPosition.Event.Position);
+      var latestPosition = await eventStoreClient
+        .ReadAllAsync(Direction.Backwards, Position.End, 1)
+        .FirstOrDefaultAsync();
+      if (!latestPosition.OriginalPosition.HasValue)
+      {
+        logger.LogWarning("Event store is empty. Assuming read model central daemon is consistent with the event store.");
+        return true;
+      }
+      logger.LogInformation("Connected to event store at latest position {Position}", latestPosition.OriginalPosition.Value);
 
       // Check if table CentralDaemonHashedCheckpoints exists, if not we assume the read model central daemon has not processed any events yet and is consistent with the event store
       await using var connection = new SqlConnection(readModelsConnectionString);
