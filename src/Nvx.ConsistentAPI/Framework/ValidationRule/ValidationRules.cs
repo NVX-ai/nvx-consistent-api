@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Json.Logic;
+using Nvx.ConsistentAPI.Model;
 
 namespace Nvx.ConsistentAPI;
 
@@ -83,49 +84,4 @@ public partial record FrameworkValidationRuleEntity(string CommandName, string[]
   public static string GetStreamName(string commandName) => $"{StreamPrefix}{commandName}";
 
   public static FrameworkValidationRuleEntity Defaulted(StrongString id) => new(id.Value, []);
-}
-
-public record SetValidationRule(string CommandName, string Rule) : EventModelCommand<FrameworkValidationRuleEntity>
-{
-  public Option<StrongId> TryGetEntityId(Option<UserSecurity> user) => new StrongString(CommandName);
-
-  public Result<EventInsertion, ApiError> Decide(
-    Option<FrameworkValidationRuleEntity> fvr,
-    Option<UserSecurity> user,
-    FileUpload[] files
-  ) =>
-    new AnyState(new ValidationRuleSet(CommandName, Rule));
-
-  public IEnumerable<string> Validate() => [];
-}
-
-public record RemoveValidationRule(string CommandName, string Rule) : EventModelCommand<FrameworkValidationRuleEntity>
-{
-  public Option<StrongId> TryGetEntityId(Option<UserSecurity> user) => new StrongString(CommandName);
-
-  public Result<EventInsertion, ApiError> Decide(
-    Option<FrameworkValidationRuleEntity> fvr,
-    Option<UserSecurity> user,
-    FileUpload[] files
-  ) =>
-    new AnyState(new ValidationRuleRemoved(CommandName, Rule));
-
-  public IEnumerable<string> Validate() => [];
-}
-
-public record ValidationRuleSet(string CommandName, string Rule) : EventModelEvent
-{
-  public string GetStreamName() => FrameworkValidationRuleEntity.GetStreamName(CommandName);
-  public StrongId GetEntityId() => new StrongString(CommandName);
-}
-
-public record ValidationRuleRemoved(string CommandName, string Rule) : EventModelEvent
-{
-  public string GetStreamName() => FrameworkValidationRuleEntity.GetStreamName(CommandName);
-  public StrongId GetEntityId() => new StrongString(CommandName);
-}
-
-internal record ValidationRuleReadModel(string Id, string CommandName, string[] Rules) : EventModelReadModel
-{
-  public StrongId GetStrongId() => new StrongString(CommandName);
 }

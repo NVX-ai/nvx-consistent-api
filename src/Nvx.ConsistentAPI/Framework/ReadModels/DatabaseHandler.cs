@@ -21,13 +21,13 @@ public interface IsSoftDeleted;
 public interface DatabaseHandler
 {
   internal const string VersionSuffix = "0";
-  string UpsertSql { get; }
-  string AllColumns { get; }
-  string AllColumnsTablePrefixed { get; }
-  Task Initialize();
-  string GenerateSafeInsertSql();
-  string GenerateUpdateSql();
-  string GetTableName();
+  public string UpsertSql { get; }
+  public string AllColumns { get; }
+  public string AllColumnsTablePrefixed { get; }
+  public Task Initialize();
+  public string GenerateSafeInsertSql();
+  public string GenerateUpdateSql();
+  public string GetTableName();
 
   internal static string GetArrayPropTableName(string columnName, string tableName)
   {

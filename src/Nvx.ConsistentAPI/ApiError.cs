@@ -4,7 +4,7 @@ namespace Nvx.ConsistentAPI;
 
 public interface ApiError
 {
-  Task Respond(HttpContext context);
+  public Task Respond(HttpContext context);
 }
 
 public record ErrorResponse(string Message, string[] Errors);

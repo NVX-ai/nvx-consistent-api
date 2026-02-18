@@ -348,14 +348,14 @@ public class AggregatingReadModelDefinition<Shape> : EventModelingReadModelArtif
 
 public interface ReadModelAggregator
 {
-  Task<string[]> Aggregate(
+  public Task<string[]> Aggregate(
     EventWithMetadata<EventModelEvent> evt,
     Fetcher fetcher,
     DbConnection dbConnection,
     DbTransaction dbTransaction,
     TableDetails tableDetails);
 
-  bool Processes(Option<EventModelEvent> evt);
+  public bool Processes(Option<EventModelEvent> evt);
 }
 
 public abstract class ReadModelAggregator<E> : ReadModelAggregator where E : EventModelEvent

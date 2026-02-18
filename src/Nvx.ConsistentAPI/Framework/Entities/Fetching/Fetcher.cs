@@ -6,7 +6,7 @@ namespace Nvx.ConsistentAPI;
 
 public interface EntityFetcher
 {
-  Task<FetchResult<T>> Fetch<T>(
+  public Task<FetchResult<T>> Fetch<T>(
     Option<StrongId> id,
     Position? upToRevision,
     Fetcher fetcher,
@@ -22,7 +22,7 @@ public interface EntityFetcher
     bool resetCache = false,
     CancellationToken cancellationToken = default);
 
-  Type GetFetchType();
+  public Type GetFetchType();
 
   internal bool CanProcessStream(string streamName);
   internal Option<long> GetCachedStreamRevision(StrongId id);
@@ -31,8 +31,8 @@ public interface EntityFetcher
 
 public interface RevisionFetcher
 {
-  AsyncOption<T> Fetch<T>(Option<StrongId> id) where T : EventModelEntity<T>;
-  AsyncOption<T> LatestFetch<T>(Option<StrongId> id) where T : EventModelEntity<T>;
+  public AsyncOption<T> Fetch<T>(Option<StrongId> id) where T : EventModelEntity<T>;
+  public AsyncOption<T> LatestFetch<T>(Option<StrongId> id) where T : EventModelEntity<T>;
 }
 
 internal class RevisionFetchWrapper(Fetcher fetcher, Position upToRevision, bool resetCache) : RevisionFetcher

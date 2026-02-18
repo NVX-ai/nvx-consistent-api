@@ -2,5 +2,5 @@
 
 public interface MultiTenantReadModel : EventModelReadModel
 {
-  Guid[] TenantIds { get; }
+  public Guid[] TenantIds { get; }
 }

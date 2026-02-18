@@ -5,7 +5,7 @@ namespace Nvx.ConsistentAPI;
 
 public interface InterestRelation
 {
-  string StreamName { get; }
+  public string StreamName { get; }
 }
 
 public record Concern(string StreamName, StrongId Id) : InterestRelation;

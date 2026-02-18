@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Nvx.ConsistentAPI;
 using Nvx.ConsistentAPI.Framework.StaticEndpoints;
+using Nvx.ConsistentAPI.Model;
 
 namespace TestEventModel;
 
@@ -704,6 +705,7 @@ public static class TestEventModel
         {
           throw new Exception("Kaboom");
         }
+        throw new Exception("Kaboom");
 
         return Task.FromResult(
           First<EventInsertion, TodoOutcome>(new AnyState(new UserNamedOneProduct(d.UserSub, d.Id, d.UserSub))));

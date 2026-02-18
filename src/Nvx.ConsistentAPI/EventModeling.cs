@@ -21,7 +21,7 @@ public interface Endpoint
   ///   - PermissionsRequireAll: Only users with all permissions referenced in the constructor are allowed.
   ///   - PermissionsRequireOne: Users with at least one of the permissions referenced in the constructor are allowed.
   /// </summary>
-  AuthOptions Auth { get; }
+  public AuthOptions Auth { get; }
 }
 
 public interface EventModelingCommandArtifact : Endpoint
@@ -34,15 +34,15 @@ public interface EventModelingCommandArtifact : Endpoint
   /// <param name="emitter">Event emitter.</param>
   /// <param name="settings">Framework settings.</param>
   /// <param name="logger">Logger instance.</param>
-  void ApplyTo(WebApplication app, Fetcher fetcher, Emitter emitter, GeneratorSettings settings, ILogger logger);
+  public void ApplyTo(WebApplication app, Fetcher fetcher, Emitter emitter, GeneratorSettings settings, ILogger logger);
 }
 
 public interface EventModelingReadModelArtifact : Endpoint
 {
-  Type ShapeType { get; }
-  Task<SingleReadModelInsights> Insights(ulong lastEventPosition, KurrentDBClient eventStoreClien);
+  public Type ShapeType { get; }
+  public Task<SingleReadModelInsights> Insights(ulong lastEventPosition, KurrentDBClient eventStoreClien);
 
-  Task ApplyTo(
+  public Task ApplyTo(
     WebApplication app,
     KurrentDBClient esClient,
     Fetcher fetcher,
@@ -52,14 +52,14 @@ public interface EventModelingReadModelArtifact : Endpoint
     ILogger logger,
     string modelHash);
 
-  bool IsUpToDate(ulong? position = null);
+  public bool IsUpToDate(ulong? position = null);
 }
 
 public interface IdempotentReadModel
 {
-  string TableName { get; }
+  public string TableName { get; }
 
-  Task TryProcess(
+  public Task TryProcess(
     FoundEntity foundEntity,
     DatabaseHandlerFactory dbFactory,
     StrongId entityId,
@@ -67,8 +67,8 @@ public interface IdempotentReadModel
     ILogger logger,
     CancellationToken cancellationToken);
 
-  bool CanProject(EventModelEvent e);
-  bool CanProject(string streamName);
+  public bool CanProject(EventModelEvent e);
+  public bool CanProject(string streamName);
 }
 
 public interface EventModelingProjectionArtifact
@@ -77,12 +77,12 @@ public interface EventModelingProjectionArtifact
   ///   The projection name, used to define the subscription and to generate the idempotency keys.
   ///   <remarks>MUST BE UNIQUE PER PROJECTION AND SHOULD NEVER CHANGE</remarks>
   /// </summary>
-  string Name { get; }
+  public string Name { get; }
 
-  string SourcePrefix { get; }
-  bool CanProject(ResolvedEvent evt);
+  public string SourcePrefix { get; }
+  public bool CanProject(ResolvedEvent evt);
 
-  Task HandleEvent(
+  public Task HandleEvent(
     ResolvedEvent evt,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     Fetcher fetcher,
@@ -233,7 +233,6 @@ public class EventModel
       interestFetcher,
       messageHub,
       modelHash);
-
     await hydrationDaemon.Initialize();
     logger.LogInformation("Read model hydration daemon initialized");
 
@@ -247,7 +246,6 @@ public class EventModel
       Logger = logger,
       HydrationDaemon = hydrationDaemon
     };
-
     processor.Initialize();
     logger.LogInformation("Todo processor initialized");
 
