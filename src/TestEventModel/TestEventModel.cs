@@ -705,7 +705,6 @@ public static class TestEventModel
         {
           throw new Exception("Kaboom");
         }
-        throw new Exception("Kaboom");
 
         return Task.FromResult(
           First<EventInsertion, TodoOutcome>(new AnyState(new UserNamedOneProduct(d.UserSub, d.Id, d.UserSub))));
