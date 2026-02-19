@@ -2,8 +2,8 @@
 
 public interface InterestTrigger
 {
-  EntityInterestManifest[] Initiates(EventModelEvent evt);
-  EntityInterestManifest[] Stops(EventModelEvent evt);
+  public EntityInterestManifest[] Initiates(EventModelEvent evt);
+  public EntityInterestManifest[] Stops(EventModelEvent evt);
 }
 
 public abstract class InterestTrigger<T> : InterestTrigger where T : EventModelEvent

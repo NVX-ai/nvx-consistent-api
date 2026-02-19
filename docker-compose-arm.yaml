@@ -1,6 +1,6 @@
 services:
   db:
-    image: mcr.microsoft.com/mssql/server:2025-latest
+    image: mcr.microsoft.com/mssql/server:2022-latest
     ports:
       - "1433:1433"
     environment:
@@ -8,6 +8,7 @@ services:
       MSSQL_SA_PASSWORD: yourStrong(!)Password
       MSSQL_PID: Express
     restart: unless-stopped
+
   eventstore:
     image: "kurrentplatform/kurrentdb:25.1.0-experimental-arm64-8.0-jammy"
     restart: unless-stopped
@@ -20,6 +21,7 @@ services:
     ports:
       - "2113:2113"
       - "1113:1113"
+
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:3.35.0
     restart: unless-stopped
@@ -27,33 +29,18 @@ services:
       - 10000:10000
       - 10001:10001
       - 10002:10002
-  postgres:
-    image: postgres:latest
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: keycloak
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: password
+
   keycloak:
     image: quay.io/keycloak/keycloak:latest
     restart: unless-stopped
     environment:
-      DB_VENDOR: POSTGRES
-      DB_ADDR: postgres
-      DB_DATABASE: keycloak
-      DB_USER: keycloak
-      DB_SCHEMA: public
-      DB_PASSWORD: password
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
     command:
       - start-dev
     ports:
-      - 8080:8080
-    depends_on:
-      - postgres
-
-
+      - 127.0.0.1:8080:8080
+        
   jaeger:
     image: jaegertracing/all-in-one:latest
     hostname: jaeger
@@ -86,8 +73,6 @@ services:
     image: grafana/grafana:latest
     hostname: grafana
     restart: unless-stopped
-    volumes:
-      - ./dashboards/grafana/grafana.db:/var/lib/grafana/grafana.db
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=potato

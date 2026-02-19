@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Nvx.ConsistentAPI;
 using Nvx.ConsistentAPI.Framework.StaticEndpoints;
+using Nvx.ConsistentAPI.Model;
 
 namespace TestEventModel;
 

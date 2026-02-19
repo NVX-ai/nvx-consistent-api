@@ -6,8 +6,8 @@ namespace Nvx.ConsistentAPI;
 
 public interface Ingestor
 {
-  string AreaTag { get; }
-  Task<Option<EventModelEvent>> Ingest(HttpContext context, Fetcher fetcher);
+  public string AreaTag { get; }
+  public Task<Option<EventModelEvent>> Ingest(HttpContext context, Fetcher fetcher);
   public void SetOpenApi(OpenApiOperation operation) { }
 }
 
