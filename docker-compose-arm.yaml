@@ -73,8 +73,6 @@ services:
     image: grafana/grafana:latest
     hostname: grafana
     restart: unless-stopped
-    volumes:
-      - ./dashboards/grafana/grafana.db:/var/lib/grafana/grafana.db
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=potato
