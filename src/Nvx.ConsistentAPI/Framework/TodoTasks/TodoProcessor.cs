@@ -15,12 +15,24 @@ internal class TodoProcessor
   private static readonly Type UserWithPermissionIdType = typeof(UserWithPermissionId);
   private static readonly Type StrongStringType = typeof(StrongString);
   private static readonly Type StrongGuidType = typeof(StrongGuid);
-  private readonly SemaphoreSlim runningTodosSemaphore = new(1, 1);
-
+  private readonly SemaphoreSlim runningTodosSemaphore;
+  
+  private const int BatchSize = 45;
+  private readonly Lock _lock = new();
+  private static int _padding;
+  
   private readonly List<RunningTodoTaskInsight> runningTodoTasks = [];
+  private readonly List<TodoEventModelReadModel> todoTaskQueue = [];
+  private readonly List<TodoEventModelReadModel> todoTaskRunning = [];
 
   private readonly string tableName =
     DatabaseHandler<TodoEventModelReadModel>.TableName(typeof(TodoEventModelReadModel));
+
+  public TodoProcessor()
+  {
+    var todoProcessorWorkerCount = Settings?.TodoProcessorWorkerCount ?? 25;
+    runningTodosSemaphore = new SemaphoreSlim(todoProcessorWorkerCount, todoProcessorWorkerCount);
+  }
 
   public required GeneratorSettings Settings { private get; init; }
   public required ILogger Logger { private get; init; }
@@ -75,25 +87,26 @@ internal class TodoProcessor
     RunningTodoTaskInsight? insight = null;
     try
     {
-      var todo = await GetNextAvailableTodo()
+      await runningTodosSemaphore.WaitAsync();
+      var todo = await TryGetNextAvailableTodo()
         .Async()
         .Bind(todoReadModel =>
           Tasks
             .FirstOrNone(t => t.Type == todoReadModel.Name)
             .Map(todoTaskDefinition => (todoTaskDefinition, todoReadModel)));
       
+      Interlocked.Add(ref _padding, 100);
+      
       await todo
         .Match(
           async selectedTodo =>
           {
             using var _ = new BatchTodoCountTracker(1);
-            await runningTodosSemaphore.WaitAsync();
             runningTodoTasks.Add(
               insight =
                 new RunningTodoTaskInsight(
                   selectedTodo.todoTaskDefinition.Type,
                   [selectedTodo.todoReadModel.RelatedEntityId]));
-            runningTodosSemaphore.Release();
             Logger.LogInformation("Worker {WorkerIndex} picked up todo {Todo} with id {id}", index, selectedTodo.todoTaskDefinition.Type, selectedTodo.todoReadModel.Id);
             await ProcessOne(selectedTodo)();
           },
@@ -105,7 +118,6 @@ internal class TodoProcessor
     }
     finally
     {
-      await runningTodosSemaphore.WaitAsync();
       if (insight is not null)
       {
         runningTodoTasks.RemoveAll(rtt => rtt.TaskType == insight.TaskType
@@ -371,7 +383,6 @@ internal class TodoProcessor
   {
     try
     {
-      const int batchSize = 45;
       var aMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
       var now = DateTime.UtcNow;
 
@@ -403,7 +414,7 @@ internal class TodoProcessor
       await using var connection = new SqlConnection(Settings.ReadModelConnectionString);
       return await connection.QueryAsync<TodoEventModelReadModel>(
         query,
-        new { BatchSize = batchSize, aMinuteAgo, now });
+        new { BatchSize = BatchSize, aMinuteAgo, now });
     }
     catch (Exception ex)
     {
@@ -411,14 +422,51 @@ internal class TodoProcessor
       throw;
     }
   }
+  
+  private async Task<Option<TodoEventModelReadModel>> TryGetNextAvailableTodo()
+  {
+    lock (_lock)
+    {
+      if (todoTaskQueue.Count > 0)
+      {
+        var todo = todoTaskQueue.First();
+        todoTaskRunning.Add(todo);
+        todoTaskQueue.RemoveAt(0);
+        return todo;
+      }
+    }
 
-  private async Task<Option<TodoEventModelReadModel>> GetNextAvailableTodo()
+    var getNextAvailable = await GetNextAvailableTodo();
+    
+    lock (_lock)
+    {
+      // add only new items to the locked list, to avoid locking more than necessary in case of multiple workers
+      var newItems = getNextAvailable
+        .Where(r => todoTaskRunning.All(ttr => ttr.Id != r.Id))
+        .Where(r => todoTaskQueue.All(ltt => ltt.Id != r.Id))
+        .ToList();
+      
+      if (newItems.Count == 0)
+      {
+        return None;
+      }
+      
+      Logger.LogInformation("Queued {Count} new todos for processing", newItems.Count);
+
+      var newTodo = newItems.First();
+      todoTaskRunning.AddRange(newTodo);
+      todoTaskQueue.AddRange(newItems.Skip(1));
+
+      return newTodo;
+    }
+  }
+
+  private async Task<List<TodoEventModelReadModel>> GetNextAvailableTodo()
   {
     try
     {
-      const int batchSize = 1;
+      // If cache is empty, get from database and add to cache
       var now = DateTime.UtcNow;
-
       var query =
         $"""
           SELECT TOP (@BatchSize)
@@ -445,9 +493,10 @@ internal class TodoProcessor
          """;
 
       await using var connection = new SqlConnection(Settings.ReadModelConnectionString);
-      return (await connection.QueryAsync<TodoEventModelReadModel>(
+      var queryResult = await connection.QueryAsync<TodoEventModelReadModel>(
         query,
-        new { BatchSize = batchSize, now })).SingleOrNone();
+        new { BatchSize = BatchSize, now });
+      return queryResult.AsList();
     }
     catch (Exception ex)
     {
