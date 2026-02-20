@@ -4,6 +4,10 @@ using Nvx.ConsistentAPI.Framework;
 
 namespace Nvx.ConsistentAPI;
 
+/// <summary>
+/// Read model representing an active (uncompleted) todo task, projected from
+/// <see cref="ProcessorEntity"/> state into a SQL table for querying by the <see cref="TodoRepository"/>.
+/// </summary>
 public record TodoEventModelReadModel(
   string Id,
   string RelatedEntityId,

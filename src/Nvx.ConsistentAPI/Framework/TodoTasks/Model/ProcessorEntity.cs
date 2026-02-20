@@ -2,6 +2,11 @@
 
 namespace Nvx.ConsistentAPI;
 
+/// <summary>
+/// Event-sourced entity representing the lifecycle state of a todo task.
+/// Tracks creation, locking, completion, retries, and read model wait counts.
+/// Folds all todo-related events to maintain current state.
+/// </summary>
 public partial record ProcessorEntity(
   Guid Id,
   DateTime StartsAt,
@@ -161,9 +166,4 @@ public partial record ProcessorEntity(
       0,
       0
     );
-
-  public class LockAvailable
-  {
-    internal LockAvailable() { }
-  }
 }

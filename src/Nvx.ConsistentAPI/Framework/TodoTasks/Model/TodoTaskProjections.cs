@@ -2,6 +2,10 @@
 
 namespace Nvx.ConsistentAPI;
 
+/// <summary>
+/// Projection that creates a <see cref="TodoModelSnapshot"/> event when a todo is completed,
+/// capturing the full entity state for efficient rehydration.
+/// </summary>
 public class TodoProcessorCompletedToSnapshot
   : ProjectionDefinition<TodoCompleted, TodoModelSnapshot, ProcessorEntity, ProcessorEntity, StrongGuid>
 {

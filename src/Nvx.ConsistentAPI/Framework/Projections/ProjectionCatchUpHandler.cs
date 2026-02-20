@@ -1,7 +1,7 @@
 using KurrentDB.Client;
 using Microsoft.Extensions.Logging;
-using Nvx.ConsistentAPI.Framework.Projections.Metrics;
 using Nvx.ConsistentAPI.Framework.Projections.Model;
+using Nvx.ConsistentAPI.Metrics;
 
 namespace Nvx.ConsistentAPI.Framework.Projections;
 
