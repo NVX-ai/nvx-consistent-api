@@ -1,4 +1,5 @@
-﻿using Nvx.ConsistentAPI.Framework.SignalRMessage;
+﻿using Microsoft.Extensions.Logging;
+using Nvx.ConsistentAPI.Framework.SignalRMessage;
 
 namespace Nvx.ConsistentAPI;
 
@@ -14,8 +15,15 @@ public delegate Task SendNotificationToHub(
 
 public record SendNotification(string Id) : TodoData
 {
-  public static Task<Du<EventInsertion, TodoOutcome>> Execute(UserNotificationEntity ett) =>
-    Task.FromResult<Du<EventInsertion, TodoOutcome>>(
+  public static Task<Du<EventInsertion, TodoOutcome>> Execute(UserNotificationEntity ett, ILogger logger)
+  {
+    logger.LogDebug(
+      "SendNotification.Execute: scheduling SignalR message for user {UserSub}, notification {Id}, type {MessageType}",
+      ett.UserSub,
+      ett.Id,
+      ett.MessageType);
+
+    return Task.FromResult<Du<EventInsertion, TodoOutcome>>(
       new AnyState(
         new SignalRMessageScheduled(
           Guid.NewGuid(),
@@ -28,6 +36,7 @@ public record SendNotification(string Id) : TodoData
           ett.Id,
           "notification",
           DateTime.UtcNow)));
+  }
 }
 
 public record FollowUpOnDeletion : TodoData

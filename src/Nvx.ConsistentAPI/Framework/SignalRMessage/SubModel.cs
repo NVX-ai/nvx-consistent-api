@@ -16,7 +16,7 @@ public static class SignalRMessageSubModel
       new TodoTaskDefinition<SignalRMessageData, SignalRMessageEntity, SignalRMessageScheduled, SignalRMessageId>
       {
         Type = "framework-send-signalr-message-to-hub",
-        Action = (data, _, _, _, _) => SignalRMessageData.Execute(data, sendNotificationToHub),
+        Action = (data, _, _, _, logger) => SignalRMessageData.Execute(data, sendNotificationToHub, logger),
         Originator = (_, ett, _) => new SignalRMessageData(ett.Notifications, ett.ChannelName, ett.ScheduledAt),
         SourcePrefix = SignalRMessageEntity.StreamPrefix
       }
