@@ -2,14 +2,14 @@ namespace Nvx.ConsistentAPI;
 
 public interface EventModelCommand<Entity> : EventModelCommand where Entity : EventModelEntity<Entity>
 {
-  public Result<EventInsertion, ApiError> Decide(Option<Entity> entity, Option<UserSecurity> user, FileUpload[] files);
-  public Option<StrongId> TryGetEntityId(Option<UserSecurity> user);
+  Result<EventInsertion, ApiError> Decide(Option<Entity> entity, Option<UserSecurity> user, FileUpload[] files);
+  Option<StrongId> TryGetEntityId(Option<UserSecurity> user);
 }
 
 public interface TenantEventModelCommand<Entity> : EventModelCommand where Entity : EventModelEntity<Entity>
 {
-  public Result<EventInsertion, ApiError> Decide(Guid tenantId, Option<Entity> entity, UserSecurity user, FileUpload[] files);
-  public Option<StrongId> TryGetEntityId(UserSecurity user, Guid tenantId);
+  Result<EventInsertion, ApiError> Decide(Guid tenantId, Option<Entity> entity, UserSecurity user, FileUpload[] files);
+  Option<StrongId> TryGetEntityId(UserSecurity user, Guid tenantId);
 }
 
 public interface EventModelCommand

@@ -8,12 +8,12 @@ namespace Nvx.ConsistentAPI;
 
 public interface HasId
 {
-  public string Id { get; }
+  string Id { get; }
 }
 
 public interface EventModelReadModel : HasId
 {
-  public StrongId GetStrongId();
+  StrongId GetStrongId();
 }
 
 public enum SortDirection
@@ -24,7 +24,7 @@ public enum SortDirection
 
 public interface UserBound
 {
-  public string UserSub { get; }
+  string UserSub { get; }
 }
 
 public record SortBy(string Field, SortDirection Direction);
@@ -390,7 +390,7 @@ public class ReadModelDefinition<Shape, EntityShape> :
 
 public interface FoundEntity
 {
-  public ulong? Position { get; }
+  ulong? Position { get; }
 }
 
 public record FoundEntity<T>(

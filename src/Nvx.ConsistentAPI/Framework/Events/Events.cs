@@ -33,15 +33,15 @@ public interface EventModelSnapshotEvent : EventModelEvent;
 public interface EventModelEvent
 {
   public string EventType => GetType().Apply(Naming.ToSpinalCase);
-  public string GetStreamName();
+  string GetStreamName();
   public byte[] ToBytes() => EventSerialization.ToBytes(this);
-  public StrongId GetEntityId();
+  StrongId GetEntityId();
   public bool ShouldTriggerHydration(EventMetadata metadata, bool isBackwards) => true;
 }
 
 public interface EventInsertion
 {
-  public EventInsertion WithRevision(long revision);
+  EventInsertion WithRevision(long revision);
 }
 
 public interface ExistingStreamInsertion : EventInsertion;

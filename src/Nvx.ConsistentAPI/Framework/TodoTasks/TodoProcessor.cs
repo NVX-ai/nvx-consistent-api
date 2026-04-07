@@ -1,13 +1,221 @@
 using System.Diagnostics;
 using Dapper;
+using KurrentDB.Client;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Nvx.ConsistentAPI.InternalTooling;
 using Nvx.ConsistentAPI.Metrics;
-using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Nvx.ConsistentAPI;
+
+public interface TodoData;
+
+public interface OverriddenScheduleTodo : TodoData
+{
+  DateTime ScheduledAt { get; }
+}
+
+public enum TodoOutcome
+{
+  Retry,
+  Done,
+  Locked
+}
+
+public interface TodoTaskDefinition
+{
+  string Type { get; }
+  EventModelingProjectionArtifact Projection { get; }
+  TimeSpan LockLength { get; }
+  Type EntityIdType { get; }
+  Type[] DependingReadModels { get; }
+
+  Task<Du<EventInsertion, TodoOutcome>> Execute(
+    string data,
+    Fetcher fetcher,
+    StrongId entityId,
+    string connectionString,
+    ILogger logger);
+}
+
+public interface ReadModelDetailsFactory
+{
+  TableDetails GetTableDetails<ReadModel>() where ReadModel : EventModelReadModel;
+}
+
+public class DatabaseHandlerFactory(string connectionString, ILogger logger) : ReadModelDetailsFactory
+{
+  public TableDetails GetTableDetails<ReadModel>() where ReadModel : EventModelReadModel
+  {
+    var handler = Get<ReadModel>();
+    return new TableDetails(
+      handler.GetTableName(),
+      handler.UpsertSql,
+      handler.TraceableUpsertSql,
+      handler.GenerateSafeInsertSql(),
+      handler.GenerateUpdateSql(),
+      handler.AllColumns,
+      new Dictionary<Type, AdditionalTableDetails>(),
+      handler.AllColumnsTablePrefixed);
+  }
+
+  internal DatabaseHandler<ReadModel> Get<ReadModel>() where ReadModel : EventModelReadModel =>
+    new(connectionString, logger);
+
+  // Meant to be accessed by the TodoProcessor
+  // ReSharper disable once UnusedMember.Global
+  public async Task<IEnumerable<T>> Query<T>(Func<SqlConnection, Task<IEnumerable<T>>> query)
+  {
+    await using var connection = new SqlConnection(connectionString);
+    await connection.OpenAsync();
+    return await query(connection);
+  }
+
+  // Meant to be accessed by the TodoProcessor
+  // ReSharper disable once UnusedMember.Global
+  public async Task<IEnumerable<ReadModel>> Query<ReadModel>(
+    Func<TableDetails, string> query,
+    object parameters) where ReadModel : EventModelReadModel
+  {
+    await using var connection = new SqlConnection(connectionString);
+    await connection.OpenAsync();
+    return await connection.QueryAsync<ReadModel>(query(GetTableDetails<ReadModel>()), parameters);
+  }
+}
+
+public class TodoTaskDefinition<DataShape, Entity, SourceEvent, EntityId> : TodoTaskDefinition
+  where DataShape : TodoData
+  where Entity : EventModelEntity<Entity>
+  where SourceEvent : EventModelEvent
+  where EntityId : StrongId
+{
+  public required
+    Func<DataShape, Entity, Fetcher, DatabaseHandlerFactory, ILogger, Task<Du<EventInsertion, TodoOutcome>>> Action
+  {
+    get;
+    init;
+  }
+
+  public required Func<SourceEvent, Entity, EventMetadata, TodoData> Originator { get; init; }
+  public TimeSpan Delay { get; init; } = TimeSpan.Zero;
+  public TimeSpan Expiration { get; init; } = TimeSpan.FromDays(7);
+  public required string SourcePrefix { get; init; }
+  public Type EntityIdType { get; } = typeof(EntityId);
+  public Type[] DependingReadModels { get; init; } = [];
+  public required string Type { get; init; }
+  public TimeSpan LockLength { get; init; } = TimeSpan.FromHours(1);
+
+  public async Task<Du<EventInsertion, TodoOutcome>> Execute(
+    string data,
+    Fetcher fetcher,
+    StrongId entityId,
+    string connectionString,
+    ILogger logger)
+  {
+    try
+    {
+      return await DeserializeData(data, logger)
+        .Async()
+        .Bind(d => fetcher
+          .Fetch<Entity>(entityId)
+          .Map(fr => fr.Ent.Map(e => (e, fr.Revision)))
+          .Async()
+          .Map(e => (d, e.e, e.Revision)))
+        .Map(async t =>
+          await Action(
+              t.d,
+              t.e,
+              fetcher,
+              new DatabaseHandlerFactory(connectionString, logger),
+              logger)
+            .Map(du =>
+              du.Match(
+                ei => ei.WithRevision(t.Revision).Apply(First<EventInsertion, TodoOutcome>),
+                Second<EventInsertion, TodoOutcome>))
+        )
+        .DefaultValue(TodoOutcome.Retry);
+    }
+    catch (Exception ex)
+    {
+      logger.LogError(ex, "Failed executing todo:\n{ArgItem1}\nFor task {ArgItem2}", data, Type);
+      return TodoOutcome.Retry;
+    }
+  }
+
+  public EventModelingProjectionArtifact Projection =>
+    new TodoProjector(SourcePrefix) { Delay = Delay, Expiration = Expiration, Originator = Originator, Type = Type };
+
+  private Option<DataShape> DeserializeData(string data, ILogger logger)
+  {
+    try
+    {
+      return JsonConvert.DeserializeObject<DataShape>(data).Apply(Optional);
+    }
+    catch (Exception ex)
+    {
+      logger.LogError(ex, "Failed deserializing todo data for task {TaskType}", Type);
+      return None;
+    }
+  }
+
+  private static Guid GetTaskId(Uuid sourceEventUuid, string type) =>
+    IdempotentUuid.Generate($"{sourceEventUuid}{type})").ToGuid();
+
+  public override int GetHashCode() => Type.GetHashCode();
+
+  internal class TodoProjector : ProjectionDefinition<SourceEvent, TodoCreated, Entity, ProcessorEntity, StrongGuid>
+  {
+    private readonly string sourceStreamPrefix;
+
+    internal TodoProjector(string sourceStreamPrefix)
+    {
+      this.sourceStreamPrefix = sourceStreamPrefix;
+    }
+
+    public required Func<SourceEvent, Entity, EventMetadata, TodoData> Originator { get; init; }
+    public TimeSpan Delay { get; init; } = TimeSpan.Zero;
+    public required string Type { get; init; }
+    public TimeSpan Expiration { get; init; } = TimeSpan.FromDays(7);
+
+    public override string Name => $"framework-todo-{Type}";
+
+    // ReSharper disable once ConvertToAutoProperty
+    public override string SourcePrefix => sourceStreamPrefix;
+
+    public override Option<TodoCreated> Project(
+      SourceEvent eventToProject,
+      Entity e,
+      Option<ProcessorEntity> projectionEntity,
+      StrongGuid projectionId,
+      Uuid sourceEventUuid,
+      EventMetadata metadata)
+    {
+      var todoData = Originator(eventToProject, e, metadata);
+      var startsAt = CalculateStartsAt();
+      var expiresAt = startsAt + Expiration;
+      return new TodoCreated(
+        GetTaskId(sourceEventUuid, Type),
+        startsAt,
+        expiresAt,
+        JsonConvert.SerializeObject(todoData),
+        Type,
+        eventToProject.GetEntityId().StreamId(),
+        JsonConvert.SerializeObject(eventToProject.GetEntityId())
+      );
+
+      DateTime CalculateStartsAt() =>
+        todoData is OverriddenScheduleTodo overriddenScheduleTodo
+          ? overriddenScheduleTodo.ScheduledAt
+          : metadata.CreatedAt + Delay;
+    }
+
+    public override IEnumerable<StrongGuid> GetProjectionIds(
+      SourceEvent sourceEvent,
+      Entity sourceEntity,
+      Uuid sourceEventId) => [new(GetTaskId(sourceEventId, Type))];
+  }
+}
 
 internal class TodoProcessor
 {
@@ -81,7 +289,7 @@ internal class TodoProcessor
           Tasks
             .FirstOrNone(t => t.Type == todoReadModel.Name)
             .Map(todoTaskDefinition => (todoTaskDefinition, todoReadModel)));
-      
+
       await todo
         .Match(
           async selectedTodo =>
@@ -94,7 +302,6 @@ internal class TodoProcessor
                   selectedTodo.todoTaskDefinition.Type,
                   [selectedTodo.todoReadModel.RelatedEntityId]));
             runningTodosSemaphore.Release();
-            Logger.LogInformation("Worker {WorkerIndex} picked up todo {Todo} with id {id}", index, selectedTodo.todoTaskDefinition.Type, selectedTodo.todoReadModel.Id);
             await ProcessOne(selectedTodo)();
           },
           async () => { await Task.Delay(Random.Shared.Next((index + 1) * 500)); });
@@ -111,6 +318,7 @@ internal class TodoProcessor
         runningTodoTasks.RemoveAll(rtt => rtt.TaskType == insight.TaskType
                                           && insight.RelatedEntityIds.All(id => rtt.RelatedEntityIds.Contains(id)));
       }
+
       runningTodosSemaphore.Release();
     }
   }
@@ -451,7 +659,7 @@ internal class TodoProcessor
     }
     catch (Exception ex)
     {
-      Logger.LogError(ex, "Failed getting available todos from read model {TableName}", tableName);
+      Logger.LogError(ex, "Failed getting available todos");
       throw;
     }
   }

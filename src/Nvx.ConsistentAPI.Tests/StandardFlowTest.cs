@@ -2,7 +2,6 @@
 
 using System.Net;
 using Newtonsoft.Json;
-using Nvx.ConsistentAPI.Model;
 
 namespace Nvx.ConsistentAPI.Tests;
 

@@ -11,7 +11,7 @@ public record FilterDto(string FieldName, string Key, string Description, OpenAp
 
 public interface ReadModelFilter
 {
-  private delegate IEnumerable<ReadModelFilter> FilterBuilder(
+  delegate IEnumerable<ReadModelFilter> FilterBuilder(
     Type readModelType,
     IQueryCollection parameters,
     string tableName);
@@ -34,8 +34,8 @@ public interface ReadModelFilter
     TextSearchInArrayFilter.Parse
   ];
 
-  public string WhereClause { get; }
-  public Dictionary<string, object> SqlParameters { get; }
+  string WhereClause { get; }
+  Dictionary<string, object> SqlParameters { get; }
 
   public static IEnumerable<ReadModelFilter> Get(Type readModelType, IQueryCollection parameters, string tableName) =>
     AvailableFilters.SelectMany(f => f(readModelType, parameters, tableName));
