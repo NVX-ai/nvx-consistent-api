@@ -10,7 +10,7 @@ public static class UserNotificationSubModel
       [
         new TodoTaskDefinition<SendNotification, UserNotificationEntity, NotificationSent, StrongString>
         {
-          Action = (_, entity, _, _, _) => SendNotification.Execute(entity),
+          Action = (_, entity, _, _, logger) => SendNotification.Execute(entity, logger),
           Originator = Originator,
           Type = "send-notification-to-hub",
           SourcePrefix = UserNotificationEntity.StreamPrefix
