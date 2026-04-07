@@ -22,10 +22,12 @@ public record SignalRMessageData(SignalRNotification[] Notifications, string Cha
     foreach (var notification in data.Notifications)
     {
       logger.LogDebug(
-        "Sending SignalR notification to user {UserSub}, type {MessageType}, notificationId {NotificationId}, channel {ChannelName}",
+        "Sending SignalR notification to user {UserSub}, type {MessageType}, notificationId {NotificationId}, relatedEntityType {RelatedEntityType}, relatedEntityId {RelatedEntityId}, channel {ChannelName}",
         notification.UserSub,
         notification.MessageType,
         notification.NotificationId,
+        notification.RelatedEntityType,
+        notification.RelatedEntityId,
         data.ChannelName);
 
       try
@@ -46,10 +48,12 @@ public record SignalRMessageData(SignalRNotification[] Notifications, string Cha
         failureCount++;
         logger.LogError(
           ex,
-          "SignalR send failed for user {UserSub}, type {MessageType}, notificationId {NotificationId}, channel {ChannelName} — continuing with remaining notifications",
+          "SignalR send failed for user {UserSub}, type {MessageType}, notificationId {NotificationId}, relatedEntityType {RelatedEntityType}, relatedEntityId {RelatedEntityId}, channel {ChannelName} — continuing with remaining notifications",
           notification.UserSub,
           notification.MessageType,
           notification.NotificationId,
+          notification.RelatedEntityType,
+          notification.RelatedEntityId,
           data.ChannelName);
       }
     }
