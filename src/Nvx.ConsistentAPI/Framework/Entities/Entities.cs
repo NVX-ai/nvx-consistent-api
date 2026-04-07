@@ -4,7 +4,7 @@ namespace Nvx.ConsistentAPI;
 
 public interface Folds<Evt, Ent> where Evt : EventModelEvent where Ent : EventModelEntity<Ent>
 {
-  public ValueTask<Ent> Fold(Evt evt, EventMetadata metadata, RevisionFetcher fetcher);
+  ValueTask<Ent> Fold(Evt evt, EventMetadata metadata, RevisionFetcher fetcher);
 }
 
 public abstract record StrongId
@@ -29,15 +29,15 @@ public interface EventModelEntity;
 
 public interface EventModelEntity<Entity> : EventModelEntity
 {
-  public ValueTask<Entity> Fold(EventModelEvent sa, EventMetadata metadata, RevisionFetcher fetcher);
-  public string GetStreamName();
+  ValueTask<Entity> Fold(EventModelEvent sa, EventMetadata metadata, RevisionFetcher fetcher);
+  string GetStreamName();
 }
 
 public interface EntityDefinition
 {
-  public string StreamPrefix { get; }
+  string StreamPrefix { get; }
 
-  public EntityFetcher GetFetcher(
+  EntityFetcher GetFetcher(
     KurrentDBClient client,
     Func<ResolvedEvent, Option<EventModelEvent>> parser,
     InterestFetcher interestFetcher);

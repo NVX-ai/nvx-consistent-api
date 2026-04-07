@@ -2,5 +2,5 @@
 
 public interface FoldsExternally<Evt, Ent> where Evt : EventModelEvent where Ent : EventModelEntity<Ent>
 {
-  public ValueTask<Ent> Fold(Evt evt, EventMetadata metadata, RevisionFetcher fetcher);
+  ValueTask<Ent> Fold(Evt evt, EventMetadata metadata, RevisionFetcher fetcher);
 }

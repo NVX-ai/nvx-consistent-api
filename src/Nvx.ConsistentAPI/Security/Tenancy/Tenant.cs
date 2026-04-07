@@ -153,5 +153,5 @@ public record TenantReadModel(string Id, string Name, bool Enabled) : EventModel
 
 public interface IsTenantBound
 {
-  public Guid TenantId { get; }
+  Guid TenantId { get; }
 }

@@ -7,7 +7,7 @@ namespace Nvx.ConsistentAPI.Framework.StaticEndpoints;
 
 public interface StaticEndpointArtifact
 {
-  public void ApplyTo(
+  void ApplyTo(
     WebApplication app,
     Fetcher fetcher,
     Emitter emitter,
