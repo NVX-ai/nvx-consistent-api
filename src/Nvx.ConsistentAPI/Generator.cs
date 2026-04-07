@@ -361,6 +361,8 @@ public static class Generator
       loggingBuilder.AddSerilog(
         new LoggerConfiguration()
           .MinimumLevel
+          .Is(Map(settings.LoggingSettings.LogLevel))
+          .MinimumLevel
           .Override("Nvx.ConsistentAPI", Map(settings.LoggingSettings.LogLevel))
           .Enrich.FromLogContext()
           .Filter.ByExcluding(logEvent =>
