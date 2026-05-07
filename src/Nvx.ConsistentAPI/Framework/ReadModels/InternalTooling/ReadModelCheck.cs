@@ -55,8 +55,9 @@ public class ReadModelCheck(
       }
       return true;
     }
-    catch
+    catch(Exception ex)
     {
+      logger.LogError(ex, "Error checking if read model is consistent with the event store");
       return false;
     }
   }
