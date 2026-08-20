@@ -192,7 +192,14 @@ public class TestSetup : IAsyncDisposable
     var localFileContent = await File.ReadAllBytesAsync(path);
     var response = await $"{Url}/files/download/{fileId}"
       .DownloadFileAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()));
-    var downloadedFileContent = await File.ReadAllBytesAsync(response);
+    var baseFull = Path.GetFullPath(Path.GetTempPath());
+    var fullPath = Path.GetFullPath(response);
+    if (!fullPath.StartsWith(baseFull + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+      && fullPath != baseFull)
+    {
+      throw new ArgumentException("Invalid file path");
+    }
+    var downloadedFileContent = await File.ReadAllBytesAsync(fullPath);
     Assert.Equal(localFileContent, downloadedFileContent);
   }
 
