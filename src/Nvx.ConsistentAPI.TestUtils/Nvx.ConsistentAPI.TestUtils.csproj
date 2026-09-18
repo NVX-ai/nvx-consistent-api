@@ -16,18 +16,18 @@
     <ItemGroup>
         <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
         <PackageReference Include="DeFuncto.Core" Version="1.1.3" />
-        <PackageReference Include="Docker.Dotnet" Version="3.125.15"/>
-        <PackageReference Include="Flurl.Http" Version="4.0.2"/>
+        <PackageReference Include="Docker.Dotnet" Version="3.125.15" />
+        <PackageReference Include="Flurl.Http" Version="4.0.2" />
         <PackageReference Include="Microsoft.Azure.SignalR" Version="1.32.0" />
         <PackageReference Include="Schick.Keycloak.RestApiClient" Version="26.4.2" />
-        <PackageReference Include="Testcontainers.Azurite" Version="4.8.1" />
+        <PackageReference Include="Testcontainers.Azurite" Version="4.14.0" />
         <PackageReference Include="Testcontainers.EventStoreDb" Version="4.8.1" />
-        <PackageReference Include="Testcontainers.MsSql" Version="4.8.1" />
-        <PackageReference Include="xunit" Version="2.9.3"/>
+        <PackageReference Include="Testcontainers.MsSql" Version="4.14.0" />
+        <PackageReference Include="xunit" Version="2.9.3" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Nvx.ConsistentAPI\Nvx.ConsistentAPI.csproj"/>
+        <ProjectReference Include="..\Nvx.ConsistentAPI\Nvx.ConsistentAPI.csproj" />
     </ItemGroup>
 
 </Project>
