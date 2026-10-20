@@ -1,4 +1,5 @@
-﻿using System.Data.Common;
+﻿﻿using System.Data.Common;
+using System.Text.RegularExpressions;
 using Dapper;
 using Nvx.ConsistentAPI;
 
@@ -316,6 +317,11 @@ public record PizzaStockReadModel(string Id, Guid PizzaId, int Stock) : EventMod
       {
         parameters.Add($"@id{tuple.i}", tuple.PizzaId);
       }
+
+      if (!Regex.IsMatch(tableDetails.AllColumns, "^[a-zA-Z0-9_,\\[\\] ]+$"))
+        throw new ArgumentException("Invalid input");
+      if (!Regex.IsMatch(tableDetails.TableName, "^[a-zA-Z0-9_]+$"))
+        throw new ArgumentException("Invalid input");
 
       var pizzaStocks = await dbConnection.QueryAsync<PizzaStockReadModel>(
         $"SELECT {tableDetails.AllColumns} FROM [{tableDetails.TableName}] WHERE [Id] IN ({idParams})",
