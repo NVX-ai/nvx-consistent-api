@@ -8,11 +8,17 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Nvx.ConsistentAPI\Nvx.ConsistentAPI.csproj"/>
+        <ProjectReference Include="..\Nvx.ConsistentAPI\Nvx.ConsistentAPI.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Nvx.ConsistentAPI.Analyzers\Nvx.ConsistentAPI.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+        <ProjectReference Include="..\Nvx.ConsistentAPI.Analyzers\Nvx.ConsistentAPI.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Azure.Core" Version="1.59.0" />
+      <PackageReference Include="Microsoft.Identity.Client" Version="4.81.0" />
+      <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.0" />
     </ItemGroup>
 
 </Project>
